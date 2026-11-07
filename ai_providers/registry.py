@@ -46,3 +46,17 @@ def get_provider(name: str | None = None, settings: Settings | None = None) -> A
         return _FACTORIES[name](settings)
     except KeyError:
         raise ValueError(f"unknown AI provider {name!r}; available: {', '.join(available())}") from None
+
+
+def get_second_opinion(settings: Settings | None = None) -> AIProvider | None:
+    """A different model for the extra-validation band, or None if not configured."""
+    settings = settings or get_settings()
+    if settings.ai_provider == "evren" and settings.evren_second_model \
+            and settings.evren_second_model != settings.evren_model:
+        return EvrenProvider(
+            api_key=settings.evren_api_key.get_secret_value() if settings.evren_api_key else None,
+            base_url=settings.evren_base_url, model=settings.evren_second_model,
+            timeout=settings.evren_timeout_seconds, json_mode=settings.evren_json_mode,
+            max_text_chars=settings.max_text_chars, max_html_chars=settings.max_html_chars,
+        )
+    return None

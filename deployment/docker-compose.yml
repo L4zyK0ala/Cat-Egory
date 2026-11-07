@@ -4,9 +4,10 @@
 #
 # Networks
 #   core    internal-only: databases, queue, object store and the services that use them (no internet)
-#   egress  outbound internet for the worker (AI provider, allow-listed source feeds)
+#   crawl   internal-only: crawler <-> redis, object store, egress proxy. No Postgres, no internet.
+#   egress  outbound internet: worker (DNS pre-check, AI provider) and the egress proxy
 #   edge    published ports
-# The crawler (Phase 3) gets its own image and an egress network without access to `core` databases.
+# The crawler's ONLY way to the internet is the egress-proxy, which enforces the SSRF policy at connect time.
 name: cat-egory
 
 x-backend: &backend
@@ -23,6 +24,7 @@ x-backend: &backend
     CATEGORY_PUBLIC_RATE_LIMIT_PER_MINUTE: ${CATEGORY_PUBLIC_RATE_LIMIT_PER_MINUTE:-60}
     CATEGORY_ANONYMOUS_WRITE_LIMIT_PER_MINUTE: ${CATEGORY_ANONYMOUS_WRITE_LIMIT_PER_MINUTE:-10}
     CATEGORY_API_KEY_RATE_LIMIT_PER_MINUTE: ${CATEGORY_API_KEY_RATE_LIMIT_PER_MINUTE:-600}
+    CATEGORY_CORS_ORIGINS: ${CATEGORY_CORS_ORIGINS:-[]}
     CATEGORY_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-category}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-category}
     CATEGORY_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
     CATEGORY_S3_ENDPOINT_URL: http://storage:8333
@@ -63,7 +65,7 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     volumes: [redisdata:/data]
-    networks: [core]
+    networks: [core, crawl]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
@@ -76,6 +78,8 @@ services:
 
   # S3-compatible object store (SeaweedFS, Apache-2.0). The official MinIO images are no longer
   # published on Docker Hub; any S3 endpoint works via CATEGORY_S3_ENDPOINT_URL.
+  # 1 GB volumes, at most 100 (space is not preallocated). With -volume.max=0 SeaweedFS derives the count from
+  # free disk / 30 GB, which can be fewer than the 7 volumes it grows for a new bucket -> PutObject InternalError.
   storage:
     image: chrislusf/seaweedfs:4.52
     entrypoint: ["/bin/sh", "-c"]
@@ -84,12 +88,13 @@ services:
         umask 077 &&
         printf '{"identities":[{"name":"category","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
         "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
-        exec weed server -dir=/data -ip.bind=0.0.0.0 -s3 -s3.port=8333 -s3.config=/tmp/s3.json -volume.max=0
+        exec weed server -dir=/data -ip=storage -ip.bind=0.0.0.0 -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+        -master.volumeSizeLimitMB=1024 -volume.max=100
     environment:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
     volumes: [objectdata:/data]
-    networks: [core]
+    networks: [core, crawl]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
@@ -121,7 +126,7 @@ services:
 
   worker:
     <<: *backend
-    command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "classify,ingest,feeds,maintenance",
+    command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "scan,classify,ingest,feeds,maintenance",
               "--concurrency", "2", "--loglevel", "INFO"]
     environment:
       <<: *backend-env
@@ -129,6 +134,7 @@ services:
       CATEGORY_EVREN_API_KEY: ${CATEGORY_EVREN_API_KEY:-}
       CATEGORY_EVREN_MODEL: ${CATEGORY_EVREN_MODEL:-qwen3.8-flash-next}
       CATEGORY_EVREN_JSON_MODE: ${CATEGORY_EVREN_JSON_MODE:-false}
+      CATEGORY_EVREN_SECOND_MODEL: ${CATEGORY_EVREN_SECOND_MODEL:-}
     healthcheck:
       test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
       interval: 60s
@@ -140,6 +146,56 @@ services:
       redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "2", memory: 1g}}}
 
+  # SSRF-enforcing forward proxy: the crawler's only route to the internet.
+  egress-proxy:
+    <<: *backend
+    command: ["python", "-m", "crawler.egress_proxy", "--host", "0.0.0.0", "--port", "3128"]
+    environment:
+      CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
+      CATEGORY_EGRESS_PROXY_TOKEN: ${CATEGORY_EGRESS_PROXY_TOKEN:?set CATEGORY_EGRESS_PROXY_TOKEN in .env}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3128), 2).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks: [crawl, egress]
+    deploy: {resources: {limits: {cpus: "1", memory: 256m}}}
+
+  crawler:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.crawler
+    image: cat-egory/crawler:dev
+    environment:
+      CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
+      CATEGORY_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+      CATEGORY_S3_ENDPOINT_URL: http://storage:8333
+      CATEGORY_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      CATEGORY_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      CATEGORY_CRAWLER_PROXY_URL: http://egress-proxy:3128
+      CATEGORY_EGRESS_PROXY_TOKEN: ${CATEGORY_EGRESS_PROXY_TOKEN:?set CATEGORY_EGRESS_PROXY_TOKEN in .env}
+      CATEGORY_CRAWLER_CHROMIUM_SANDBOX: "true"
+      CATEGORY_CRAWLER_ALLOW_NO_SANDBOX: "false"
+      # deliberately no CATEGORY_DATABASE_URL: the crawler cannot reach or authenticate to Postgres
+    read_only: true
+    tmpfs: ["/tmp:size=512m"]
+    cap_drop: [ALL]
+    # Chromium's own sandbox needs user namespaces. These two profiles allow exactly that and nothing more
+    # (no capabilities). The AppArmor profile must be loaded on the host first:
+    #   sudo apparmor_parser -r -W deployment/apparmor/cat-egory-crawler   (see documentation/OPERATIONS.md)
+    # Hosts that cannot load it: add -f deployment/docker-compose.nosandbox.yml (weaker, explicit choice).
+    security_opt:
+      - "no-new-privileges:true"
+      - "apparmor=cat-egory-crawler"
+      - "seccomp=./seccomp/crawler.json"
+    networks: [crawl]
+    depends_on:
+      redis: {condition: service_healthy}
+      egress-proxy: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "2", memory: 2g, pids: 512}}}
+    restart: unless-stopped
+    logging: *logging
+
   beat:
     <<: *backend
     command: ["celery", "-A", "backend.app.worker:celery_app", "beat", "--loglevel", "INFO",
@@ -150,11 +206,35 @@ services:
       redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "0.5", memory: 256m}}}
 
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../deployment/docker/Dockerfile.frontend
+    image: cat-egory/frontend:dev
+    environment:
+      API_INTERNAL_URL: http://api:8000
+      # address the visitor's browser uses for the API (feed links, admin console, reports)
+      PUBLIC_API_URL: ${CATEGORY_PUBLIC_API_URL:-http://127.0.0.1:8110}
+      CATEGORY_FRONTEND_API_KEY: ${CATEGORY_FRONTEND_API_KEY:-}
+    read_only: true
+    tmpfs: [/tmp, "/app/.next/cache"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [core, edge]
+    ports:
+      - "${CATEGORY_PUBLIC_BIND:-127.0.0.1}:${CATEGORY_WEB_PORT:-3010}:3000"
+    depends_on:
+      api: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "1", memory: 512m}}}
+    restart: unless-stopped
+    logging: *logging
+
   prometheus:
     image: prom/prometheus:v3.16.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - promdata:/prometheus
     networks: [core, edge]
     ports: ["${CATEGORY_ADMIN_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9091}:9090"]
@@ -171,6 +251,7 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafanadata:/var/lib/grafana
     networks: [core, edge]
     ports: ["${CATEGORY_ADMIN_BIND:-127.0.0.1}:${GRAFANA_PORT:-3011}:3000"]
@@ -181,6 +262,8 @@ services:
 
 networks:
   core:
+    internal: true
+  crawl:
     internal: true
   egress: {}
   edge: {}

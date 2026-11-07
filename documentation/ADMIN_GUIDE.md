@@ -63,7 +63,22 @@ curl -s -X POST $API/api/v1/admin/scans -H "Authorization: Bearer $CATEGORY_KEY"
 curl -s -X POST $API/api/v1/admin/scans/<id>/cancel -H "Authorization: Bearer $CATEGORY_KEY"
 ```
 
-Until the crawler ships (Phase 3), scans stay `queued`.
+The dispatcher (every 10 s) moves queued jobs to the crawler, at most `CATEGORY_MAX_IN_FLIGHT_SCANS` (default 4)
+at a time. Job states: `queued` → `running` → `succeeded` / `blocked` (SSRF policy or robots.txt) / `failed`
+(after 3 attempts for temporary errors). The result is visible in the database:
+
+```bash
+$DC exec postgres psql -U category -c "SELECT d.normalized_domain, j.status, j.error_code, r.http_status, r.page_title
+  FROM scan_jobs j JOIN domains d ON d.id = j.domain_id LEFT JOIN scan_results r ON r.scan_job_id = j.id
+  ORDER BY j.queued_at DESC LIMIT 10"
+```
+
+## Crawler checks
+
+```bash
+$DC exec crawler python -m crawler.selftest      # sandbox, isolation, proxy
+$DC logs -f crawler egress-proxy                  # crawl results and proxy refusals
+```
 
 ## Audit log
 
@@ -73,3 +88,30 @@ request ID and before/after data:
 ```bash
 $DC exec postgres psql -U category -c "SELECT occurred_at, action, target_id, after FROM audit_logs ORDER BY id DESC LIMIT 10"
 ```
+
+## Review queue (AI classifications)
+
+Web UI: `/admin/reviews` (enter an admin or moderator key). API:
+
+```bash
+curl -s "$API/api/v1/admin/reviews?limit=10" -H "Authorization: Bearer $CATEGORY_KEY"
+curl -s -X POST $API/api/v1/admin/reviews/<id>/decision -H "Authorization: Bearer $CATEGORY_KEY" \
+     -H 'Content-Type: application/json' -d '{"action": "approve"}'          # accept the model's categories
+#    {"action": "set", "primary": "news", "secondary": ["sports"], "risk": ["phishing"], "note": "..."}
+#    {"action": "reject"}
+curl -s $API/api/v1/admin/providers -H "Authorization: Bearer $CATEGORY_KEY"       # add ?probe=true for a live call
+curl -s $API/api/v1/admin/calibration -H "Authorization: Bearer $CATEGORY_KEY"     # accuracy per confidence band
+```
+
+A decision makes the domain `verified`; confirmed threats become public risk flags and enter the threat feeds.
+
+## Moderation (community)
+
+Web UI: `/admin/moderation`. API: `GET /api/v1/admin/submissions`, `POST /api/v1/admin/submissions/<id>/moderate`
+with `{"action": "accept" | "reject" | "spam", "primary": "...", "secondary": [...], "note": "..."}`. Accepting a
+report of the *primary* category requires the new primary category.
+
+## Feeds
+
+Built hourly by `category.feeds.build`; build now with
+`$DC exec worker celery -A backend.app.worker:celery_app call category.feeds.build`. Index: `GET /api/v1/feeds`.

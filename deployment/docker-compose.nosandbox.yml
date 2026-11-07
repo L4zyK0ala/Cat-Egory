@@ -1,0 +1,11 @@
+# WEAKER fallback for hosts that cannot load the crawler AppArmor profile: Chromium runs WITHOUT its own
+# sandbox; isolation then relies on the container (no capabilities, read-only, no internet route, no DB access)
+# and the egress proxy. Do not crawl untrusted input (community submissions, bulk lists) in this mode.
+#   docker compose -f deployment/docker-compose.yml -f deployment/docker-compose.nosandbox.yml --env-file .env up -d
+services:
+  crawler:
+    security_opt: !override
+      - "no-new-privileges:true"
+    environment:
+      CATEGORY_CRAWLER_CHROMIUM_SANDBOX: "false"
+      CATEGORY_CRAWLER_ALLOW_NO_SANDBOX: "true"

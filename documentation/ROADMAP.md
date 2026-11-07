@@ -42,48 +42,76 @@ Design note: scans are only *rows* in `scan_jobs` for now. Phase 3 adds a dispat
 to the crawler queue (DB = source of truth, no lost or phantom messages). Password login is deferred to the
 web UI (Phase 5), where it comes with sessions and CSRF protection.
 
-## Phase 3 — Crawler
+## Phase 3 — Crawler ✅ (2026-11-07, sandbox verified)
 
-- Separate crawler image (Playwright + Chromium, non-root, sandbox on, read-only FS, seccomp).
-- SSRF guard library (IPv4/IPv6 ranges, encoded/embedded IPv4, redirect re-validation) + egress proxy
-  doing connect-time IP checks, crawler network without access to the core network.
-- robots.txt (cached per host), per-host politeness (Redis), timeouts, retries, size caps,
-  downloads blocked.
-- Output: DNS, HTTP status, redirect chain, final URL, headers, title/meta/OG, visible text, HTML,
-  full-page screenshot → object store (private) + `CrawlResult`.
-- Exit: SSRF test suite (≥ 40 cases incl. DNS-rebinding fixture) passes; crawls JS-rendered test site;
-  crawler container cannot reach Postgres/Redis-admin/metadata IP.
+| Deliverable | Where |
+|---|---|
+| SSRF guard: all IPv4/IPv6 special ranges, embedded IPv4 (mapped, NAT64, 6to4, Teredo), URL checks | `crawler/ssrf.py` |
+| Egress proxy container: connect-time resolution + checks, IP pinning, port allow-list, byte/time caps, one request per plain-HTTP connection, signed refusals | `crawler/egress_proxy.py` |
+| Crawler container on an internal network (no internet, no Postgres, no DB credentials) | `deployment/` |
+| Playwright capture: redirect chain, status, headers, TLS details, title/meta/OG/lang, visible text, HTML, screenshot; downloads refused, QUIC/WebRTC-UDP off, loopback forced through proxy | `crawler/browser.py` |
+| robots.txt per RFC 9309 (honest `CategoryBot` token) | `crawler/robots.py` |
+| Pipeline: dispatch (DB → queue, capacity-limited) → DNS + SSRF pre-check → crawl → persist; retries; stale-job reaper | `backend/app/scan_tasks.py` |
+| Artefacts in the S3 store (private, retention date) | `crawler/storage.py` |
+| Tests: 262 total, incl. 6 real-Chromium end-to-end tests through the proxy | `tests/` |
 
-## Phase 4 — AI classification
+Verified in tests: internal hosts, metadata IP, IP literals, `localhost` and DNS-rebinding answers are refused
+for page loads, redirects and sub-resources; a site cannot fake a proxy refusal; robots.txt is obeyed.
+Live check on the Docker stack (2026-11-07): `example.com`, `bücher.de` (→ `www.buecher.de`) and
+`wikipedia.org` (→ `www.wikipedia.org`) crawled through the egress proxy; redirect chains, TLS details,
+titles, text and screenshots stored. `crawler.selftest`: no direct internet from the crawler, proxy refuses
+the metadata IP, allows public sites.
 
-- `classify` task: CrawlResult → provider → validation → `ai_predictions` + `evidence`.
-- Decision engine: confidence policy, conflict detection (vs. previous scans, other models, source
-  lists), review task creation, temporal `domain_categories` update.
-- Multi-model agreement for the 0.70–0.89 band (second EVREN model).
-- Calibration tooling: gold set (human-labelled), reliability report per model.
-- Live EVREN verification checklist (see `EVREN_INTEGRATION.md`) run and recorded.
-- Exit: end-to-end mock pipeline green in CI; EVREN live smoke test documented; injection test corpus
-  never changes the category.
+> **Security condition — closed 2026-11-07:** Chromium's own sandbox did not start in the container at first
+> (Ubuntu `apparmor_restrict_unprivileged_userns=1` + Docker's default seccomp). The crawler now ships with a
+> seccomp profile and an AppArmor profile that allow exactly the user-namespace calls Chromium needs, without
+> granting any capability; `crawler.selftest` on the stack reports "chromium sandbox : OK". The no-sandbox mode
+> remains only as an explicit opt-in (`docker-compose.nosandbox.yml`).
 
-## Phase 5 — Public database
+## Phase 4 — AI classification ✅ code complete (2026-11-07; not yet run on the Docker stack)
 
-- Public endpoints: domain, url, history, category listing, stats (cache + ETag + keyset pagination).
-- Feed builder: TXT, hosts, CSV, JSON, RPZ, per category, with licence headers; `feed_releases`.
-- Source integration engine: connectors for licence-verified sources (`integrations/sources.yaml`).
-- Frontend (Next.js): dashboard, domain explorer, history view.
-- Exit: acceptance criteria 8–10.
+- `classify` task after every successful crawl: stored scan → provider input (text, HTML, screenshot) →
+  prediction + evidence (`classification/engine.py`, `backend/app/classify_tasks.py`).
+- Decision rules: ≥ 0.90 applied; 0.70–0.89 needs a second model that agrees (`CATEGORY_EVREN_SECOND_MODEL`),
+  otherwise review; 0.50–0.69 review; < 0.50 re-analyse. Injection signals, risk claims and model-requested
+  review always go to a person. AI never overrides a human or community decision. History is kept.
+- Review API + UI: approve / set / reject, confirm threats (→ `threat_intelligence`, source `cat-egory-review`),
+  screenshot viewer, provider status, calibration report (accuracy per confidence band from reviews).
+- Tests: 18 integration tests with a scripted provider covering every band and rule.
+- **Not done:** live EVREN run (no project key yet — see `EVREN_INTEGRATION.md` checklist).
 
-## Phase 6 — Community
+## Phase 5 — Public database ✅ code complete (2026-11-07; UI verified locally, not on Docker)
 
-- Submissions, reports, votes, moderation queue, reputation, anti-abuse (rate limits, PoW, spam status).
-- Exit: acceptance criterion 11; moderation fully audit-logged.
+- Public API: domain, URL (falls back to registrable domain), history, category listings (keyset), stats.
+- Privacy rule: domains known only from a private import are never listed, counted by name or put in feeds,
+  and answer 404 to anonymous lookups (`database/publication.py`).
+- Feeds: TXT, hosts, RPZ per content and threat category, `all.csv`, `all.json`, `rpz` (= all threats); licence
+  headers; versioned releases only when content changes; served with ETag (`feeds/builder.py`). RPZ files are
+  validated with dnspython's zone parser in tests.
+- Source integration engine with an explicit licence-approval step, SSRF-safe downloads, provenance,
+  delisting; threat data from non-redistributable sources is never exposed (`integrations/`).
+- Next.js UI (`frontend/`): dashboard, domain explorer, categories, feeds, suggest, admin console (add/import,
+  queue, rescan/cancel, provider status), review queue with screenshots, moderation. Checked end to end in
+  Chromium against a local API (desktop + 390 px mobile).
 
-## Phase 7 — Production
+## Phase 6 — Community ✅ code complete (2026-11-07)
 
-- Security testing (ZAP baseline, dependency audit, container scan, SSRF/injection regression suites).
-- Load tests (k6/Locust) for public API and feeds; DB partitioning plan activated if needed.
-- Backups (pg_dump/WAL archiving + object-store lifecycle), restore drill.
-- Grafana dashboards + alerts; runbooks; deployment guide (reverse proxy, TLS, secrets).
+- Reports (false positive/negative, correction, verification) with evidence URLs, anonymous or with a key;
+  new-domain suggestions; votes; moderation queue ordered by score; accept/reject/spam; audit log.
+- Abuse controls: write rate limit per hashed IP, one open report per reporter and domain, `disputed` only
+  after `CATEGORY_DISPUTE_THRESHOLD` (3) distinct reporters, nothing public changes before a moderator acts.
+
+## Phase 7 — Production 🟡 partly done (2026-11-07)
+
+Done: HTTP security test suite (headers, error envelope, hostile input, key handling, CORS); `pip-audit` and
+`npm audit` clean; DB-derived Prometheus metrics, Grafana dashboard and alert rules; backup/restore scripts
+(dump/restore round trip tested); load measurements; `OPERATIONS.md`.
+
+Done later: Chromium sandbox profiles (verified on the stack); adaptive re-scan scheduling (risk, change,
+verification and reachability decide the interval; `category.scan.schedule` queues due domains).
+
+Open: TLS reverse proxy and production deployment,
+Alertmanager, off-host backups + restore drill on the real stack, horizontal scaling, ZAP/container scans.
 
 ## Acceptance criteria mapping
 
@@ -91,12 +119,12 @@ web UI (Phase 5), where it comes with sessions and CSRF protection.
 |---|---|---|
 | 1 | Compose brings all services up | 1 ✅ (2026-11-07) |
 | 2 | Add a domain | 2 ✅ |
-| 3–5 | Real browser visit, screenshot, HTML/text | 3 |
-| 6 | Classification via EVREN or mock | 1 (adapter + tests) → 4 (pipeline) |
-| 7 | Results in Postgres | 1 (schema) → 4 |
-| 8 | Search in web UI | 5 |
-| 9 | Category via public API | 5 (categories ✅ in 1) |
-| 10 | JSON/CSV/TXT/RPZ | 5 |
-| 11 | Community report | 6 |
-| 12 | Security + automated tests | every phase, 7 |
-| 13 | Pluggable providers & sources | 1 (provider registry) → 5 (sources) |
+| 3–5 | Real browser visit, screenshot, HTML/text | 3 ✅ |
+| 6 | Classification via EVREN or mock | 4 ✅ mock / EVREN pending key |
+| 7 | Results in Postgres | 3–4 ✅ |
+| 8 | Search in web UI | 5 ✅ (local) |
+| 9 | Category via public API | 5 ✅ |
+| 10 | JSON/CSV/TXT/RPZ | 5 ✅ |
+| 11 | Community report | 6 ✅ |
+| 12 | Security + automated tests | ✅ 320+ tests; sandbox verified |
+| 13 | Pluggable providers & sources | ✅ |

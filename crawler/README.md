@@ -1,11 +1,19 @@
 # crawler
 
-Phase 3. Playwright + Chromium worker that consumes the `crawl` queue. Design (see
-`documentation/ARCHITECTURE.md` §5.2–5.3):
+Visits websites in Chromium (Playwright) and returns a `CrawlResult` (see `result.py`). Runs in its own
+container on an internal network: it can reach Redis, the object store and the egress proxy — nothing else.
 
-- runs in its own image and network; **no database credentials**
-- SSRF guard: URL validation → DNS answer validation (IPv4/IPv6, all special ranges) → egress proxy that
-  re-checks and pins the IP at connect time → network-level egress rules
-- robots.txt, per-host politeness, timeouts, retries, response-size caps, downloads disabled
-- produces a `CrawlResult` (DNS, status, redirect chain, headers, title/meta/OG, visible text, HTML,
-  screenshot object keys) for the core worker to persist
+| Module | Role |
+|---|---|
+| `ssrf.py` | address / URL policy (shared by the pre-check, the proxy and post-hoc checks) |
+| `egress_proxy.py` | the only way out: connect-time DNS + IP checks, pinning, limits (`python -m crawler.egress_proxy`) |
+| `robots.py` | robots.txt per RFC 9309 |
+| `browser.py` | Playwright capture (https → https ignoring TLS errors → http) |
+| `storage.py` | S3 artefact store (private objects) |
+| `tasks.py` | Celery task `category.crawl.run` (queue `crawl`) |
+| `selftest.py` | checks sandbox, isolation and proxy inside the container |
+
+Chromium's own sandbox is enabled through `deployment/seccomp/crawler.json` and
+`deployment/apparmor/cat-egory-crawler` (no capabilities granted); see documentation/OPERATIONS.md.
+
+The DB side of the pipeline (dispatch, DNS pre-check, persist, reaper) lives in `backend/app/scan_tasks.py`.

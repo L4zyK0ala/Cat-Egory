@@ -1,6 +1,7 @@
 """Celery application. Each workload has its own queue so it can be scaled (or isolated) separately:
 
-* ``crawl``       – browser crawling, runs only in the crawler image (Phase 3)
+* ``crawl``       – browser crawling, runs only in the crawler container (no DB access)
+* ``scan``        – scan pipeline on the core worker: dispatch, DNS pre-check, persist results
 * ``classify``    – AI classification + validation (Phase 4)
 * ``ingest``      – imports and third-party source sync (Phase 5)
 * ``feeds``       – feed generation (Phase 5)
@@ -13,10 +14,12 @@ from kombu import Queue
 
 from common.config import get_settings
 
-QUEUES = ("crawl", "classify", "ingest", "feeds", "maintenance")
+QUEUES = ("crawl", "scan", "classify", "ingest", "feeds", "maintenance")
 
 settings = get_settings()
-celery_app = Celery("category", broker=settings.redis_url, backend=settings.redis_url)
+celery_app = Celery("category", broker=settings.redis_url, backend=settings.redis_url,
+                    include=["backend.app.scan_tasks", "backend.app.classify_tasks", "backend.app.feed_tasks",
+                             "backend.app.ingest_tasks"])
 celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
@@ -29,10 +32,16 @@ celery_app.conf.update(
     result_expires=86_400,
     task_default_queue="maintenance",
     task_queues=[Queue(q) for q in QUEUES],
-    task_routes={"category.crawl.*": {"queue": "crawl"}, "category.classify.*": {"queue": "classify"},
+    task_routes={"category.crawl.*": {"queue": "crawl"}, "category.scan.*": {"queue": "scan"},
+                 "category.classify.*": {"queue": "classify"},
                  "category.ingest.*": {"queue": "ingest"}, "category.feeds.*": {"queue": "feeds"}},
     beat_schedule={
         "provider-health": {"task": "category.maintenance.provider_health", "schedule": 300.0},
+        "scan-dispatch": {"task": "category.scan.dispatch", "schedule": 10.0, "options": {"expires": 9}},
+        "scan-reap": {"task": "category.scan.reap", "schedule": 300.0},
+        "scan-schedule": {"task": "category.scan.schedule", "schedule": 300.0},
+        "feeds-build": {"task": "category.feeds.build", "schedule": 3600.0},
+        "sources-sync": {"task": "category.ingest.sync_due", "schedule": 3600.0},
     },
     timezone="UTC",
 )

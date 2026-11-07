@@ -1,0 +1,27 @@
+groups:
+  - name: cat-egory
+    rules:
+      - alert: ApiDown
+        expr: up{job="cat-egory-api"} == 0
+        for: 5m
+        annotations: {summary: "Cat-egory API is not being scraped"}
+      - alert: DatabaseMetricsDown
+        expr: category_db_metrics_up == 0
+        for: 10m
+        annotations: {summary: "API cannot read the database for metrics"}
+      - alert: ScanBacklog
+        expr: category_scan_jobs{status="queued"} > 5000
+        for: 1h
+        annotations: {summary: "More than 5000 scans waiting for an hour"}
+      - alert: FeedsStale
+        expr: category_feed_age_seconds > 3 * 3600
+        for: 30m
+        annotations: {summary: "No feed has been rebuilt for 3 hours"}
+      - alert: AiInvalidAnswers
+        expr: sum(category_ai_predictions_24h{status!="valid"}) / clamp_min(sum(category_ai_predictions_24h), 1) > 0.2
+        for: 1h
+        annotations: {summary: "More than 20% of AI answers in 24 h were invalid or failed"}
+      - alert: ApiErrors
+        expr: sum(rate(category_http_requests_total{status=~"5.."}[10m])) > 0.1
+        for: 10m
+        annotations: {summary: "API is returning 5xx responses"}

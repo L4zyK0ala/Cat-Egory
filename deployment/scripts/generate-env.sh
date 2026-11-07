@@ -14,5 +14,6 @@ sed -e "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(rand 32)/" \
     -e "s/^S3_SECRET_KEY=$/S3_SECRET_KEY=$(rand 40)/" \
     -e "s/^GRAFANA_ADMIN_PASSWORD=$/GRAFANA_ADMIN_PASSWORD=$(rand 24)/" \
     -e "s/^CATEGORY_FINGERPRINT_SECRET=$/CATEGORY_FINGERPRINT_SECRET=$(rand 40)/" \
+    -e "s/^CATEGORY_EGRESS_PROXY_TOKEN=$/CATEGORY_EGRESS_PROXY_TOKEN=$(rand 40)/" \
     .env.example > .env
 echo "Created .env (mode 600). Add CATEGORY_EVREN_API_KEY yourself if you use EVREN."

@@ -7,6 +7,7 @@ import uuid
 
 import redis
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from sqlalchemy import text
@@ -16,7 +17,7 @@ from common.logging import configure_logging
 from database.session import get_engine
 
 from . import errors
-from .api import admin, v1
+from .api import admin, community, feeds, reviews, v1
 
 log = logging.getLogger("category.api")
 
@@ -88,13 +89,28 @@ def create_app() -> FastAPI:
         ok = all(v == "ok" for v in checks.values())
         return JSONResponse({"status": "ok" if ok else "degraded", "checks": checks}, status_code=200 if ok else 503)
 
+    from . import metrics as business_metrics
+
+    business_metrics.install()
+
     @app.get("/metrics", include_in_schema=False)
     def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+    if settings.cors_origins:
+        # Browser calls from the web UI. No cookies are used (API keys travel in the Authorization header),
+        # so credentials stay disabled and there is no CSRF surface.
+        app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_credentials=False,
+                           allow_methods=["GET", "POST"], allow_headers=["Authorization", "Content-Type"],
+                           expose_headers=["ETag", "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset",
+                                           "Retry-After", "X-Request-ID", "X-Feed-Version"], max_age=600)
     errors.install(app)
     app.include_router(v1.router)
     app.include_router(admin.router)
+    app.include_router(reviews.router)
+    app.include_router(feeds.router)
+    app.include_router(community.public)
+    app.include_router(community.moderation)
     return app
 
 

@@ -26,24 +26,25 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | `GET /api/v1/categories?kind=content\|risk` | ✅ | taxonomy (current version) |
 | `GET /api/v1/categories/{id}` | ✅ | one category |
 | `GET /api/v1/domain/{domain}` | ✅ P2 | current classification + risk (ETag / 304) |
-| `GET /api/v1/url?url=…` | 🗓 P5 | URL-level classification, falls back to domain |
-| `GET /api/v1/categories/{id}/domains?cursor=…` | 🗓 P5 | domains in a category (paginated) |
-| `GET /api/v1/history/{domain}` | 🗓 P5 | category timeline |
-| `GET /api/v1/stats` | 🗓 P5 | counts for dashboard |
-| `GET /api/v1/feeds/{category}.txt` | 🗓 P5 | domain list |
-| `GET /api/v1/feeds/{category}.hosts` | 🗓 P5 | hosts format (`0.0.0.0 domain`) |
-| `GET /api/v1/feeds/all.json`, `all.csv` | 🗓 P5 | full dump |
-| `GET /api/v1/feeds/rpz` | 🗓 P5 | DNS RPZ zone |
-| `POST /api/v1/community/report` | 🗓 P6 | false positive / negative, correction |
-| `POST /api/v1/community/submit` | 🗓 P6 | propose a new domain |
+| `GET /api/v1/url?url=…` | ✅ P5 | URL-level classification, falls back to domain |
+| `GET /api/v1/categories/{id}/domains?cursor=…` | ✅ P5 | domains in a category (paginated) |
+| `GET /api/v1/history/{domain}` | ✅ P5 | category timeline |
+| `GET /api/v1/stats` | ✅ P5 | counts for dashboard |
+| `GET /api/v1/feeds` (index), `GET /api/v1/feeds/{category}.txt` | ✅ P5 | domain list |
+| `GET /api/v1/feeds/{category}.hosts`, `{category}.rpz` | ✅ P5 | hosts format (`0.0.0.0 domain`) |
+| `GET /api/v1/feeds/all.json`, `all.csv` (aliases `all-domains.*`) | ✅ P5 | full dump |
+| `GET /api/v1/feeds/rpz` (all security threats) | ✅ P5 | DNS RPZ zone |
+| `POST /api/v1/community/report` | ✅ P6 | false positive / negative, correction |
+| `POST /api/v1/community/submit`, `GET /api/v1/community/submissions`, `POST …/{id}/vote` | ✅ P6 | propose a new domain |
 | `POST /api/v1/admin/domains` | ✅ P2 | add domains (single or ≤ 10 000), queue scans |
 | `POST /api/v1/admin/domains/import` | ✅ P2 | upload CSV / TSV / TXT / hosts / JSON / XLSX (≤ 5 MB, ≤ 10 000 rows) |
 | `GET /api/v1/admin/me`, `GET /api/v1/admin/scopes` | ✅ P2 | key check, scope list |
 | `POST /api/v1/admin/scans`, `GET /api/v1/admin/scans`, `GET /api/v1/admin/scans/stats` | ✅ P2 | queue a scan, list (keyset), counts |
 | `POST /api/v1/admin/scans/{id}/cancel` | ✅ P2 | cancel a queued scan |
-| `POST /api/v1/admin/scans/{id}/retry` | 🗓 P3 | retry failed scan |
-| `GET /api/v1/admin/providers` | 🗓 P4 | AI provider health |
-| `POST /api/v1/admin/reviews/{id}/decision` | 🗓 P4 | human review |
+| retry a failed scan = `POST /api/v1/admin/scans` again | ✅ P3 | |
+| `GET /api/v1/admin/providers`, `GET /api/v1/admin/calibration` | ✅ P4 | provider status, accuracy per band |
+| `GET /api/v1/admin/reviews`, `POST /api/v1/admin/reviews/{id}/decision`, `GET /api/v1/admin/domains/{d}/screenshot` | ✅ P4 | human review |
+| `GET /api/v1/admin/submissions`, `POST /api/v1/admin/submissions/{id}/moderate` | ✅ P6 | moderation |
 
 ## Response shapes
 
@@ -106,8 +107,8 @@ Notes
 ```
 
 → `202 Accepted` `{"submission_id": 123, "status": "pending"}`. Anonymous reports are allowed with
-stricter rate limits and a CAPTCHA-free proof-of-work token (P6); the reporter's IP is stored only as a
-keyed hash. Every moderation action is audit-logged.
+the strict anonymous write rate limit; the reporter's IP is stored only as a keyed hash. (A proof-of-work
+or CAPTCHA step is not implemented.) Every moderation action is audit-logged.
 
 ## Feed format headers
 

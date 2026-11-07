@@ -29,16 +29,20 @@ dependencies = [
     "python-multipart>=0.0.18",
     "openpyxl>=3.1",
     "defusedxml>=0.7",
+    "dnspython>=2.7",
+    "boto3>=1.35",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "respx>=0.22", "ruff>=0.8", "jsonschema>=4.23", "fakeredis>=2.26"]
+crawler = ["playwright==1.64.1"]
+dev = ["pytest>=8.3", "respx>=0.22", "ruff>=0.8", "jsonschema>=4.23", "fakeredis>=2.26", "moto[s3]>=5.0", "playwright==1.64.1"]
 
 [tool.setuptools.packages.find]
 include = ["common*", "database*", "ai_providers*", "classification*", "crawler*", "integrations*", "feeds*", "backend*"]
 
 [tool.setuptools.package-data]
 classification = ["taxonomy.yaml"]
+integrations = ["sources.yaml"]
 database = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
 
 [tool.pytest.ini_options]

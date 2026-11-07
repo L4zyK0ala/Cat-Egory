@@ -4,33 +4,36 @@
 browser, classifies them with an AI provider against an open, versioned taxonomy, validates the result and
 publishes it as an open database, REST API and downloadable feeds (TXT, hosts, CSV, JSON, DNS RPZ).
 
-> **Status: Phase 2 (core platform) complete.** API keys and roles, rate limiting, domain add/import, the scan
-> queue, audit log and domain lookup work and are tested. Crawling, AI classification in the pipeline, feeds,
-> frontend and community features are next — see the [roadmap](documentation/ROADMAP.md).
+> **Status (2026-11-07):** Phases 1–3 run on the Docker stack (crawling verified with real sites). Phases 4–6
+> (AI classification pipeline, public database + feeds + web UI, community) are implemented and tested
+> locally (320+ tests, UI checked in Chromium) but not yet run on the Docker stack. Phase 7 is partly done.
+> Open items: live EVREN key, production deployment — see the
+> [roadmap](documentation/ROADMAP.md).
 
-## What works today
+## What works
 
 | Area | State |
 |---|---|
-| PostgreSQL schema (23 tables, temporal category history, provenance, licences) + Alembic migration | ✅ |
-| Taxonomy 1.0.0: 58 content + 7 security-threat categories, stable IDs and codes | ✅ |
-| Domain/URL normalisation (IDNA, Public Suffix List, special-use names rejected) | ✅ |
-| AI provider interface; EVREN adapter (OpenAI-compatible gateway); offline mock provider | ✅ (EVREN not live-tested by this project) |
-| Prompt-injection-hardened prompt, strict JSON + taxonomy validation, confidence policy | ✅ |
-| `GET /api/v1/categories`, `GET /api/v1/domain/{domain}`, health, Prometheus metrics, OpenAPI | ✅ |
-| Admin API: API keys + roles + scopes, rate limits, domain add / file import (≤ 10k rows), scan queue, audit log | ✅ |
-| Docker Compose: Postgres, Redis, S3 store, API, Celery worker + beat, Prometheus, Grafana | ✅ (first `up` verified 2026-11-07) |
-| Crawler, classification pipeline, feeds, UI, community | 🗓 Phases 3–6 |
+| Domain add / bulk import (CSV, TXT/hosts, JSON, XLSX), API keys, roles, rate limits, audit log | ✅ |
+| Crawler: sandboxed Chromium behind an SSRF-enforcing egress proxy, robots.txt, screenshots/HTML/text | ✅ |
+| AI classification: EVREN adapter + mock, confidence policy, second opinion, human review, calibration | ✅ (EVREN not live-tested) |
+| Public API: domain, URL, history, categories, stats; feeds TXT/hosts/RPZ/CSV/JSON | ✅ |
+| Community: reports, suggestions, votes, moderation | ✅ |
+| Web UI (Next.js): dashboard, explorer, feeds, admin console, review & moderation | ✅ (local) |
+| Third-party sources with licence approval and provenance | ✅ (no source approved yet) |
+| Monitoring: Prometheus metrics, Grafana dashboard, alert rules; backup/restore scripts | ✅ |
 
 ## Quick start (Docker)
 
 ```bash
 ./deployment/scripts/generate-env.sh     # creates .env with random secrets (mode 600)
-make up                                  # docker compose build + up
+sudo cp deployment/apparmor/cat-egory-crawler /etc/apparmor.d/ && sudo apparmor_parser -r -W /etc/apparmor.d/cat-egory-crawler
+docker compose -f deployment/docker-compose.yml --env-file .env up -d --build   # or: make up
 curl http://127.0.0.1:8110/api/v1/categories
 ```
 
-API docs: `http://127.0.0.1:8110/api/docs`. Grafana: `127.0.0.1:3011`. Set `CATEGORY_PUBLIC_BIND` /
+Web UI: `http://127.0.0.1:3010`. API docs: `http://127.0.0.1:8110/api/docs`. Grafana: `127.0.0.1:3011`.
+Operations guide: [OPERATIONS.md](documentation/OPERATIONS.md). Set `CATEGORY_PUBLIC_BIND` /
 `CATEGORY_ADMIN_BIND` in `.env` to a LAN address to reach them from another machine.
 
 ## Development
@@ -58,6 +61,7 @@ questions: [EVREN_INTEGRATION.md](documentation/EVREN_INTEGRATION.md). New provi
 - [API design](documentation/API_DESIGN.md)
 - [Taxonomy](documentation/TAXONOMY.md)
 - [Admin guide](documentation/ADMIN_GUIDE.md)
+- [Operations](documentation/OPERATIONS.md)
 - [Roadmap](documentation/ROADMAP.md)
 
 ## Repository layout
@@ -68,10 +72,10 @@ common/          settings, JSON logging, domain/URL normalisation
 database/        SQLAlchemy models, Alembic migrations, seed
 ai_providers/    provider interface, EVREN + mock adapters, prompt, output schema
 classification/  taxonomy (YAML), validation, confidence policy
-crawler/         Playwright crawler (Phase 3)
-integrations/    third-party source connectors + licence catalogue (Phase 5)
-feeds/           feed builders (Phase 5)
-frontend/        Next.js UI (Phase 5)
+crawler/         Playwright crawler, SSRF guard, egress proxy
+integrations/    third-party source engine + licence catalogue
+feeds/           feed builders
+frontend/        Next.js web UI
 deployment/      Dockerfiles, compose, Prometheus, Grafana
 documentation/   design documents
 tests/           unit + integration tests
@@ -87,4 +91,4 @@ tests/           unit + integration tests
 
 Cat-egory, web sitelerini gerçek bir tarayıcıyla ziyaret edip yapay zekâ (EVREN) ile açık ve versiyonlu bir
 kategori ağacına göre sınıflandıran, sonuçları açık veritabanı, REST API ve indirilebilir listeler olarak
-yayımlayan açık kaynak bir platformdur. Şu an Faz 1 (mimari) tamamlandı; ayrıntılar yukarıdaki belgelerde.
+yayımlayan açık kaynak bir platformdur. Faz 1–3 Docker üzerinde çalışıyor; Faz 4–6 yerelde test edildi.

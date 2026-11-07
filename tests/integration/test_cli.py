@@ -29,3 +29,24 @@ def test_cli_rejects_bad_email(engine, clean, monkeypatch, email):
 
     monkeypatch.setattr(cli, "session_factory", lambda: sessionmaker(bind=engine))
     assert cli.main(["create-user", "--email", email, "--name", "x"]) == 1
+
+
+def test_deactivate_source_domains(engine, clean, client, admin):
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from backend.cli import deactivate_source_domains
+    from database.models import Domain, ScanJob
+
+    client.post("/api/v1/admin/domains/import", headers=admin,
+                files={"file": ("t.txt", b"t1.example.org\nt2.example.org\nshared.example.org\n", "text/plain")})
+    client.post("/api/v1/admin/domains", headers=admin, json={"domains": ["shared.example.org"], "scan": "none"})
+    with sessionmaker(bind=engine)() as s, s.begin():
+        assert deactivate_source_domains(s, "file-import", dry_run=True) == (2, 0)
+    with sessionmaker(bind=engine)() as s, s.begin():
+        assert deactivate_source_domains(s, "file-import") == (2, 2)
+    with Session(engine) as s:
+        active = set(s.scalars(select(Domain.normalized_domain).where(Domain.is_active)))
+        assert active == {"shared.example.org"}  # also reported by a public source: kept
+        assert {str(j.status) for j in s.scalars(select(ScanJob))} == {"cancelled", "queued"}
+    assert client.get("/api/v1/domain/t1.example.org", headers=admin).status_code == 404

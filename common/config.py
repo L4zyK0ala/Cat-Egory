@@ -41,6 +41,14 @@ class Settings(BaseSettings):
 
     # classification
     taxonomy_path: str | None = None  # defaults to the bundled classification/taxonomy.yaml
+    evren_second_model: str | None = Field(
+        default=None, description="Second EVREN model asked for a second opinion in the 0.70-0.89 band")
+    classify_use_screenshot: bool = True
+    confidence_auto_approve: float = 0.90
+    confidence_extra_validation: float = 0.70
+    confidence_human_review: float = 0.50
+    reanalyze_days: int = 1
+    dispute_threshold: int = Field(default=3, description="distinct reporters needed before a domain shows as disputed")
     max_text_chars: int = 12_000
     max_html_chars: int = 6_000
 
@@ -56,6 +64,33 @@ class Settings(BaseSettings):
     # imports
     max_import_rows: int = 10_000
     max_upload_bytes: int = 5 * 1024 * 1024
+
+    # crawler (Phase 3)
+    crawler_proxy_url: str | None = Field(default=None, description="egress proxy, e.g. http://egress-proxy:3128")
+    egress_proxy_token: SecretStr | None = None
+    crawler_chromium_sandbox: bool = True
+    crawler_allow_no_sandbox: bool = Field(
+        default=False, description="If the Chromium sandbox cannot start, run without it (container isolation only)."
+    )
+    crawler_navigation_timeout_ms: int = 20_000
+    crawler_max_requests_per_page: int = 300
+    crawler_max_html_bytes: int = 2 * 1024 * 1024
+    crawler_max_text_chars: int = 100_000
+    crawler_user_agent_token: str = "CategoryBot/0.1"  # noqa: S105 - product token, not a secret
+    crawler_respect_robots: bool = True
+    crawler_viewport_width: int = 1280
+    crawler_viewport_height: int = 800
+    max_in_flight_scans: int = 4
+    # re-scan scheduling (days until the next scan, chosen after every scan)
+    scan_interval_days: int = 30            # classified, nothing notable
+    scan_interval_verified_days: int = 60   # human-verified and unchanged
+    scan_interval_changed_days: int = 7     # title or final host changed since the previous scan
+    scan_interval_risk_days: int = 1        # active threat record: re-check daily
+    scan_interval_unreachable_days: int = 7 # broken domains are re-checked weekly
+    scan_interval_blocked_days: int = 30    # robots.txt / SSRF policy refused
+    schedule_batch_size: int = 500          # scans queued per scheduler run
+    artifact_retention_days: int = 180
+    stale_scan_minutes: int = 15
 
     # keyed hash for client fingerprints (IP addresses are never stored in clear). Unset = no fingerprints.
     fingerprint_secret: SecretStr | None = None

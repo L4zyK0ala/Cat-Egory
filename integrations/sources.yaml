@@ -1,17 +1,18 @@
-# Candidate third-party sources. NOTHING here is enabled until its licence and terms have been read and
-# recorded by a maintainer (license_status: verified, reviewed_at, reviewed_by).
-# "believed" fields are the maintainers' current understanding and MUST be checked against the source's
-# own licence/terms page before enabling. Third-party data is never relicensed as CC BY 4.0.
+# Candidate third-party sources. NOTHING here is synced until a maintainer has read the source's licence and
+# terms and recorded them with `python -m integrations.cli approve ...` (stored in source_licenses, audited).
+# "believed_license" is our current understanding only and MUST be checked on the source's own site.
+# Feed URLs are believed correct as of 2026-11; verify them too. Third-party data is never relicensed.
 sources:
   - slug: stevenblack-hosts
-    name: StevenBlack/hosts
+    name: StevenBlack/hosts (unified)
     homepage: https://github.com/StevenBlack/hosts
+    feed_url: https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
     kind: blocklist
     format: hosts
+    category: ads-malware (unified)
     believed_license: MIT (repository); each upstream list in the unified file has its own licence
     license_status: unverified
-    notes: Aggregator. Provenance must be kept per upstream list, not per StevenBlack.
-    enabled: false
+    notes: Aggregator; provenance per upstream list would be needed for redistribution.
 
   - slug: oisd
     name: OISD
@@ -20,43 +21,44 @@ sources:
     format: domains
     believed_license: unknown
     license_status: unverified
-    notes: Redistribution terms unknown; ask the maintainer before use.
-    enabled: false
+    notes: Redistribution terms unknown; ask the maintainer. No feed URL recorded on purpose.
 
   - slug: urlhaus
-    name: URLhaus (abuse.ch)
+    name: URLhaus hostfile (abuse.ch)
     homepage: https://urlhaus.abuse.ch/
+    feed_url: https://urlhaus.abuse.ch/downloads/hostfile/
     kind: threat_feed
-    format: csv
-    believed_license: check abuse.ch terms of use (historically CC0; API now requires an Auth-Key)
+    threat_type: malware
+    format: hosts
+    believed_license: check abuse.ch terms of use (historically CC0; some APIs now require an Auth-Key)
     license_status: unverified
-    notes: Threat intelligence -> threat_intelligence table, never content categories.
-    enabled: false
 
   - slug: openphish
-    name: OpenPhish (community feed)
+    name: OpenPhish community feed
     homepage: https://openphish.com/
+    feed_url: https://openphish.com/feed.txt
     kind: threat_feed
+    threat_type: phishing
     format: url-list
-    believed_license: free community feed with usage restrictions (commercial use may require a licence)
+    believed_license: free community feed with usage restrictions (commercial use may need a licence)
     license_status: unverified
-    enabled: false
 
   - slug: phishtank
     name: PhishTank
     homepage: https://phishtank.org/
     kind: threat_feed
+    threat_type: phishing
     format: json
     believed_license: free with registration and attribution; new registrations may be closed
     license_status: unverified
-    enabled: false
+    notes: Needs an application key; JSON connector not implemented yet.
 
-  - slug: blocklistproject
-    name: The Block List Project
+  - slug: blocklistproject-gambling
+    name: The Block List Project - gambling
     homepage: https://github.com/blocklistproject/Lists
+    feed_url: https://blocklistproject.github.io/Lists/alt-version/gambling-nl.txt
     kind: blocklist
+    category: gambling
     format: domains
     believed_license: Unlicense
     license_status: unverified
-    notes: Category lists (gambling, adult, ...) -> could seed domain discovery with origin=source.
-    enabled: false

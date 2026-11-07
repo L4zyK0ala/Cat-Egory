@@ -1,6 +1,13 @@
 apiVersion: 1
+# The datasource gets a fixed uid so the provisioned dashboard can reference it. An earlier version was
+# provisioned without a uid; deleting it by name first lets Grafana recreate it with the fixed uid
+# (otherwise provisioning fails with "data source not found" and Grafana does not start).
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090

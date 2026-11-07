@@ -77,6 +77,31 @@ def revoke_key(session: Session, prefix: str) -> ApiKey:
     return key
 
 
+def deactivate_source_domains(session: Session, slug: str, *, dry_run: bool = False) -> tuple[int, int]:
+    """Hide domains whose ONLY source is ``slug`` (e.g. a test import) and cancel their queued scans.
+    Domains also reported by any other source are left alone. Returns (domains, cancelled_scans)."""
+    from sqlalchemy import exists, update
+
+    from database.models import DataSource, Domain, DomainSourceRecord, JobStatus, ScanJob
+
+    source = session.scalar(select(DataSource).where(DataSource.slug == slug))
+    if source is None:
+        raise CliError(f"no data source {slug}")
+    other = exists(select(DomainSourceRecord.id).where(DomainSourceRecord.domain_id == Domain.id,
+                                                       DomainSourceRecord.source_id != source.id))
+    mine = exists(select(DomainSourceRecord.id).where(DomainSourceRecord.domain_id == Domain.id,
+                                                      DomainSourceRecord.source_id == source.id))
+    ids = list(session.scalars(select(Domain.id).where(Domain.is_active, mine, ~other)))
+    if dry_run or not ids:
+        return len(ids), 0
+    session.execute(update(Domain).where(Domain.id.in_(ids)).values(is_active=False))
+    cancelled = session.execute(update(ScanJob).where(ScanJob.domain_id.in_(ids), ScanJob.status == JobStatus.QUEUED)
+                                .values(status=JobStatus.CANCELLED, error_code="source_deactivated")).rowcount
+    audit.record(session, action="domains.deactivate_source", target_type="data_source", target_id=slug,
+                 after={"domains": len(ids), "cancelled_scans": cancelled})
+    return len(ids), cancelled
+
+
 def _password(args) -> str | None:
     if not getattr(args, "password", False):
         return None
@@ -119,6 +144,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("revoke-key", help="revoke an API key")
     p.add_argument("--prefix", required=True)
 
+    p = sub.add_parser("deactivate-source-domains",
+                       help="hide domains known ONLY from one source (e.g. a test import) and cancel their scans")
+    p.add_argument("--source", required=True, help="data source slug, e.g. file-import")
+    p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
+
     args = parser.parse_args(argv)
     try:
         with session_factory()() as session, session.begin():
@@ -147,6 +177,12 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "revoke-key":
                 key = revoke_key(session, args.prefix)
                 print(f"revoked {key.prefix}")
+            elif args.command == "deactivate-source-domains":
+                domains, cancelled = deactivate_source_domains(session, args.source, dry_run=not args.yes)
+                if args.yes:
+                    print(f"deactivated {domains} domains, cancelled {cancelled} queued scans")
+                else:
+                    print(f"dry run: {domains} domains would be deactivated (add --yes to do it)")
     except (CliError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

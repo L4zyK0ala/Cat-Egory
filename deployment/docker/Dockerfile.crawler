@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1.7
+# Crawler worker: Celery + Playwright + Chromium headless shell. Runs on a network with NO internet route;
+# every request leaves through the egress-proxy container. It never receives database credentials.
+FROM python:3.12.16-slim-bookworm AS build
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+WORKDIR /src
+COPY pyproject.toml README.md ./
+COPY common common
+COPY database database
+COPY ai_providers ai_providers
+COPY classification classification
+COPY crawler crawler
+COPY integrations integrations
+COPY feeds feeds
+COPY backend backend
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install ".[crawler]"
+
+FROM python:3.12.16-slim-bookworm
+ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright HOME=/tmp
+COPY --from=build /opt/venv /opt/venv
+RUN playwright install --with-deps --only-shell chromium \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --home /tmp --shell /usr/sbin/nologin app
+WORKDIR /tmp
+USER 10001:10001
+CMD ["celery", "-A", "crawler.tasks:celery_app", "worker", "-Q", "crawl", "--concurrency", "2", \
+     "--max-tasks-per-child", "50", "--loglevel", "INFO"]

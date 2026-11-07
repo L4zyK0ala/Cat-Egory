@@ -1,6 +1,6 @@
 # Cat-egory — System Architecture
 
-> Status: Phase 1 (architecture). Items marked **[planned]** are designed but not implemented yet.
+> Status (2026-11-07): all components exist; crawler sandbox verified. Open: live EVREN key, production deployment.
 
 Cat-egory discovers websites, visits them in a sandboxed real browser, asks an AI provider to classify
 them against an open, versioned taxonomy, validates the answer, and publishes the result as an open
@@ -26,7 +26,7 @@ database, REST API and downloadable feeds.
 flowchart LR
     subgraph Public["Public zone"]
         U[Users / 3rd-party apps]
-        FE["Frontend<br/>(Next.js) [planned]"]
+        FE["Frontend<br/>(Next.js)"]
     end
 
     subgraph Core["Core network (internal)"]
@@ -39,7 +39,7 @@ flowchart LR
         PROM[Prometheus] --> GRAF[Grafana]
     end
 
-    subgraph Egress["Crawler zone (egress only) [Phase 3]"]
+    subgraph Egress["Crawler zone (no direct internet)"]
         CR["Crawler worker<br/>Playwright + Chromium"]
         PX["SSRF egress proxy"]
     end
@@ -71,10 +71,10 @@ flowchart LR
 |---|---|---|---|---|
 | API | `backend/` | `uvicorn backend.app.main:app` | Postgres, Redis, object store | AI provider, the open internet |
 | Worker | `backend/app/worker.py` + `classification/`, `integrations/`, `feeds/` | `celery worker -Q classify,ingest,feeds,maintenance` | Postgres, Redis, object store, AI provider, source feed URLs (allow-listed) | arbitrary user URLs |
-| Crawler **[Phase 3]** | `crawler/` | `celery worker -Q crawl` in its own image | Redis, object store, internet through the egress proxy | Postgres (no DB credentials at all) |
+| Crawler | `crawler/` | `celery worker -Q crawl` in its own image | Redis, object store, internet through the egress proxy | Postgres (no DB credentials at all) |
 | Scheduler | `backend/app/worker.py` | `celery beat` | Redis | — |
 | AI providers | `ai_providers/` | library | the provider's HTTPS endpoint | — |
-| Frontend **[Phase 5]** | `frontend/` | Next.js | Public API only | DB, Redis |
+| Frontend | `frontend/` | Next.js | Public API only | DB, Redis |
 
 The crawler deliberately has **no database credentials**. It receives a job payload, writes artifacts to
 object storage and returns a structured `CrawlResult`; a core worker validates and persists it. A
@@ -88,9 +88,9 @@ compromised browser therefore cannot read or modify the database.
 | `database/` | SQLAlchemy models, session handling, Alembic migrations |
 | `ai_providers/` | Provider interface, EVREN adapter, mock adapter, prompt building, output schema |
 | `classification/` | Taxonomy (versioned YAML), confidence policy, validation engine |
-| `crawler/` | Browser automation, SSRF guard, extraction **[Phase 3]** |
-| `integrations/` | Third-party source connectors with licence metadata **[Phase 5]** |
-| `feeds/` | Feed builders: TXT, hosts, CSV, JSON, RPZ **[Phase 5]** |
+| `crawler/` | Browser automation, SSRF guard, egress proxy, extraction |
+| `integrations/` | Third-party source engine with licence approval and provenance |
+| `feeds/` | Feed builders: TXT, hosts, CSV, JSON, RPZ |
 
 ## 3. Main data flow
 
@@ -124,7 +124,7 @@ sequenceDiagram
     Note over W,S3: feeds are rebuilt periodically from DB → object store
 ```
 
-### Classification decision (Phase 4)
+### Classification decision
 
 | Calibrated confidence | Action | `classification_status` |
 |---|---|---|
@@ -133,7 +133,11 @@ sequenceDiagram
 | 0.50 – 0.69 | human review task | `needs_review` |
 | < 0.50 | re-analyse later (different input / model) | `reanalyze` |
 
-The thresholds live in configuration (`classification/confidence.py`), not in code paths, and the docs
+In the 0.70–0.89 band a second, different model must agree before anything is applied; without one the
+domain goes to review. Injection signals, risk claims and model-requested review always go to a person, and
+AI never overrides a human or community decision (a disagreement opens a review task).
+
+The thresholds live in configuration (`CATEGORY_CONFIDENCE_*`), not in code paths, and the docs
 state clearly that the model's self-reported confidence is **not** an accuracy figure until it has been
 calibrated against human-verified samples. `verified` is only ever set by a human decision or by an
 agreement rule that has been calibrated.
@@ -189,19 +193,27 @@ redirects, sub-resources). Defence in depth:
    RFC 1918, link-local (incl. `169.254.169.254` cloud metadata), CGNAT `100.64.0.0/10`, multicast,
    reserved, unspecified, IPv6 ULA `fc00::/7`, IPv4-mapped/compatible IPv6, NAT64 `64:ff9b::/96`,
    6to4 `2002::/16` and Teredo `2001::/32` with embedded private IPv4.
-3. **Connect-time enforcement:** all browser traffic goes through an egress proxy that re-resolves
-   and re-checks the IP *at connect time* and connects to the checked IP (pinning). This defeats DNS
-   rebinding and covers every redirect hop and sub-resource.
-4. **Network enforcement:** the crawler container has no route to the core network; production adds
-   host firewall egress rules dropping private ranges.
+3. **Connect-time enforcement:** all browser traffic goes through the `egress-proxy` container, which
+   re-resolves and re-checks the IP *at connect time* and connects to the checked IP (pinning). This defeats
+   DNS rebinding and covers every redirect hop and sub-resource. Chromium's implicit loopback bypass is
+   disabled (`<-loopback>`), QUIC and non-proxied WebRTC UDP are off. Plain-HTTP requests are forwarded one
+   per connection so an approved connection cannot carry a second request for another host. Proxy refusals
+   carry a shared token so a website cannot imitate one to hide from classification.
+4. **Network enforcement:** the crawler container sits on the internal `crawl` network only (Redis, object
+   store, proxy). It has no internet route and no route to Postgres; even code that ignores the proxy
+   settings cannot get out. Production adds host firewall egress rules dropping private ranges.
 5. **Resource limits:** navigation timeout, total job timeout, max response size, max redirects,
    max sub-resources, container CPU/RAM/PIDs limits, downloads disabled, no file:// or chrome:// schemes.
 
 ### 5.3 Browser isolation
 
-Chromium runs with its sandbox **on**, as a non-root user, in a container with a read-only root
-filesystem, dropped capabilities, `no-new-privileges`, a seccomp profile and a tmpfs profile directory
-that is destroyed after each job. Downloads are refused, never opened.
+Chromium runs **with its own sandbox** as a non-root user in a container with a read-only root filesystem, all
+capabilities dropped, `no-new-privileges`, PID/memory/CPU limits and a tmpfs profile directory; a fresh browser
+is started per job. The sandbox needs user namespaces, which Docker's default seccomp profile and Ubuntu's
+AppArmor userns restriction forbid; the crawler therefore uses its own seccomp profile (default + `clone`,
+`unshare`, `setns`, `chroot`) and AppArmor profile (`docker-default` + `userns`) instead of any capability.
+Downloads are refused, never opened. `python -m crawler.selftest` reports the active mode; a no-sandbox mode
+exists only as an explicit, documented opt-in.
 
 ### 5.4 Prompt-injection resistance (AI)
 
