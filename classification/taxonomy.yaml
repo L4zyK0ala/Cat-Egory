@@ -1,0 +1,172 @@
+# Cat-egory taxonomy — independent, hand-written definitions.
+# Rules (see documentation/TAXONOMY.md):
+#   * `id` (slug) and `code` are permanent. Never rename, never reuse. Deprecate + `replaced_by` instead.
+#   * Every change bumps `version` (semver): new category = minor, deprecation/redefinition = major, wording = patch.
+#   * `kind: risk` categories form the separate security-threat classification.
+#   * Groups (`group: true`) organise the tree and are never assigned to a domain.
+version: "1.0.0"
+released: "2026-11-07"
+license: "CC-BY-4.0"
+
+categories:
+  # ------------------------------------------------------------------ 100 Business & Technology
+  - {id: group-business-technology, code: 100, kind: content, group: true, name: "Business & Technology",
+     description: "Commerce, finance and technology."}
+  - {id: business, code: 101, parent: group-business-technology, kind: content, name: "Business",
+     description: "Company and organisation websites, corporate information, B2B services, marketing and jobs."}
+  - {id: finance, code: 102, parent: group-business-technology, kind: content, name: "Finance",
+     description: "Investing, insurance, trading, personal finance, payment services and financial news."}
+  - {id: banking, code: 103, parent: group-business-technology, kind: content, name: "Banking",
+     description: "Banks and credit institutions, including online banking portals."}
+  - {id: cryptocurrency, code: 104, parent: group-business-technology, kind: content, name: "Cryptocurrency",
+     description: "Crypto-assets, exchanges, wallets, mining and blockchain projects."}
+  - {id: information-technology, code: 105, parent: group-business-technology, kind: content, name: "Information Technology",
+     description: "General IT, computing, hardware, developer resources and technology news."}
+  - {id: artificial-intelligence, code: 106, parent: group-business-technology, kind: content, name: "Artificial Intelligence",
+     description: "AI products, chatbots, machine-learning platforms and AI research tools."}
+  - {id: software, code: 107, parent: group-business-technology, kind: content, name: "Software",
+     description: "Software products, SaaS applications and vendor sites."}
+  - {id: cloud-computing, code: 108, parent: group-business-technology, kind: content, name: "Cloud Computing",
+     description: "Cloud infrastructure and platform providers, cloud consoles and storage services."}
+  - {id: cybersecurity, code: 109, parent: group-business-technology, kind: content, name: "Cybersecurity",
+     description: "Security vendors, security research, advisories and defensive tooling (not threats themselves)."}
+  - {id: web-hosting, code: 110, parent: group-business-technology, kind: content, name: "Web Hosting",
+     description: "Hosting providers, domain registrars, website builders and DNS services."}
+  - {id: telecommunications, code: 111, parent: group-business-technology, kind: content, name: "Telecommunications",
+     description: "Mobile operators, ISPs and telecom equipment providers."}
+
+  # ------------------------------------------------------------------ 200 Communication & Social
+  - {id: group-communication-social, code: 200, kind: content, group: true, name: "Communication & Social",
+     description: "Sites whose main purpose is communication between people."}
+  - {id: social-networking, code: 201, parent: group-communication-social, kind: content, name: "Social Networking",
+     description: "Social networks and profile-based platforms."}
+  - {id: messaging, code: 202, parent: group-communication-social, kind: content, name: "Messaging",
+     description: "Instant messaging, chat and voice/video calling services."}
+  - {id: email, code: 203, parent: group-communication-social, kind: content, name: "Email",
+     description: "Webmail and email service providers."}
+  - {id: forums, code: 204, parent: group-communication-social, kind: content, name: "Forums",
+     description: "Discussion boards and question-and-answer sites."}
+  - {id: blogs, code: 205, parent: group-communication-social, kind: content, name: "Blogs",
+     description: "Personal or editorial blogs and blog-hosting platforms."}
+  - {id: online-communities, code: 206, parent: group-communication-social, kind: content, name: "Online Communities",
+     description: "Interest-based communities, clubs and membership sites."}
+
+  # ------------------------------------------------------------------ 300 Entertainment
+  - {id: group-entertainment, code: 300, kind: content, group: true, name: "Entertainment",
+     description: "Leisure, media consumption and sports."}
+  - {id: streaming-media, code: 301, parent: group-entertainment, kind: content, name: "Streaming Media",
+     description: "On-demand or live streaming platforms for film, TV and events."}
+  - {id: music, code: 302, parent: group-entertainment, kind: content, name: "Music",
+     description: "Music streaming, artists, labels, lyrics and music news."}
+  - {id: video, code: 303, parent: group-entertainment, kind: content, name: "Video",
+     description: "Video-sharing platforms and video hosting."}
+  - {id: gaming, code: 304, parent: group-entertainment, kind: content, name: "Gaming",
+     description: "Video games, game stores, game news and browser games (not gambling)."}
+  - {id: sports, code: 305, parent: group-entertainment, kind: content, name: "Sports",
+     description: "Sports teams, leagues, results and sports news (betting belongs to Gambling)."}
+  - {id: entertainment, code: 306, parent: group-entertainment, kind: content, name: "Entertainment",
+     description: "Celebrities, film, TV, humour, events and general entertainment."}
+  - {id: online-radio, code: 307, parent: group-entertainment, kind: content, name: "Online Radio",
+     description: "Internet radio stations and podcasts directories."}
+
+  # ------------------------------------------------------------------ 400 Education & Information
+  - {id: group-education-information, code: 400, kind: content, group: true, name: "Education & Information",
+     description: "Knowledge, news, public institutions."}
+  - {id: education, code: 401, parent: group-education-information, kind: content, name: "Education",
+     description: "Schools, universities, online courses and learning platforms."}
+  - {id: research, code: 402, parent: group-education-information, kind: content, name: "Research",
+     description: "Research institutions, academic publishing and datasets."}
+  - {id: science, code: 403, parent: group-education-information, kind: content, name: "Science",
+     description: "Scientific content and popular science."}
+  - {id: news, code: 404, parent: group-education-information, kind: content, name: "News",
+     description: "News outlets and news aggregators."}
+  - {id: media, code: 405, parent: group-education-information, kind: content, name: "Media",
+     description: "Magazines, broadcasters and publishers that are not primarily news."}
+  - {id: reference, code: 406, parent: group-education-information, kind: content, name: "Reference",
+     description: "Encyclopaedias, dictionaries, maps, translation and how-to resources."}
+  - {id: libraries, code: 407, parent: group-education-information, kind: content, name: "Libraries",
+     description: "Public and academic libraries and digital archives."}
+  - {id: government, code: 408, parent: group-education-information, kind: content, name: "Government",
+     description: "Government bodies, public services, military and intergovernmental organisations."}
+  - {id: legal, code: 409, parent: group-education-information, kind: content, name: "Legal",
+     description: "Law firms, legal information and legislation databases."}
+
+  # ------------------------------------------------------------------ 500 Shopping & Lifestyle
+  - {id: group-shopping-lifestyle, code: 500, kind: content, group: true, name: "Shopping & Lifestyle",
+     description: "Consumer life: shopping, travel, health, home."}
+  - {id: shopping, code: 501, parent: group-shopping-lifestyle, kind: content, name: "Shopping",
+     description: "Retail brands, product information, price comparison and coupons."}
+  - {id: e-commerce, code: 502, parent: group-shopping-lifestyle, kind: content, name: "E-Commerce",
+     description: "Online stores and marketplaces where goods are bought directly."}
+  - {id: auctions, code: 503, parent: group-shopping-lifestyle, kind: content, name: "Auctions",
+     description: "Online auction platforms."}
+  - {id: travel, code: 504, parent: group-shopping-lifestyle, kind: content, name: "Travel",
+     description: "Airlines, hotels, booking sites and travel guides."}
+  - {id: food, code: 505, parent: group-shopping-lifestyle, kind: content, name: "Food",
+     description: "Restaurants, recipes, food delivery and cooking."}
+  - {id: health-information, code: 506, parent: group-shopping-lifestyle, kind: content, name: "Health Information",
+     description: "Medical information, hospitals, pharmacies and wellness."}
+  - {id: real-estate, code: 507, parent: group-shopping-lifestyle, kind: content, name: "Real Estate",
+     description: "Property listings, agents and real-estate services."}
+  - {id: automotive, code: 508, parent: group-shopping-lifestyle, kind: content, name: "Automotive",
+     description: "Vehicle makers, dealers, car listings and automotive news."}
+
+  # ------------------------------------------------------------------ 600 Restricted Content
+  - {id: group-restricted-content, code: 600, kind: content, group: true, name: "Restricted Content",
+     description: "Content commonly restricted by age, law or policy."}
+  - {id: adult-content, code: 601, parent: group-restricted-content, kind: content, name: "Adult Content",
+     description: "Sexually explicit material, pornography and adult services."}
+  - {id: gambling, code: 602, parent: group-restricted-content, kind: content, name: "Gambling",
+     description: "Betting, casinos, lotteries, poker and sports betting."}
+  - {id: alcohol, code: 603, parent: group-restricted-content, kind: content, name: "Alcohol",
+     description: "Sale or promotion of alcoholic beverages."}
+  - {id: tobacco, code: 604, parent: group-restricted-content, kind: content, name: "Tobacco",
+     description: "Sale or promotion of tobacco, e-cigarettes and vaping products."}
+  - {id: weapons, code: 605, parent: group-restricted-content, kind: content, name: "Weapons",
+     description: "Sale of or instructions for firearms, ammunition, knives and other weapons."}
+  - {id: illegal-drugs, code: 606, parent: group-restricted-content, kind: content, name: "Illegal Drugs",
+     description: "Sale or promotion of illegal drugs or misuse of controlled substances."}
+  - {id: violence, code: 607, parent: group-restricted-content, kind: content, name: "Violence",
+     description: "Graphic violence, gore or glorification of violent acts."}
+  - {id: hate-and-discrimination, code: 608, parent: group-restricted-content, kind: content, name: "Hate and Discrimination",
+     description: "Content attacking people based on protected characteristics."}
+
+  # ------------------------------------------------------------------ 700 Web Infrastructure
+  - {id: group-web-infrastructure, code: 700, kind: content, group: true, name: "Web Infrastructure",
+     description: "Services that move, hide or host other content."}
+  - {id: search-engines, code: 701, parent: group-web-infrastructure, kind: content, name: "Search Engines",
+     description: "Web search engines and portals."}
+  - {id: url-shorteners, code: 702, parent: group-web-infrastructure, kind: content, name: "URL Shorteners",
+     description: "Link shortening and redirect services."}
+  - {id: content-delivery-networks, code: 703, parent: group-web-infrastructure, kind: content, name: "Content Delivery Networks",
+     description: "CDN and asset hosting domains."}
+  - {id: proxy-services, code: 704, parent: group-web-infrastructure, kind: content, name: "Proxy Services",
+     description: "Web proxies and anonymisers used to bypass filtering."}
+  - {id: vpn-services, code: 705, parent: group-web-infrastructure, kind: content, name: "VPN Services",
+     description: "Commercial or free VPN providers."}
+  - {id: remote-access, code: 706, parent: group-web-infrastructure, kind: content, name: "Remote Access",
+     description: "Remote desktop and remote administration services."}
+  - {id: file-sharing, code: 707, parent: group-web-infrastructure, kind: content, name: "File Sharing",
+     description: "File hosting, cloud drives, peer-to-peer and torrent indexes."}
+  - {id: software-downloads, code: 708, parent: group-web-infrastructure, kind: content, name: "Software Downloads",
+     description: "Download portals and software mirrors."}
+  - {id: parked-domains, code: 709, parent: group-web-infrastructure, kind: content, name: "Parked Domains",
+     description: "Parked, for-sale, placeholder or empty default pages."}
+
+  # ------------------------------------------------------------------ 900 Security Threats (separate risk system)
+  - {id: group-security-threats, code: 900, kind: risk, group: true, name: "Security Threats",
+     description: "Risk classification, independent from content categories."}
+  - {id: malware, code: 901, parent: group-security-threats, kind: risk, name: "Malware",
+     description: "Hosts or distributes malicious software or exploit kits."}
+  - {id: phishing, code: 902, parent: group-security-threats, kind: risk, name: "Phishing",
+     description: "Impersonates a brand or service to steal credentials or payment data."}
+  - {id: scam, code: 903, parent: group-security-threats, kind: risk, name: "Scam",
+     description: "Deceptive offers: fake shops, fake support, advance-fee and investment scams."}
+  - {id: fraud, code: 904, parent: group-security-threats, kind: risk, name: "Fraud",
+     description: "Payment fraud, counterfeit goods, fake documents."}
+  - {id: command-and-control, code: 905, parent: group-security-threats, kind: risk, name: "Command and Control",
+     description: "Infrastructure used to control malware or botnets."}
+  - {id: suspicious, code: 906, parent: group-security-threats, kind: risk, name: "Suspicious Websites",
+     description: "Indicators of malicious intent without enough evidence for a specific threat type."}
+  - {id: malicious-downloads, code: 907, parent: group-security-threats, kind: risk, name: "Malicious Downloads",
+     description: "Offers downloads that are known or likely to be harmful."}

@@ -1,0 +1,146 @@
+"""Request dependencies: database session, Redis, caller identity (principal), scopes and rate limits."""
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from functools import lru_cache
+
+import redis
+from fastapi import Depends, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from common.config import get_settings
+from database.models import ApiKey, Role, User
+from database.session import get_session
+
+from .errors import ApiError
+from .security import ROLE_SCOPES, fingerprint, key_matches, parse_api_key
+
+log = logging.getLogger("category.auth")
+bearer = HTTPBearer(auto_error=False, description="API key: `cat_<prefix>_<secret>`")
+_LAST_USED_RESOLUTION = timedelta(minutes=5)
+
+
+@lru_cache
+def _redis_client(url: str) -> redis.Redis:
+    return redis.Redis.from_url(url, socket_timeout=1, socket_connect_timeout=1)
+
+
+def get_redis() -> redis.Redis:
+    return _redis_client(get_settings().redis_url)
+
+
+@dataclass(slots=True)
+class Principal:
+    client_ip: str | None
+    fingerprint: str | None
+    user_id: int | None = None
+    role: Role | None = None
+    api_key_id: int | None = None
+    scopes: frozenset[str] = field(default_factory=frozenset)
+    rate_limit: int | None = None
+
+    @property
+    def authenticated(self) -> bool:
+        return self.api_key_id is not None
+
+
+def get_principal(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    session: Session = Depends(get_session),
+) -> Principal:
+    settings = get_settings()
+    ip = request.client.host if request.client else None
+    secret = settings.fingerprint_secret.get_secret_value() if settings.fingerprint_secret else None
+    principal = Principal(client_ip=ip, fingerprint=fingerprint(secret, ip))
+    if credentials is None:
+        return principal
+
+    unauthorized = ApiError(401, "invalid_api_key", "invalid, expired or revoked API key",
+                            headers={"WWW-Authenticate": "Bearer"})
+    prefix = parse_api_key(credentials.credentials)
+    if prefix is None:
+        raise unauthorized
+    row = session.execute(select(ApiKey, User).join(User, User.id == ApiKey.user_id)
+                          .where(ApiKey.prefix == prefix)).first()
+    now = datetime.now(UTC)
+    if row is None:
+        raise unauthorized
+    key, user = row
+    if (not key_matches(credentials.credentials, key.key_hash) or key.revoked_at is not None
+            or (key.expires_at is not None and key.expires_at <= now) or not user.is_active):
+        raise unauthorized
+
+    if key.last_used_at is None or now - key.last_used_at > _LAST_USED_RESOLUTION:
+        key.last_used_at = now
+        session.commit()
+    principal.user_id, principal.role, principal.api_key_id = user.id, Role(user.role), key.id
+    # Effective scopes: what the key was given AND what the user's current role allows.
+    principal.scopes = frozenset(key.scopes) & ROLE_SCOPES[Role(user.role)]
+    principal.rate_limit = key.rate_limit_per_minute
+    request.state.principal = principal
+    return principal
+
+
+def require(scope: str) -> Callable[..., Principal]:
+    def dependency(principal: Principal = Depends(get_principal)) -> Principal:
+        if not principal.authenticated:
+            raise ApiError(401, "authentication_required", "an API key is required",
+                           headers={"WWW-Authenticate": "Bearer"})
+        if scope not in principal.scopes:
+            raise ApiError(403, "insufficient_scope", f"this API key lacks the '{scope}' scope")
+        return principal
+
+    return dependency
+
+
+class RateLimiter:
+    """Fixed one-minute windows in Redis (INCR + EXPIRE). Simple, O(1), shared by all API replicas."""
+
+    def __init__(self, client: redis.Redis, window_seconds: int = 60) -> None:
+        self.client, self.window = client, window_seconds
+
+    def hit(self, bucket: str, identity: str, limit: int) -> tuple[bool, int, int]:
+        """Return (allowed, remaining, seconds_until_reset)."""
+        now = int(time.time())
+        window_start = now - now % self.window
+        key = f"rl:{bucket}:{identity}:{window_start}"
+        pipe = self.client.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, self.window + 5)
+        count = int(pipe.execute()[0])
+        return count <= limit, max(0, limit - count), window_start + self.window - now
+
+
+def rate_limit(bucket: str) -> Callable[..., None]:
+    """``bucket`` is ``read`` or ``write``; API keys get their own (higher) limit."""
+
+    def dependency(response: Response, principal: Principal = Depends(get_principal),
+                   client: redis.Redis = Depends(get_redis)) -> None:
+        settings = get_settings()
+        if principal.authenticated:
+            identity = f"key:{principal.api_key_id}"
+            limit = principal.rate_limit or settings.api_key_rate_limit_per_minute
+        else:
+            identity = f"ip:{principal.fingerprint or principal.client_ip or 'unknown'}"
+            limit = (settings.public_rate_limit_per_minute if bucket == "read"
+                     else settings.anonymous_write_limit_per_minute)
+        try:
+            allowed, remaining, reset = RateLimiter(client).hit(bucket, identity, limit)
+        except redis.RedisError as exc:
+            log.warning("rate limiter unavailable", extra={"error": type(exc).__name__})
+            if settings.rate_limit_fail_open:
+                return
+            raise ApiError(503, "unavailable", "rate limiter unavailable") from exc
+        headers = {"RateLimit-Limit": str(limit), "RateLimit-Remaining": str(remaining), "RateLimit-Reset": str(reset)}
+        if not allowed:
+            raise ApiError(429, "rate_limited", "too many requests", headers=headers | {"Retry-After": str(reset)})
+        response.headers.update(headers)
+
+    return dependency

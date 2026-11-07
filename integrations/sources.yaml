@@ -1,0 +1,62 @@
+# Candidate third-party sources. NOTHING here is enabled until its licence and terms have been read and
+# recorded by a maintainer (license_status: verified, reviewed_at, reviewed_by).
+# "believed" fields are the maintainers' current understanding and MUST be checked against the source's
+# own licence/terms page before enabling. Third-party data is never relicensed as CC BY 4.0.
+sources:
+  - slug: stevenblack-hosts
+    name: StevenBlack/hosts
+    homepage: https://github.com/StevenBlack/hosts
+    kind: blocklist
+    format: hosts
+    believed_license: MIT (repository); each upstream list in the unified file has its own licence
+    license_status: unverified
+    notes: Aggregator. Provenance must be kept per upstream list, not per StevenBlack.
+    enabled: false
+
+  - slug: oisd
+    name: OISD
+    homepage: https://oisd.nl/
+    kind: blocklist
+    format: domains
+    believed_license: unknown
+    license_status: unverified
+    notes: Redistribution terms unknown; ask the maintainer before use.
+    enabled: false
+
+  - slug: urlhaus
+    name: URLhaus (abuse.ch)
+    homepage: https://urlhaus.abuse.ch/
+    kind: threat_feed
+    format: csv
+    believed_license: check abuse.ch terms of use (historically CC0; API now requires an Auth-Key)
+    license_status: unverified
+    notes: Threat intelligence -> threat_intelligence table, never content categories.
+    enabled: false
+
+  - slug: openphish
+    name: OpenPhish (community feed)
+    homepage: https://openphish.com/
+    kind: threat_feed
+    format: url-list
+    believed_license: free community feed with usage restrictions (commercial use may require a licence)
+    license_status: unverified
+    enabled: false
+
+  - slug: phishtank
+    name: PhishTank
+    homepage: https://phishtank.org/
+    kind: threat_feed
+    format: json
+    believed_license: free with registration and attribution; new registrations may be closed
+    license_status: unverified
+    enabled: false
+
+  - slug: blocklistproject
+    name: The Block List Project
+    homepage: https://github.com/blocklistproject/Lists
+    kind: blocklist
+    format: domains
+    believed_license: Unlicense
+    license_status: unverified
+    notes: Category lists (gambling, adult, ...) -> could seed domain discovery with origin=source.
+    enabled: false

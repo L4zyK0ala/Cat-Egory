@@ -1,0 +1,193 @@
+# Cat-egory — development / single-host stack.
+#   cp .env.example .env  (or: ./deployment/scripts/generate-env.sh)  then:
+#   docker compose -f deployment/docker-compose.yml --env-file .env up -d --build
+#
+# Networks
+#   core    internal-only: databases, queue, object store and the services that use them (no internet)
+#   egress  outbound internet for the worker (AI provider, allow-listed source feeds)
+#   edge    published ports
+# The crawler (Phase 3) gets its own image and an egress network without access to `core` databases.
+name: cat-egory
+
+x-backend: &backend
+  build:
+    context: ..
+    dockerfile: deployment/docker/Dockerfile.backend
+  image: cat-egory/backend:dev
+  # Only the variables each service needs are passed in (no blanket env_file with every secret).
+  environment: &backend-env
+    CATEGORY_ENVIRONMENT: ${CATEGORY_ENVIRONMENT:-development}
+    CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
+    CATEGORY_AI_PROVIDER: ${CATEGORY_AI_PROVIDER:-mock}
+    CATEGORY_FINGERPRINT_SECRET: ${CATEGORY_FINGERPRINT_SECRET:?set CATEGORY_FINGERPRINT_SECRET in .env}
+    CATEGORY_PUBLIC_RATE_LIMIT_PER_MINUTE: ${CATEGORY_PUBLIC_RATE_LIMIT_PER_MINUTE:-60}
+    CATEGORY_ANONYMOUS_WRITE_LIMIT_PER_MINUTE: ${CATEGORY_ANONYMOUS_WRITE_LIMIT_PER_MINUTE:-10}
+    CATEGORY_API_KEY_RATE_LIMIT_PER_MINUTE: ${CATEGORY_API_KEY_RATE_LIMIT_PER_MINUTE:-600}
+    CATEGORY_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-category}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-category}
+    CATEGORY_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+    CATEGORY_S3_ENDPOINT_URL: http://storage:8333
+    CATEGORY_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+    CATEGORY_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging: &logging
+    driver: json-file
+    options: {max-size: "20m", max-file: "5"}
+
+services:
+  postgres:
+    image: postgres:18.6-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-category}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-category}
+    volumes: [pgdata:/var/lib/postgresql]
+    networks: [core]
+    shm_size: 256m
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy: {resources: {limits: {cpus: "2", memory: 2g}}}
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:8.6.8-alpine
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    volumes: [redisdata:/data]
+    networks: [core]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy: {resources: {limits: {cpus: "1", memory: 768m}}}
+    restart: unless-stopped
+    logging: *logging
+
+  # S3-compatible object store (SeaweedFS, Apache-2.0). The official MinIO images are no longer
+  # published on Docker Hub; any S3 endpoint works via CATEGORY_S3_ENDPOINT_URL.
+  storage:
+    image: chrislusf/seaweedfs:4.52
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        umask 077 &&
+        printf '{"identities":[{"name":"category","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
+        "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+        exec weed server -dir=/data -ip.bind=0.0.0.0 -s3 -s3.port=8333 -s3.config=/tmp/s3.json -volume.max=0
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+    volumes: [objectdata:/data]
+    networks: [core]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    deploy: {resources: {limits: {cpus: "1", memory: 1g}}}
+    restart: unless-stopped
+    logging: *logging
+
+  migrate:
+    <<: *backend
+    command: ["sh", "-c", "alembic upgrade head && python -m database.seed"]
+    working_dir: /app
+    networks: [core]
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  api:
+    <<: *backend
+    networks: [core, edge]
+    ports:
+      - "${CATEGORY_PUBLIC_BIND:-127.0.0.1}:${CATEGORY_API_PORT:-8110}:8000"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: "1", memory: 512m}}}
+
+  worker:
+    <<: *backend
+    command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "classify,ingest,feeds,maintenance",
+              "--concurrency", "2", "--loglevel", "INFO"]
+    environment:
+      <<: *backend-env
+      CATEGORY_EVREN_BASE_URL: ${CATEGORY_EVREN_BASE_URL:-https://evren-llmapi.ssyz.org.tr}
+      CATEGORY_EVREN_API_KEY: ${CATEGORY_EVREN_API_KEY:-}
+      CATEGORY_EVREN_MODEL: ${CATEGORY_EVREN_MODEL:-qwen3.8-flash-next}
+      CATEGORY_EVREN_JSON_MODE: ${CATEGORY_EVREN_JSON_MODE:-false}
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    networks: [core, egress]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: "2", memory: 1g}}}
+
+  beat:
+    <<: *backend
+    command: ["celery", "-A", "backend.app.worker:celery_app", "beat", "--loglevel", "INFO",
+              "--schedule", "/tmp/celerybeat-schedule"]
+    healthcheck: {disable: true}
+    networks: [core]
+    depends_on:
+      redis: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: "0.5", memory: 256m}}}
+
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=30d"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    networks: [core, edge]
+    ports: ["${CATEGORY_ADMIN_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9091}:9090"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:13.2.5
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    networks: [core, edge]
+    ports: ["${CATEGORY_ADMIN_BIND:-127.0.0.1}:${GRAFANA_PORT:-3011}:3000"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  core:
+    internal: true
+  egress: {}
+  edge: {}
+
+volumes:
+  pgdata: {}
+  redisdata: {}
+  objectdata: {}
+  promdata: {}
+  grafanadata: {}
