@@ -62,3 +62,15 @@ def get_second_opinion(settings: Settings | None = None) -> AIProvider | None:
             max_text_chars=settings.max_text_chars, max_html_chars=settings.max_html_chars,
         )
     return None
+
+
+def report(settings: Settings | None = None, *, probe: bool = False) -> dict:
+    """Status of the active provider as seen by the process that classifies (the worker holds the API key,
+    the public API container does not). ``probe`` sends one tiny live request."""
+    settings = settings or get_settings()
+    active = get_provider(settings=settings)
+    health = active.probe() if probe and hasattr(active, "probe") else active.health()
+    second = get_second_opinion(settings)
+    return {"provider": health.provider, "model": active.model, "status": health.status, "detail": health.detail,
+            "supports_images": active.supports_images,
+            "second_opinion": {"provider": second.name, "model": second.model} if second else None}

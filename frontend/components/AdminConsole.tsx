@@ -16,6 +16,7 @@ function Console({ api, scopes }: { api: string; scopes: string[] }) {
   const [filter, setFilter] = useState("");
   const [text, setText] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const refresh = useCallback(async () => {
     const [s, l, p] = await Promise.all([
@@ -73,7 +74,13 @@ function Console({ api, scopes }: { api: string; scopes: string[] }) {
       {active && (
         <div className="panel">AI provider: <b>{active.provider}</b> / <span className="mono">{active.model}</span>{" "}
           <span className={`badge ${active.status === "ok" ? "verified" : "pending"}`}>{active.status}</span>{" "}
-          <span className="muted">{active.detail}</span></div>
+          <span className="muted">{active.detail}</span>{" "}
+          <button className="secondary" disabled={testing} onClick={async () => {
+            setTesting(true);
+            const r = await call<Record<string, unknown>>(api, "/api/v1/admin/providers?probe=true");
+            setTesting(false);
+            if (r.ok) setProvider(r.data); else setMsg({ ok: false, text: `${r.message} (${r.code})` });
+          }}>{testing ? "Testing… (can take a minute)" : "Test live"}</button></div>
       )}
       <h2>Add domains</h2>
       <form className="panel stack" onSubmit={add}>

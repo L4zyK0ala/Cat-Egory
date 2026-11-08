@@ -52,10 +52,10 @@ def ping() -> str:
     return "pong"
 
 
-@celery_app.task(name="category.maintenance.provider_health")
-def provider_health() -> dict:
-    """Configuration-level health of the active AI provider (no paid live request)."""
-    from ai_providers.registry import get_provider
+@celery_app.task(name="category.maintenance.provider_health", soft_time_limit=300, time_limit=320)
+def provider_health(probe: bool = False) -> dict:
+    """Health of the active AI provider in the worker, where the API key lives. Without ``probe`` it is a
+    configuration check (no paid request); the admin API asks for a probe on demand."""
+    from ai_providers.registry import report
 
-    health = get_provider().health()
-    return {"provider": health.provider, "status": health.status, "detail": health.detail}
+    return report(probe=probe)

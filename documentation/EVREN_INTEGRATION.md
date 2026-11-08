@@ -58,6 +58,16 @@ These came up when reviewing the EVREN LLM terms (v1) for another project; they 
 Until these are answered, run with `CATEGORY_AI_PROVIDER=mock` or limit EVREN to a small, manually
 reviewed sample.
 
+## Where the key lives
+
+Only the `worker` container receives `CATEGORY_EVREN_API_KEY`; the public `api` container never sees it.
+Admin → *AI provider* (and `GET /api/v1/admin/providers`) therefore asks the worker for its status;
+*Test live* (`?probe=true`) sends one small real request from the worker. From the shell:
+
+```bash
+$DC exec -T worker python -c "from ai_providers.registry import report; print(report(probe=True))"
+```
+
 ## Timeouts and retries
 
 Answers are slow: 24–53 s for one classification with `qwen3.8-flash-next` (2026-11-08), sometimes more than

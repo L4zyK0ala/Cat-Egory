@@ -311,9 +311,19 @@ def test_screenshot_endpoint(engine, client, admin):
     assert client.get("/api/v1/admin/domains/none.example.com/screenshot", headers=admin).status_code == 404
 
 
-def test_providers_and_calibration(engine, client, admin):
+def test_providers_and_calibration(engine, client, admin, monkeypatch):
+    from ai_providers.registry import report as provider_report
+    from backend.app.api import reviews as reviews_api
+
+    asked = []
+    monkeypatch.setattr(reviews_api, "ask_worker", lambda probe: asked.append(probe) or provider_report(S, probe=probe))
     body = client.get("/api/v1/admin/providers", headers=admin).json()
     assert body["active"]["provider"] == "mock" and body["policy"]["auto_approve"] == 0.9
+    assert body["active"]["model"] and asked == [False]
+    client.get("/api/v1/admin/providers?probe=true", headers=admin)
+    assert asked == [False, True]
+    monkeypatch.setattr(reviews_api, "ask_worker", lambda probe: None)  # worker down
+    assert client.get("/api/v1/admin/providers", headers=admin).json()["active"]["status"] == "unknown"
     for name, decision in (("a.example.com", "approve"), ("b.example.com", "set")):
         queue_review(engine, name, confidence=0.65)
         task = client.get("/api/v1/admin/reviews", headers=admin).json()["items"][0]

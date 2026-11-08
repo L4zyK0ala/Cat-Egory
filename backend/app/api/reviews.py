@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ai_providers.registry import available, get_provider, get_second_opinion
+from ai_providers.registry import available
 from classification import calibration
 from classification.engine import REVIEW_SOURCE, apply_categories, record_threats
 from classification.taxonomy import default_taxonomy
@@ -218,17 +218,29 @@ def screenshot(domain: str, _: Principal = Depends(require("reviews:write")),
                              "X-Content-Type-Options": "nosniff"})
 
 
-@router.get("/providers", summary="AI provider status")
-def providers(probe: bool = False, _: Principal = Depends(require("reviews:write"))) -> dict:
+def ask_worker(probe: bool) -> dict | None:
+    """The API container has no AI key by design; the worker that classifies reports its own provider status."""
+    from ..worker import celery_app
+
+    try:
+        return celery_app.send_task("category.maintenance.provider_health", kwargs={"probe": probe},
+                                    queue="maintenance").get(timeout=300 if probe else 15)
+    except Exception:  # noqa: BLE001 - timeout, broker down, worker error: reported as unknown
+        return None
+
+
+@router.get("/providers", summary="AI provider status (reported by the classification worker)")
+def providers(probe: bool = Query(False, description="send one small live request (uses quota, can take minutes)"),
+              _: Principal = Depends(require("reviews:write"))) -> dict:
     settings = get_settings()
-    active = get_provider(settings=settings)
-    health = active.probe() if probe and hasattr(active, "probe") else active.health()
-    second = get_second_opinion(settings)
+    worker = ask_worker(probe)
+    active = worker or {"provider": settings.ai_provider, "model": None, "status": "unknown",
+                        "detail": "the classification worker did not answer", "supports_images": None,
+                        "second_opinion": None}
     return {
         "available": available(),
-        "active": {"provider": health.provider, "model": active.model, "status": health.status,
-                   "detail": health.detail, "supports_images": active.supports_images},
-        "second_opinion": {"provider": second.name, "model": second.model} if second else None,
+        "active": {k: active.get(k) for k in ("provider", "model", "status", "detail", "supports_images")},
+        "second_opinion": active.get("second_opinion"),
         "policy": {"auto_approve": settings.confidence_auto_approve,
                    "extra_validation": settings.confidence_extra_validation,
                    "human_review": settings.confidence_human_review},
