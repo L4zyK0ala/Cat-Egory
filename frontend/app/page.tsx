@@ -32,11 +32,23 @@ export default async function Dashboard() {
     <>
       <section className="hero">
         <div>
-          <h1>Every website, <em>curiously</em> categorized.</h1>
+          <h1>Every Website, <em>Curiously</em> Categorized.</h1>
           <p className="lead">Look up how a website is categorized, download category lists, or help correct the data.</p>
           <SearchBox />
         </div>
         <Mascot />
+      </section>
+      <section className="why" aria-labelledby="why-title">
+        <h2 id="why-title">Why Cat-Egory?</h2>
+        <div className="why-cards">
+          <div className="panel"><h3>Open Data</h3>
+            <p className="muted">Categories you can download, check and build on, under CC BY 4.0.</p></div>
+          <div className="panel"><h3>Checked by People</h3>
+            <p className="muted">The AI reads first; unsure answers, look-alikes and threats are decided by a person.</p></div>
+          <div className="panel"><h3>Every Label Has a Source</h3>
+            <p className="muted">See whether a category came from the AI, a reviewer, the community or a rule.</p></div>
+        </div>
+        <p><Link href="/about">About Us →</Link></p>
       </section>
       {!stats ? (
         <div className="notice error">The API is not reachable right now.</div>
@@ -55,7 +67,7 @@ export default async function Dashboard() {
           </div>
           <div className="grid2">
             <section>
-              <h2>Category distribution</h2>
+              <h2>Category Distribution</h2>
               <div className="panel">
                 {stats.category_distribution.length === 0 && <p className="muted">No published classifications yet.</p>}
                 {stats.category_distribution.slice(0, 15).map((d) => (
@@ -68,7 +80,7 @@ export default async function Dashboard() {
               </div>
             </section>
             <section>
-              <h2>Security threats</h2>
+              <h2>Security Threats</h2>
               <div className="panel">
                 {Object.keys(stats.threats).length === 0 ? <p className="muted">No active threat records.</p> : (
                   <table><tbody>
@@ -80,7 +92,7 @@ export default async function Dashboard() {
               </div>
             </section>
           </div>
-          <h2>Daily scanning (last 14 days)</h2>
+          <h2>Daily Scanning (Last 14 Days)</h2>
           <div className="panel">
             {days.length === 0 ? <p className="muted">No finished scans yet.</p> : (
               <table>

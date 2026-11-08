@@ -32,7 +32,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/">Dashboard</Link>
               <Link href="/categories">Categories</Link>
               <Link href="/feeds">Feeds</Link>
-              <Link href="/submit">Suggest a site</Link>
+              <Link href="/submit">Suggest a Site</Link>
+              <Link href="/about">About</Link>
               {adminUi && <Link href="/admin" className="admin">Admin</Link>}
             </nav>
           </div>

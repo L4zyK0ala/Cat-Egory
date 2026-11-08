@@ -23,7 +23,7 @@ export default function SearchBox({ initial = "" }: { initial?: string }) {
     >
       <input type="search" aria-label="Domain or URL" placeholder="Search a domain or URL, e.g. example.com"
              value={value} onChange={(e) => setValue(e.target.value)} />
-      <button type="submit">Look up</button>
+      <button type="submit">Look Up</button>
     </form>
   );
 }

@@ -59,13 +59,13 @@ function Console({ api, scopes }: { api: string; scopes: string[] }) {
   const active = provider?.active as { provider?: string; model?: string; status?: string; detail?: string } | undefined;
   return (
     <div className="stack">
-      <div className="row"><Link href="/admin/reviews">Review queue →</Link><Link href="/admin/moderation">Moderation →</Link>
+      <div className="row"><Link href="/admin/reviews">Review Queue →</Link><Link href="/admin/moderation">Moderation →</Link>
         {scopes.includes("reviews:write") && (
           <button className="secondary" onClick={async () => {
             const r = await call(api, "/api/v1/admin/feeds/build", { method: "POST" });
             setMsg(r.ok ? { ok: true, text: "Feed rebuild queued; files appear under Feeds in a minute." }
                         : { ok: false, text: `${r.message} (${r.code})` });
-          }}>Rebuild feeds now</button>)}</div>
+          }}>Rebuild Feeds Now</button>)}</div>
       <div className="tiles">
         {["queued", "running", "succeeded", "blocked", "failed", "cancelled"].map((k) => (
           <div className="panel tile" key={k}><div className="label">{k}</div><div className="value">{stats[k] ?? 0}</div></div>
@@ -82,18 +82,18 @@ function Console({ api, scopes }: { api: string; scopes: string[] }) {
             if (r.ok) setProvider(r.data); else setMsg({ ok: false, text: `${r.message} (${r.code})` });
           }}>{testing ? "Testing… (can take a minute)" : "Test live"}</button></div>
       )}
-      <h2>Add domains</h2>
+      <h2>Add Domains</h2>
       <form className="panel stack" onSubmit={add}>
         <textarea placeholder="Domains or URLs, separated by spaces or new lines" value={text} onChange={(e) => setText(e.target.value)} />
         <div className="row">
-          <button type="submit" disabled={!text.trim()}>Add and scan</button>
+          <button type="submit" disabled={!text.trim()}>Add and Scan</button>
           <label className="muted">or import a file (.csv .txt .hosts .json .xlsx, max 10 000):{" "}
             <input type="file" accept=".csv,.tsv,.txt,.hosts,.list,.json,.xlsx" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
           </label>
         </div>
         {msg && <div className={`notice ${msg.ok ? "ok" : "error"}`}>{msg.text}</div>}
       </form>
-      <h2>Scan queue</h2>
+      <h2>Scan Queue</h2>
       <div className="row">
         <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Status filter">
           <option value="">all</option>

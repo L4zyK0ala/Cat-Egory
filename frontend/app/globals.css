@@ -176,3 +176,13 @@ kbd { font: 600 11px var(--mono); padding: 1px 6px; border-radius: 6px; border: 
 ul.evidence { margin: 0; padding-left: 18px; font-size: 14px; }
 ul.evidence .mono { color: var(--muted); margin-right: 6px; }
 details summary { cursor: pointer; font-size: 14px; }
+
+/* ---------- why / about */
+.why h2 { margin-top: 28px; }
+.why-cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.why-cards h3, .principles h3 { color: var(--red-deep); }
+.why-cards p, .principles p { margin: 0; font-size: 15px; }
+.principles { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .principles { grid-template-columns: repeat(2, 1fr); } }
+.about .panel p { margin: 0; }
+.about .panel.stack > p + p { margin-top: 10px; }

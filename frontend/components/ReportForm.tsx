@@ -55,7 +55,7 @@ export default function ReportForm({ api, domain, categories, current }: {
       <input type="text" placeholder="Evidence URLs (optional, space separated, max 5)" value={evidence}
              onChange={(e) => setEvidence(e.target.value)} />
       <div className="row">
-        <button type="submit" disabled={busy}>Send report</button>
+        <button type="submit" disabled={busy}>Send Report</button>
         {status && <span className={`notice ${status.ok ? "ok" : "error"}`}>{status.text}</span>}
       </div>
     </form>

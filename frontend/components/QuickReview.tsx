@@ -115,7 +115,7 @@ function Quick({ api }: { api: string }) {
     <div className="stack quick">
       <div className="row quick-bar">
         <span><b>{done}</b> decided · <b>{items.length}</b> left</span>
-        <button className="secondary" onClick={sample}>Add 20 published AI answers to verify</button>
+        <button className="secondary" onClick={sample}>Add 20 Published AI Answers to Verify</button>
         <span className="muted keys"><kbd>A</kbd> approve · <kbd>S</kbd> category · <kbd>R</kbd> reject · <kbd>N</kbd> skip</span>
       </div>
       {msg && <div className={`notice ${msg.ok ? "ok" : "error"}`} role="status">{msg.text}</div>}
@@ -155,7 +155,7 @@ function Quick({ api }: { api: string }) {
                 <datalist id="quick-cats">{content.map((c) => <option key={c.id} value={c.name}>{c.id}</option>)}</datalist>
               </form>
               <details key={current.id} open={isLookalike(current.reason)}>
-                <summary className="muted">Confirm a security threat (only with evidence)</summary>
+                <summary className="muted">Confirm a Security Threat (Only with Evidence)</summary>
                 <div className="row">{risks.map((c) => (
                   <label key={c.id} className="muted"><input type="checkbox" checked={risk.includes(c.id)}
                     onChange={(e) => setRisk(e.target.checked ? [...risk, c.id] : risk.filter((x) => x !== c.id))} /> {c.name}</label>
@@ -163,7 +163,7 @@ function Quick({ api }: { api: string }) {
               </details>
               <div className="row">
                 <button disabled={busy || !p?.primary_category} onClick={() => decide("approve")}>Approve <kbd>A</kbd></button>
-                <button className="secondary" disabled={busy} onClick={() => decide("set")}>Set category <kbd>S</kbd></button>
+                <button className="secondary" disabled={busy} onClick={() => decide("set")}>Set Category <kbd>S</kbd></button>
                 <button className="secondary" disabled={busy} onClick={() => decide("reject")}>Reject <kbd>R</kbd></button>
                 <button className="secondary" disabled={busy} onClick={() => { advance(); setMsg(null); }}>Skip <kbd>N</kbd></button>
               </div>

@@ -101,7 +101,7 @@ export default async function DomainPage({ params }: { params: Promise<{ domain:
           </table>
         )}
       </div>
-      <h2>Is something wrong?</h2>
+      <h2>Is Something Wrong?</h2>
       <ReportForm api={publicApiUrl()} domain={info.domain} current={info.categories.map((c) => c.id)}
                   categories={taxonomy.items.filter((c) => !c.is_group && !c.deprecated_in).map((c) => ({ id: c.id, name: c.name }))} />
     </>

@@ -64,8 +64,8 @@ function Item({ api, r, cats, onDone }: { api: string; r: Review; cats: Cat[]; o
           </div>
           <input type="text" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="row">
-            <button disabled={!p?.primary_category} onClick={() => decide("approve")}>Approve model</button>
-            <button className="secondary" onClick={() => decide("set")}>Set selected category</button>
+            <button disabled={!p?.primary_category} onClick={() => decide("approve")}>Approve Model</button>
+            <button className="secondary" onClick={() => decide("set")}>Set Selected Category</button>
             <button className="danger" onClick={() => decide("reject")}>Reject</button>
           </div>
           {error && <div className="notice error">{error}</div>}

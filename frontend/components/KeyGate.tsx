@@ -34,7 +34,7 @@ export default function KeyGate({ api, children }: { api: string; children: (me:
       <form className="panel stack" onSubmit={(e) => { e.preventDefault(); setKey(input); setInput(""); void check(); }}>
         <p>Enter an admin or moderator API key. It is kept only in this browser tab (sessionStorage).</p>
         <input type="password" autoComplete="off" placeholder="cat_…" value={input} onChange={(e) => setInput(e.target.value)} />
-        <div className="row"><button type="submit">Use key</button>{error && <span className="notice error">{error}</span>}</div>
+        <div className="row"><button type="submit">Use Key</button>{error && <span className="notice error">{error}</span>}</div>
       </form>
     );
   }

@@ -8,11 +8,11 @@ export const dynamic = "force-dynamic";
 export default async function Reviews({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
   const list = (await searchParams).view === "list";
   return (<>
-    <h1>Review queue</h1>
+    <h1>Review Queue</h1>
     <p className="muted">Model output is a claim. Approve it, set the right category, or reject. Confirmed threats become
       public risk flags. Approved and corrected answers become human-verified data.</p>
-    <p className="row">{list ? <Link href="/admin/reviews">Quick mode (one at a time, keyboard)</Link>
-                             : <Link href="/admin/reviews?view=list">List view</Link>}</p>
+    <p className="row">{list ? <Link href="/admin/reviews">Quick Mode (One at a Time, Keyboard)</Link>
+                             : <Link href="/admin/reviews?view=list">List View</Link>}</p>
     {list ? <ReviewQueue api={publicApiUrl()} /> : <QuickReview api={publicApiUrl()} />}
   </>);
 }
