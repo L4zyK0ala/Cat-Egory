@@ -26,10 +26,12 @@ stream_processing: []
 
 general:
   disable_default_logs: false   # Google's log list (the logs Chrome trusts)
+  # Buffers hold whole certificates in memory: ctlog is per log (60+ logs), so 1000 each was ~65k certificates
+  # and pushed the container into swap (2026-11-08). Full buffers slow the log readers down instead of dropping.
   buffer_sizes:
     websocket: 3000              # per client; absorbs bursts after (re)connects (domains-only messages are small)
-    ctlog: 1000
-    dispatcher: 10000
+    ctlog: 300
+    dispatcher: 5000
   drop_old_logs: true
   recovery:
     enabled: false              # no index file on disk, no catch-up download from index 0 after restarts

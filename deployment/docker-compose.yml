@@ -186,7 +186,9 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks: [egress, ct]
-    deploy: {resources: {limits: {cpus: "0.5", memory: 256m}}}
+    # 256m was too little (in swap at 98 %, then too slow to feed ct-watch). No swap: restart rather than crawl.
+    deploy: {resources: {limits: {cpus: "1", memory: 768m}}}
+    memswap_limit: 768m
     restart: unless-stopped
     logging: *logging
 

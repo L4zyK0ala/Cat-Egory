@@ -99,9 +99,12 @@ class TopIndex:
         return any(".".join(parts[i:]) in self.domains for i in range(len(parts) - 1))
 
     def _maybe(self, name: str) -> bool:
-        """Cheap pre-filter without domain normalisation: could any label of the name be a protected label or one
-        edit away from it? Almost every certificate name answers no."""
-        for label in name.split(".")[:-1]:
+        """Cheap pre-filter without domain normalisation: could the registrable label be a protected label or one
+        edit away from it? Only the label left of the suffix is judged by check(), so only it is tested here: the
+        second-to-last label, and the third-to-last for two-part suffixes such as .com.tr or .co.uk. (Subdomain
+        labels like "mail" would otherwise match popular domains such as mail.ru on every second certificate.)"""
+        parts = name.split(".")
+        for label in parts[-3:-1]:
             if label.startswith("xn--"):
                 try:
                     label = idna.decode(label)

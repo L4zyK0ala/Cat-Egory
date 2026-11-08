@@ -37,6 +37,8 @@ _SPLIT = re.compile(r"[-.]+")
 
 
 def skeleton(text: str) -> str:
+    if text.isascii():  # nearly every certificate name: no Unicode normalisation needed
+        return text.lower().translate(_LOOKALIKE).replace("rn", "m").replace("vv", "w")
     t = unicodedata.normalize("NFKC", text).lower().translate(_TURKISH)
     t = "".join(c for c in unicodedata.normalize("NFKD", t) if not unicodedata.combining(c))
     return t.translate(_LOOKALIKE).replace("rn", "m").replace("vv", "w")
