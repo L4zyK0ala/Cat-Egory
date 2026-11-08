@@ -84,6 +84,22 @@ this does not count as a failed attempt and the request is not run or billed twi
 call fails with the retryable kind `timeout` and the classification task tries again later. Keep the deadline
 below half of the classify task's 600 s soft limit, because a second-opinion call may follow the first.
 
+## Measuring quality on known sites
+
+`classification/evaluation_set.yaml` lists 36 sites (15 Turkish, 21 international) with the primary categories a
+person would accept (first = best) and categories that are wrong even as a secondary. Labels are our own judgement.
+
+```bash
+$DC exec -T api python -m classification.evaluation add          # dry run
+$DC exec -T api python -m classification.evaluation add --yes    # add + queue scans (priority 4)
+# ~15-30 min later (2 classify workers, 25-55 s per answer):
+$DC exec -T api python -m classification.evaluation report > evaluation-$(date +%F).md
+```
+
+The report gives crawl failures (not counted as wrong answers), valid-answer rate, strict / lenient accuracy,
+accuracy per confidence band, **wrong answers that were published automatically** (the number that matters for
+the 0.90 threshold), wrong secondaries, and latency. The evaluation domains stay in the database as normal domains.
+
 ## Live verification checklist (Phase 4)
 
 Run with a project-specific key and record results here. The 2026-11-08 runs were a one-off test

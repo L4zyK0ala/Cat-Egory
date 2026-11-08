@@ -1,0 +1,47 @@
+# Known sites for measuring classification quality (python -m classification.evaluation).
+#
+# accept: primary categories a careful human would accept; the FIRST is the best answer ("strict").
+# reject: categories that are wrong for this site even as a secondary (optional).
+# Labels are our own judgement of each site's main purpose as of 2026-11, not data from any third party.
+# Sites were picked to be reachable by a polite crawler; some may still block bots or redirect - the report
+# lists crawl failures separately instead of counting them as wrong answers.
+version: 2026-11-08.1
+sites:
+  # --- Türkiye
+  - {domain: hurriyet.com.tr, accept: [news, media]}
+  - {domain: ntv.com.tr, accept: [news, media]}
+  - {domain: isbank.com.tr, accept: [banking, finance]}
+  - {domain: garantibbva.com.tr, accept: [banking, finance]}
+  - {domain: kitapyurdu.com, accept: [e-commerce, shopping]}
+  - {domain: turkiye.gov.tr, accept: [government]}
+  - {domain: meb.gov.tr, accept: [government, education]}
+  - {domain: metu.edu.tr, accept: [education, research]}
+  - {domain: emlakjet.com, accept: [real-estate]}
+  - {domain: turkcell.com.tr, accept: [telecommunications]}
+  - {domain: enuygun.com, accept: [travel]}
+  - {domain: nefisyemektarifleri.com, accept: [food], reject: [e-commerce]}
+  - {domain: tff.org, accept: [sports]}
+  - {domain: resmigazete.gov.tr, accept: [government, legal]}
+  - {domain: donanimhaber.com, accept: [information-technology, news, forums]}
+  # --- global
+  - {domain: python.org, accept: [software, information-technology]}
+  - {domain: mozilla.org, accept: [software, information-technology]}
+  - {domain: bbc.com, accept: [news, media]}
+  - {domain: nasa.gov, accept: [government, science, research]}
+  - {domain: who.int, accept: [health-information, government]}
+  - {domain: mayoclinic.org, accept: [health-information]}
+  - {domain: archive.org, accept: [libraries, reference]}
+  - {domain: arxiv.org, accept: [research, science]}
+  - {domain: spotify.com, accept: [music, streaming-media]}
+  - {domain: steampowered.com, accept: [gaming]}
+  - {domain: lonelyplanet.com, accept: [travel]}
+  - {domain: duckduckgo.com, accept: [search-engines]}
+  - {domain: bit.ly, accept: [url-shorteners]}
+  - {domain: cloudflare.com, accept: [content-delivery-networks, cybersecurity, cloud-computing]}
+  - {domain: protonvpn.com, accept: [vpn-services]}
+  - {domain: teamviewer.com, accept: [remote-access, software]}
+  - {domain: wetransfer.com, accept: [file-sharing]}
+  - {domain: hostinger.com, accept: [web-hosting]}
+  - {domain: signal.org, accept: [messaging]}
+  - {domain: bitcoin.org, accept: [cryptocurrency]}
+  - {domain: mastodon.social, accept: [social-networking, online-communities]}
