@@ -97,6 +97,21 @@ When a later classification is applied automatically (≥ 0.90, or two models ag
 said "the model was unsure" (or came from the mock) are closed as `skipped` with a note. Risk claims,
 prompt-injection findings and model-requested reviews stay open for a person.
 
+### Registry allocation rules (.gov.tr, .edu.tr, …)
+
+Some Turkish suffixes are only allocated to one kind of holder after a document check (TRABİS, "belgeli alan
+adları"): `gov.tr`, `bel.tr`, `pol.tr`, `tsk.tr` → government; `edu.tr`, `k12.tr` → education; `av.tr` → legal;
+`dr.tr` → health-information; `kep.tr` → email. When a scan of such a domain fails or is refused although the name
+resolves (several public sites drop requests from any user agent containing "bot"), and nothing else has
+classified it, the category is taken from this rule (origin `rule`, source `cat-egory-registry-rules`, no
+confidence). A later AI, human or community classification replaces it. Rules: `classification/registry_rules.py`.
+For domains scanned before the rules existed:
+
+```bash
+$DC exec api python -m backend.cli apply-registry-rules          # dry run
+$DC exec api python -m backend.cli apply-registry-rules --yes
+```
+
 ## 3. Third-party sources
 
 Nothing is synced until a maintainer has read the licence and recorded it:
@@ -150,7 +165,7 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 - [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth).
 - [ ] Off-host backups; restore drill once.
 - [ ] Alertmanager (or Grafana alerting) wired to a channel you read.
-- [ ] EVREN: project-specific key, terms questions answered (`EVREN_INTEGRATION.md`), live checklist done.
+- [ ] EVREN: terms questions answered (`EVREN_INTEGRATION.md`), live checklist done. (Project-specific key: done 2026-11-08.)
 - [ ] Legal review of the data licence (CC BY 4.0 for own data) and of each enabled source.
 
 ## 8. Performance (measured 2026-11-07)

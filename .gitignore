@@ -27,3 +27,6 @@ data/
 # operator output
 backups/
 evaluation-*.md
+
+# local exports (datasets prepared for other platforms)
+exports/

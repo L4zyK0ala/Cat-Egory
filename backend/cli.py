@@ -6,6 +6,7 @@
     python -m backend.cli list-keys    [--email mod@example.org]
     python -m backend.cli revoke-key   --prefix abcdefghij
     python -m backend.cli reclassify-provider --provider mock [--yes]
+    python -m backend.cli apply-registry-rules [--yes]
 
 In Docker: ``docker compose ... exec api python -m backend.cli ...`` (add ``-it`` for --password prompts).
 API keys are printed exactly once and stored only as hashes.
@@ -139,6 +140,41 @@ def reclassify_provider(session: Session, provider: str, *, dry_run: bool = Fals
     return len(ids), len(tasks)
 
 
+def apply_registry_rules(session: Session, *, dry_run: bool = False) -> list[str]:
+    """Apply registry allocation rules (classification/registry_rules.py) to live domains whose latest scan failed
+    or was refused and that nothing else classified, e.g. public sites that drop bot traffic. New scans do this
+    automatically; this catches up domains scanned before the rules existed. Returns the domain names."""
+    from classification.registry_rules import apply_rule, rule_for
+    from database.models import Domain, JobStatus, ScanJob, ScanResult
+
+    done: list[str] = []
+    for domain in session.scalars(select(Domain).where(Domain.is_active, Domain.normalized_domain.like("%.tr"))
+                                  .order_by(Domain.id)):
+        if rule_for(domain.normalized_domain) is None:
+            continue
+        job = session.scalar(select(ScanJob).where(ScanJob.domain_id == domain.id)
+                             .order_by(ScanJob.queued_at.desc()).limit(1))
+        if job is None or job.status not in (JobStatus.FAILED, JobStatus.BLOCKED) \
+                or job.error_code == "resolves_to_blocked_ip":
+            continue
+        scan = session.scalar(select(ScanResult).where(ScanResult.domain_id == domain.id)
+                              .order_by(ScanResult.created_at.desc()).limit(1))
+        if scan is None or not scan.resolved_ips:  # never resolved: maybe not registered at all
+            continue
+        if dry_run:
+            from classification.engine import current_assignments
+            from database.models import AssignmentOrigin
+
+            if all(r.origin == AssignmentOrigin.RULE for r in current_assignments(session, domain.id)):
+                done.append(domain.normalized_domain)
+        elif apply_rule(session, domain):
+            done.append(domain.normalized_domain)
+    if done and not dry_run:
+        audit.record(session, action="domains.apply_registry_rules", target_type="registry_rules",
+                     target_id="tr", after={"domains": done[:200], "count": len(done)})
+    return done
+
+
 def _password(args) -> str | None:
     if not getattr(args, "password", False):
         return None
@@ -191,6 +227,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--provider", required=True, help="provider name, e.g. mock")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
 
+    p = sub.add_parser("apply-registry-rules",
+                       help="classify unreadable .gov.tr/.edu.tr/... domains from their registry allocation rule")
+    p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
+
     args = parser.parse_args(argv)
     try:
         with session_factory()() as session, session.begin():
@@ -225,6 +265,10 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"deactivated {domains} domains, cancelled {cancelled} queued scans")
                 else:
                     print(f"dry run: {domains} domains would be deactivated (add --yes to do it)")
+            elif args.command == "apply-registry-rules":
+                names = apply_registry_rules(session, dry_run=not args.yes)
+                verb = "classified" if args.yes else "dry run: would classify"
+                print(f"{verb} {len(names)} domains" + (f": {', '.join(names[:20])}" if names else ""))
             elif args.command == "reclassify-provider":
                 domains, tasks = reclassify_provider(session, args.provider, dry_run=not args.yes)
                 if args.yes:

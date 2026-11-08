@@ -39,6 +39,10 @@ BUILTIN_SOURCES = [
      "attribution": "Cat-egory community"},
     {"slug": "file-import", "name": "Private file import", "kind": SourceKind.FILE_IMPORT, "license": "internal",
      "attribution": None},
+    # Categories that follow from who may register a domain (classification/registry_rules.py). Our own rule set,
+    # derived from the registry's published allocation policy; no third-party data is copied.
+    {"slug": "cat-egory-registry-rules", "name": "Cat-egory registry allocation rules", "kind": SourceKind.RULE,
+     "license": "CC-BY-4.0", "attribution": "Cat-egory contributors"},
 ]
 
 

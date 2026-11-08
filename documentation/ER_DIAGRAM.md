@@ -66,7 +66,7 @@ erDiagram
         varchar category_id FK
         bool is_primary
         numeric confidence
-        varchar origin "ai | human | community | source"
+        varchar origin "ai | human | community | source | rule"
         bigint source_id FK
         bigint ai_prediction_id FK
         bigint assigned_by_id FK

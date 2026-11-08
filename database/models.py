@@ -79,6 +79,7 @@ class AssignmentOrigin(StrEnum):
     HUMAN = "human"
     COMMUNITY = "community"
     SOURCE = "source"  # imported from a third-party list
+    RULE = "rule"  # follows from a registry's allocation policy (e.g. only public bodies get .gov.tr)
 
 
 class ScanReason(StrEnum):
@@ -140,6 +141,7 @@ class SourceKind(StrEnum):
     THREAT_FEED = "threat_feed"
     DATASET = "dataset"
     AI = "ai"
+    RULE = "rule"
 
 
 class SubmissionType(StrEnum):

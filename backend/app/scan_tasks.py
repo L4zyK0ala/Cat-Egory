@@ -211,6 +211,13 @@ def store_result(session: Session, result: CrawlResult, job_id: str, settings: S
         domain.classification_status = ClassificationStatus.UNREACHABLE
     elif result.ok and domain.classification_status == ClassificationStatus.UNREACHABLE:
         domain.classification_status = ClassificationStatus.UNCLASSIFIED
+    if job.status in (JobStatus.FAILED, JobStatus.BLOCKED) and result.resolved_ips \
+            and result.blocked_reason != "resolves_to_blocked_ip":
+        # A live domain we could not read: its suffix may still say what it is (only public bodies get .gov.tr).
+        from classification.registry_rules import apply_rule
+
+        if rule := apply_rule(session, domain):
+            log.info("registry rule applied", extra={"domain": domain.normalized_domain, "suffix": rule.suffix})
     return job.status.value if hasattr(job.status, "value") else str(job.status)
 
 

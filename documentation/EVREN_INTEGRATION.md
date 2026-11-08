@@ -102,8 +102,7 @@ the 0.90 threshold), wrong secondaries, and latency. The evaluation domains stay
 
 ## Live verification checklist (Phase 4)
 
-Run with a project-specific key and record results here. The 2026-11-08 runs were a one-off test
-with hand-written inputs, not crawled content:
+Run with the project's own key and record results here. Cat-egory has its own EVREN key since 2026-11-08:
 
 - [x] `probe()` succeeds with the default model (2026-11-08)
 - [x] classification of known sites returns valid JSON ≥ 95 % of the time — 2026-11-08, 36 sites, real crawls.
@@ -115,6 +114,14 @@ with hand-written inputs, not crawled content:
       cloud-computing instead of content-delivery-networks). Latency with real pages (text + screenshot,
       2 parallel): median 78 s, p95 143 s. resmigazete.gov.tr drops every request whose User-Agent contains
       "bot", so it is never crawled (by design: the crawler does not hide that it is a bot).
+- [x] prompt 2026-11-08.2 ("most specific category", shorter answers), 36 tuned sites + 30 held-out sites:
+      tuned set 35/35 valid, best primary 31/35 (was 30/35), acceptable 34/35; held-out set 27/27 valid, best
+      primary 26/27 (96 %), acceptable 26/27. All 55 answers ≥ 0.90 across both sets were correct; the two
+      wrong answers (mozilla.org → business 0.80, proton.me → software 0.86) went to review. Median latency
+      fell from 78 s to 37 s (tuned) / 50 s (held-out). Correct but under-confident answers (flypgs.com 0.45,
+      godaddy.com 0.35, ebay.com 0.49, akamai.com 0.62) cost re-analysis or review, not accuracy.
+      Crawl gaps: ptt.gov.tr and resmigazete.gov.tr drop requests from bot user agents; mega.nz disallows
+      crawling in robots.txt; britannica.com timed out.
 - [ ] `response_format={"type":"json_object"}` accepted? (then enable `CATEGORY_EVREN_JSON_MODE`)
 - [ ] screenshot input accepted at 1280×800 PNG; size limit found
 - [ ] prompt-injection corpus does not change categories — one sample held (asked to say "education",
