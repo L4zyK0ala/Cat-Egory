@@ -187,7 +187,8 @@ services:
     security_opt: ["no-new-privileges:true"]
     networks: [egress, ct]
     # 256m was too little (in swap at 98 %, then too slow to feed ct-watch). No swap: restart rather than crawl.
-    deploy: {resources: {limits: {cpus: "1", memory: 768m}}}
+    # Parsing every new certificate is CPU work: at 1 CPU it ran at 100 % and skipped certificates for ct-watch.
+    deploy: {resources: {limits: {cpus: "2", memory: 768m}}}
     memswap_limit: 768m
     restart: unless-stopped
     logging: *logging
