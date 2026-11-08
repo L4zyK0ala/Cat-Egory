@@ -41,8 +41,10 @@ dev = ["pytest>=8.3", "respx>=0.22", "ruff>=0.8", "jsonschema>=4.23", "fakeredis
 include = ["common*", "database*", "ai_providers*", "classification*", "crawler*", "integrations*", "feeds*", "backend*"]
 
 [tool.setuptools.package-data]
-classification = ["taxonomy.yaml", "evaluation_set.yaml", "evaluation_holdout.yaml"]
-integrations = ["sources.yaml"]
+# Every YAML file next to the code is runtime data (taxonomy, evaluation sets, source catalogue, CT watchlist);
+# tests/unit/test_packaging.py fails if one would be left out of the installed package.
+classification = ["*.yaml"]
+integrations = ["*.yaml"]
 database = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
 
 [tool.pytest.ini_options]
