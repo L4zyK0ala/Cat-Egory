@@ -106,9 +106,12 @@ Run with a project-specific key and record results here. The 2026-11-08 runs wer
 with hand-written inputs, not crawled content:
 
 - [x] `probe()` succeeds with the default model (2026-11-08)
-- [ ] classification of 20 known sites returns valid JSON ≥ 95 % of the time — partial: 6/6 valid (wikipedia
-      → reference, bbc → news, github → software, ziraatbank → banking, trendyol → e-commerce, an injection test
-      page → food at 0.85, sent to a person)
+- [ ] classification of known sites returns valid JSON ≥ 95 % of the time — **2026-11-08, 36 sites,
+      real crawls: 30/35 valid (86 %)**. Causes: 3× evidence type "title" (now mapped, not rejected), 2× answer
+      cut at 1500 tokens (limit raised to 3000, prompt asks for shorter evidence). To be re-measured.
+      Accuracy of valid answers: 29/30 acceptable primary, 26/30 best primary; all 28 answers ≥ 0.90 were
+      correct; the one wrong answer (mozilla.org → business, 0.88) went to review. Latency with real pages
+      (text + screenshot, 2 parallel): median 88 s, p95 146 s, max 168 s.
 - [ ] `response_format={"type":"json_object"}` accepted? (then enable `CATEGORY_EVREN_JSON_MODE`)
 - [ ] screenshot input accepted at 1280×800 PNG; size limit found
 - [ ] prompt-injection corpus does not change categories — one sample held (asked to say "education",

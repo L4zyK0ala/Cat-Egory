@@ -54,6 +54,21 @@ def test_add_and_report(engine, clean):
     assert "| missing.example.com | not added |" in report
 
 
+def test_report_shows_errors_and_failed_requeue(engine, clean, monkeypatch, capsys):
+    import database.session
+
+    monkeypatch.setattr(database.session, "session_factory", lambda: sessionmaker(bind=engine))
+    sites = [Site("ok.example.com", ["news"]), Site("bad.example.com", ["news"])]
+    monkeypatch.setattr(evaluation, "load_set", lambda path=None: sites)
+    run(engine, make_scan(engine, "ok.example.com"), Scripted())
+    run(engine, make_scan(engine, "bad.example.com"), Scripted(primary_category="made-up"))
+    with Session(engine) as s:
+        report = render(collect(s, sites, "scripted"), "scripted")
+    assert "invalid_category: primary_category: unknown content category 'made-up'" in report
+    assert evaluation.main(["add", "--failed", "--provider", "scripted"]) == 0
+    assert "dry run: 1 sites" in capsys.readouterr().out
+
+
 def test_cli_dry_run(engine, clean, monkeypatch, capsys):
     import database.session
 

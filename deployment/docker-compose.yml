@@ -137,6 +137,7 @@ services:
       CATEGORY_EVREN_SECOND_MODEL: ${CATEGORY_EVREN_SECOND_MODEL:-}
       CATEGORY_EVREN_TIMEOUT_SECONDS: ${CATEGORY_EVREN_TIMEOUT_SECONDS:-180}
       CATEGORY_EVREN_DEADLINE_SECONDS: ${CATEGORY_EVREN_DEADLINE_SECONDS:-270}
+      CATEGORY_EVREN_MAX_OUTPUT_TOKENS: ${CATEGORY_EVREN_MAX_OUTPUT_TOKENS:-3000}
     healthcheck:
       test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
       interval: 60s

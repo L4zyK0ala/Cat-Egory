@@ -1,6 +1,7 @@
 """Measure classification quality on a set of known sites (``evaluation_set.yaml``).
 
     python -m classification.evaluation add [--yes]     # add the sites and queue scans (dry run without --yes)
+    python -m classification.evaluation add --failed --yes   # re-queue only sites without a valid answer
     python -m classification.evaluation report [--provider evren]
 
 ``report`` reads the latest prediction of the given provider for every site, compares its primary category with
@@ -47,6 +48,7 @@ class Row:
     status: str | None = None  # domain classification status
     latency_ms: int | None = None
     output_tokens: int | None = None
+    errors: list[str] = field(default_factory=list)
 
     @property
     def answered(self) -> bool:
@@ -133,6 +135,7 @@ def collect(session: Session, sites: list[Site], provider: str) -> list[Row]:
             row.primary, row.secondary = pred.primary_category_id, list(pred.secondary_category_ids or [])
             row.confidence = float(pred.confidence) if pred.confidence is not None else None
             row.latency_ms, row.output_tokens = pred.latency_ms, pred.output_tokens
+            row.errors = [str(e) for e in (pred.validation_errors or [])]
     return rows
 
 
@@ -168,6 +171,8 @@ def render(rows: list[Row], provider: str) -> str:
     for r in rows:
         if not r.answered:
             verdict = r.validation or "no answer"
+            if r.errors:
+                verdict += ": " + "; ".join(r.errors)[:120].replace("|", "/")
         elif r.strict:
             verdict = "correct"
         elif r.lenient:
@@ -188,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("add", help="add the evaluation sites and queue scans")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
+    p.add_argument("--failed", action="store_true", help="only sites whose latest answer is missing or invalid")
+    p.add_argument("--provider", default="evren", help="provider whose answers --failed looks at")
     p = sub.add_parser("report", help="print a Markdown report")
     p.add_argument("--provider", default="evren")
     p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
@@ -202,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     with session_factory()() as session, session.begin():
         if args.command == "add":
+            if args.failed:
+                sites = [r.site for r in collect(session, sites, args.provider) if not r.answered]
             new, queued = add(session, sites, dry_run=not args.yes)
             if args.yes:
                 print(f"{len(sites)} sites: {new} new domains, {queued} scans queued")

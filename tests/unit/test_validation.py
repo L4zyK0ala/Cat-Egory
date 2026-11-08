@@ -41,7 +41,7 @@ def test_invalid_json():
 
 @pytest.mark.parametrize("over", [
     {"confidence": 1.7}, {"confidence": "high"}, {"primary_category": None}, {"site_type": "spaceship"},
-    {"evidence": [{"type": "rumour", "observation": "x"}]}, {"secondary_categories": ["software"] * 6},
+    {"secondary_categories": "software"}, {"evidence": "lots"},
 ])
 def test_schema_violations(over):
     assert parse_answer(answer(**over), TAX, "example.com").status is ValidationStatus.INVALID_SCHEMA
@@ -53,7 +53,6 @@ def test_schema_violations(over):
     {"primary_category": "phishing"},  # risk id used as content
     {"secondary_categories": ["made-up"]},
     {"risk_categories": ["gambling"]},  # content id used as risk
-    {"secondary_categories": ["information-technology"]},  # repeats primary
     {"domain": "other.com"},
 ])
 def test_taxonomy_violations(over):
@@ -64,3 +63,26 @@ def test_taxonomy_violations(over):
 
 def test_extra_keys_ignored():
     assert parse_answer(answer(note="extra"), TAX, "example.com").status is ValidationStatus.VALID
+
+
+def test_odd_evidence_labels_do_not_reject_a_classification():
+    """Seen live: "title" instead of "metadata" made 3 of 35 correct answers invalid."""
+    parsed = parse_answer(answer(evidence=[
+        {"type": "title", "observation": "Page title is 'Benim Bankam'."},
+        {"type": "Structured-Data", "observation": "BankOrCreditUnion"},
+        {"type": "rumour", "observation": "dropped"}, {"type": "text", "observation": "  "},
+        {"type": "text", "observation": "x" * 900}]), TAX, "example.com")
+    assert parsed.status is ValidationStatus.VALID
+    assert [e.type.value for e in parsed.output.evidence] == ["metadata", "metadata", "text"]
+    assert parsed.output.evidence[0].observation == "Page title is 'Benim Bankam'."
+    assert len(parsed.output.evidence[2].observation) == 500
+
+
+def test_secondary_categories_are_tidied_not_rejected():
+    parsed = parse_answer(answer(secondary_categories=[
+        "information-technology", "software", "software", "business", "cloud-computing", "artificial-intelligence"]),
+        TAX, "example.com")
+    assert parsed.status is ValidationStatus.VALID
+    assert parsed.output.secondary_categories == ["software", "business", "cloud-computing"]  # primary removed, max 3
+    unknown = parse_answer(answer(secondary_categories=["made-up", "software"]), TAX, "example.com")
+    assert unknown.status is ValidationStatus.INVALID_CATEGORY  # unknown IDs are still never guessed

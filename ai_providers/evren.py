@@ -44,7 +44,7 @@ class EvrenProvider(AIProvider):
     name = "evren"
 
     def __init__(self, *, api_key: str | None, base_url: str, model: str, timeout: float = 180.0,
-                 deadline: float = 270.0, json_mode: bool = False, max_output_tokens: int = 1500,
+                 deadline: float = 270.0, json_mode: bool = False, max_output_tokens: int = 3000,
                  max_attempts: int = 3, client: httpx.Client | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._api_key = api_key

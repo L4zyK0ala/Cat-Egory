@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     evren_api_key: SecretStr | None = Field(default=None, description="Bearer token for the EVREN LLM gateway")
     evren_model: str = "qwen3.8-flash-next"
     evren_timeout_seconds: float = Field(default=180.0, description="read timeout of one HTTP request to EVREN")
+    evren_max_output_tokens: int = Field(
+        default=3000, description="answer token limit; 1500 cut two of 35 real answers short (2026-11-08)")
     evren_deadline_seconds: float = Field(
         default=270.0, description="total time for one EVREN call incl. retries and waiting for an in-flight request; "
                                    "keep 2x below the classify task's 600 s soft limit (second opinion)")
