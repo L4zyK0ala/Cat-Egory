@@ -220,6 +220,27 @@ def supersede_reviews(session: Session, domain: Domain, note: str, *, reasons=SU
     return len(tasks)
 
 
+BRAND_WATCH_SOURCE = "ct-brand-watch"  # integrations/ct_watch.py
+
+
+def lookalike_reason(session: Session, domain: Domain) -> str | None:
+    """Why this domain may imitate a brand or a popular site, or None. Such domains always go to a person."""
+    from common.config import get_settings
+    from database.models import DataSource, DomainSourceRecord
+
+    if session.scalar(select(DomainSourceRecord.id).join(DataSource, DataSource.id == DomainSourceRecord.source_id)
+                      .where(DomainSourceRecord.domain_id == domain.id,
+                             DataSource.slug == BRAND_WATCH_SOURCE).limit(1)) is not None:
+        return "brand_lookalike"
+    top_n = get_settings().lookalike_top_n
+    if top_n > 0:
+        from integrations.lookalike import top_index
+
+        if hit := top_index(session, top_n).check(domain.normalized_domain):
+            return f"lookalike_of:{hit.target}"[:64]
+    return None
+
+
 # ----------------------------------------------------------------------------- decision
 
 
@@ -263,6 +284,14 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
     human_rows = [r for r in current_assignments(session, domain.id)
                   if r.origin in (AssignmentOrigin.HUMAN, AssignmentOrigin.COMMUNITY)]
     human_primary = next((r.category_id for r in human_rows if r.is_primary), None)
+
+    if human_primary is None and (lookalike := lookalike_reason(session, domain)):
+        # A possible copy of a known brand or popular site: a convincing phishing page would otherwise be published
+        # as "banking". A person decides, however sure the model is.
+        task = open_review(session, domain, first, lookalike)
+        domain.classification_status = _review_status(domain)
+        outcome.action, outcome.reason, outcome.review_task_id = "review", task.reason, task.id
+        return outcome
 
     if decision == Decision.REANALYZE:
         _mark_reanalyze(domain, reanalyze_days)

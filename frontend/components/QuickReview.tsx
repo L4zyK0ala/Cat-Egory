@@ -14,11 +14,19 @@ type Action = "approve" | "set" | "reject";
 
 const REASONS: Record<string, string> = {
   verification_sample: "published by the AI — verify",
+  brand_lookalike: "looks like a Turkish brand — check for phishing",
   low_confidence: "model unsure", model_requested_review: "model asked for a person",
   needs_extra_validation: "needs a second opinion", model_disagreement: "two models disagree",
   prompt_injection: "page tries to instruct the model", risk_claim: "model claims a threat",
   conflicts_with_human_decision: "conflicts with a human decision",
 };
+
+function reasonText(reason: string) {
+  if (reason.startsWith("lookalike_of:")) return `looks like ${reason.slice(13)} — check for phishing`;
+  return REASONS[reason] ?? reason.replaceAll("_", " ");
+}
+
+const isLookalike = (reason: string) => reason === "brand_lookalike" || reason.startsWith("lookalike_of:");
 
 function typing(target: EventTarget | null) {
   const el = target as HTMLElement | null;
@@ -117,7 +125,7 @@ function Quick({ api }: { api: string }) {
         <div className="panel quick-card">
           <div className="row">
             <h2 className="quick-domain">{current.domain}</h2>
-            <span className="badge pending">{REASONS[current.reason] ?? current.reason.replaceAll("_", " ")}</span>
+            <span className="badge pending">{reasonText(current.reason)}</span>
           </div>
           {current.page_title && <p className="muted quick-title">“{current.page_title}”</p>}
           <div className="grid2">
@@ -146,7 +154,7 @@ function Quick({ api }: { api: string }) {
                        onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLInputElement).blur(); }} />
                 <datalist id="quick-cats">{content.map((c) => <option key={c.id} value={c.name}>{c.id}</option>)}</datalist>
               </form>
-              <details>
+              <details key={current.id} open={isLookalike(current.reason)}>
                 <summary className="muted">Confirm a security threat (only with evidence)</summary>
                 <div className="row">{risks.map((c) => (
                   <label key={c.id} className="muted"><input type="checkbox" checked={risk.includes(c.id)}

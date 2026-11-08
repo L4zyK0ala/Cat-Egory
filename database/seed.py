@@ -43,6 +43,10 @@ BUILTIN_SOURCES = [
     # derived from the registry's published allocation policy; no third-party data is copied.
     {"slug": "cat-egory-registry-rules", "name": "Cat-egory registry allocation rules", "kind": SourceKind.RULE,
      "license": "CC-BY-4.0", "attribution": "Cat-egory contributors"},
+    # Host names from public Certificate Transparency logs that look like Turkish brands (integrations/ct_watch.py).
+    # Names are facts from public logs; the selection is ours.
+    {"slug": "ct-brand-watch", "name": "Certificate Transparency brand watch", "kind": SourceKind.DATASET,
+     "license": "CC-BY-4.0", "attribution": "Cat-egory contributors"},
 ]
 
 

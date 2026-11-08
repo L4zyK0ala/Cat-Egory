@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 const RISK_LABELS: Record<string, string> = {
   malware: "Malware", phishing: "Phishing", scam: "Scam", fraud: "Fraud", command_and_control: "Command & control",
-  malicious_downloads: "Malicious downloads", suspicious: "Suspicious",
+  malicious_downloads: "Malicious downloads", suspicious: "Suspicious", lookalike_domain: "Look-alike domain",
 };
 
 function when(value: string | null) {

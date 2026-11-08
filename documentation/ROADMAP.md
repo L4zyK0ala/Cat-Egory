@@ -113,6 +113,9 @@ Done: HTTP security test suite (headers, error envelope, hostile input, key hand
 Done later: Chromium sandbox profiles (verified on the stack); adaptive re-scan scheduling (risk, change,
 verification and reachability decide the interval; `category.scan.schedule` queues due domains).
 
+Done later (2026-11-08): Certificate-transparency brand watch (certstream + ct-watch, look-alike matching,
+forced human review), public/admin split, scheduler heartbeats and alerts, discovery under a daily budget.
+
 Open: TLS reverse proxy and production deployment,
 Alertmanager, off-host backups + restore drill on the real stack, horizontal scaling, ZAP/container scans.
 

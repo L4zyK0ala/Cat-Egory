@@ -6,6 +6,7 @@ from alembic.config import Config
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
+from classification.taxonomy import default_taxonomy
 from common.domains import normalize_domain
 from database.models import (
     AssignmentOrigin,
@@ -40,7 +41,7 @@ def test_migrations_match_models(engine):
 
 
 def test_seeded_reference_data(session):
-    assert session.scalar(select(TaxonomyVersion.version).where(TaxonomyVersion.is_current)) == "1.0.0"
+    assert session.scalar(select(TaxonomyVersion.version).where(TaxonomyVersion.is_current)) == default_taxonomy().version
     assert session.get(Category, "phishing").kind == "risk"
     assert session.get(Category, "banking").parent_id == "group-business-technology"
     assert session.scalar(select(DataSource).where(DataSource.slug == "cat-egory-ai")).license.slug == "CC-BY-4.0"

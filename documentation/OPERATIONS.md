@@ -68,6 +68,7 @@ into the weaker mode with `-f deployment/docker-compose.nosandbox.yml`; do not c
 | `category.feeds.build` | 1 h | rebuilds feeds; only changed files get a new version |
 | `category.ingest.sync_due` | 1 h | syncs approved third-party sources whose interval elapsed |
 | `category.discovery.queue` | 15 min | first scans of domains from discovery sources, under a daily budget |
+| `ct-watch` (service, not Celery) | continuous | certificate names → brand look-alikes → priority-3 scans |
 | `category.maintenance.provider_health` | 5 min | configuration-level AI provider check (no paid call) |
 
 Re-scan interval, chosen after every scan (settings `CATEGORY_SCAN_INTERVAL_*`):
@@ -120,6 +121,30 @@ For domains scanned before the rules existed:
 $DC exec api python -m backend.cli apply-registry-rules          # dry run
 $DC exec api python -m backend.cli apply-registry-rules --yes
 ```
+
+### Certificate-transparency brand watch (phishing early warning)
+
+`certstream` (certstream-server-go v1.10.1, MIT, pinned by digest) reads the public CT logs Chrome trusts, classic
+and static-ct/tiled, and relays new certificate names over the internal `ct` network. **Bandwidth ~15 Mbit/s
+continuously (~150 GB/day); nothing is stored** — read-only file system, no volume, recovery/catch-up and Kafka
+forwarding off (`deployment/certstream/config.yaml`). `ct-watch` (our image, no internet access) matches every name
+against `integrations/ct_watchlist.yaml` (look-alike folding: Turkish letters, Cyrillic/Greek look-alikes, 0/1/l,
+rn→m; official domains and .gov.tr/.edu.tr/… never match) and adds matches from the source `ct-brand-watch` with a
+priority-3 scan. Each name at most once per 30 days, at most `CATEGORY_CT_WATCH_MAX_PER_HOUR` (30) per hour.
+**These domains always go to the review queue (reason `brand_lookalike`)**, however confident the model is: a
+phishing copy of a bank would otherwise be published as "banking". Liveness: heartbeat `ct-watch.stream`, alert
+`CtWatchStopped`. To pause it: `$DC stop certstream ct-watch`.
+
+### Look-alike domains (homographs and typos of popular sites)
+
+`integrations/lookalike.py` protects the top `CATEGORY_LOOKALIKE_TOP_N` (1000) domains of `majestic-million-top`
+without a hand-written list: a name whose label reads the same once look-alike characters are folded
+(`аmazon.com` with a Cyrillic а, `amaz0n.net`, `googIe.com`) or differs by one letter with the same suffix
+(`amazom.com`, `gooogle.com`, labels ≥ 6 characters) is a look-alike. TLD swaps (`amazon.de`) are not flagged:
+they are usually the owner's own sites. Checked on certificate names (ct-watch) and whenever any domain is
+classified; a hit always goes to the review queue (reason `lookalike_of:<target>`), where the reviewer can confirm
+the risk category **`lookalike-domain`** (taxonomy 1.1.0, code 908; feed `lookalike-domain` and the RPZ). Owners
+often register their own look-alikes defensively, so nothing is flagged without a person.
 
 ## 3. Third-party sources
 

@@ -1,8 +1,11 @@
+from classification.taxonomy import default_taxonomy
+
+
 def test_categories(client):
     r = client.get("/api/v1/categories")
     assert r.status_code == 200
     body = r.json()
-    assert body["taxonomy_version"] == "1.0.0"
+    assert body["taxonomy_version"] == default_taxonomy().version
     assert body["license"] == "CC-BY-4.0"
     ids = {c["id"] for c in body["items"]}
     assert {"gambling", "phishing", "group-security-threats"} <= ids

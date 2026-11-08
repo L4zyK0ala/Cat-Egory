@@ -4,8 +4,8 @@
 #   * Every change bumps `version` (semver): new category = minor, deprecation/redefinition = major, wording = patch.
 #   * `kind: risk` categories form the separate security-threat classification.
 #   * Groups (`group: true`) organise the tree and are never assigned to a domain.
-version: "1.0.0"
-released: "2026-11-07"
+version: "1.1.0"
+released: "2026-11-08"
 license: "CC-BY-4.0"
 
 categories:
@@ -170,3 +170,5 @@ categories:
      description: "Indicators of malicious intent without enough evidence for a specific threat type."}
   - {id: malicious-downloads, code: 907, parent: group-security-threats, kind: risk, name: "Malicious Downloads",
      description: "Offers downloads that are known or likely to be harmful."}
+  - {id: lookalike-domain, code: 908, parent: group-security-threats, kind: risk, name: "Look-alike Domain",
+     description: "Imitates a well-known site or brand in its name: look-alike characters (a Cyrillic а in amazon), typos or added words. Set only after review; the owner's own defensive registrations are not flagged."}

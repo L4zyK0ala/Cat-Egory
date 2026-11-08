@@ -42,3 +42,7 @@ groups:
         expr: category_heartbeats_up == 0
         for: 10m
         annotations: {summary: "API cannot read task heartbeats from Redis"}
+      - alert: CtWatchStopped
+        expr: time() - category_task_last_success_timestamp_seconds{task="ct-watch.stream"} > 600
+        for: 5m
+        annotations: {summary: "The certificate-transparency watch has not received names for 10 minutes"}

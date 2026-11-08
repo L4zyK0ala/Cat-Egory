@@ -5,7 +5,7 @@ export type Category = {
 export type DomainCategory = { id: string; code: number; name: string; primary: boolean; confidence: number | null; origin: string };
 export type Risk = {
   malware: boolean; phishing: boolean; scam: boolean; fraud: boolean; command_and_control: boolean;
-  malicious_downloads: boolean; suspicious: boolean; sources: { type: string; source: string; first_seen: string }[];
+  malicious_downloads: boolean; suspicious: boolean; lookalike_domain: boolean; sources: { type: string; source: string; first_seen: string }[];
 };
 export type DomainInfo = {
   domain: string; display_domain: string; registrable_domain: string; categories: DomainCategory[]; risk: Risk;

@@ -162,6 +162,7 @@ services:
       CATEGORY_DISCOVERY_DAILY_BUDGET: ${CATEGORY_DISCOVERY_DAILY_BUDGET:-200}
       CATEGORY_DISCOVERY_BATCH_SIZE: ${CATEGORY_DISCOVERY_BATCH_SIZE:-10}
       CATEGORY_DISCOVERY_MAX_QUEUED: ${CATEGORY_DISCOVERY_MAX_QUEUED:-20}
+      CATEGORY_LOOKALIKE_TOP_N: ${CATEGORY_LOOKALIKE_TOP_N:-1000}
     healthcheck:
       test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
       interval: 60s
@@ -172,6 +173,40 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "2", memory: 1g}}}
+
+  # Certificate Transparency relay (third-party image, pinned by digest). Downloads new certificates from the
+  # public CT logs (~15 Mbit/s, nothing stored: read-only file system, no volume) and serves host names to
+  # ct-watch on the internal `ct` network. No published ports, no access to the database or Redis.
+  certstream:
+    image: 0rickyy0/certstream-server-go:v1.10.1@sha256:8938600fa61acb807c56bce05229216c3101a65e9aa976082996f40c3b56a633
+    volumes: ["./certstream/config.yaml:/app/config.yaml:ro"]
+    user: "65534:65534"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [egress, ct]
+    deploy: {resources: {limits: {cpus: "0.5", memory: 256m}}}
+    restart: unless-stopped
+    logging: *logging
+
+  # Matches every new certificate name against Turkish brands (integrations/ct_watchlist.yaml) and queues
+  # look-alikes for scanning; they always go to a person. No internet access.
+  ct-watch:
+    <<: *backend
+    command: ["python", "-m", "integrations.ct_watch"]
+    environment:
+      <<: *backend-env
+      CATEGORY_CERTSTREAM_URL: ws://certstream:8080/domains-only
+      CATEGORY_CT_WATCH_MAX_PER_HOUR: ${CATEGORY_CT_WATCH_MAX_PER_HOUR:-30}
+      CATEGORY_LOOKALIKE_TOP_N: ${CATEGORY_LOOKALIKE_TOP_N:-1000}
+    healthcheck: {disable: true}   # no web server; liveness is the ct-watch.stream heartbeat (alert CtWatchStopped)
+    networks: [core, ct]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      certstream: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "0.5", memory: 256m}}}
 
   # SSRF-enforcing forward proxy: the crawler's only route to the internet.
   egress-proxy:
@@ -315,6 +350,8 @@ networks:
     internal: true
   crawl:
     internal: true
+  ct:
+    internal: true   # certstream <-> ct-watch only
   egress: {}
   edge: {}
 

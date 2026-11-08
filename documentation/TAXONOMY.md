@@ -1,7 +1,7 @@
 # Taxonomy
 
 The category tree lives in [`classification/taxonomy.yaml`](../classification/taxonomy.yaml) (CC BY 4.0) and
-is loaded into the `categories` table by `python -m database.seed`. Current version: **1.0.0**.
+is loaded into the `categories` table by `python -m database.seed`. Current version: **1.1.0** (2026-11-08: added the risk category `lookalike-domain`, code 908).
 
 ## Structure
 

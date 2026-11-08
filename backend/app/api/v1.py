@@ -74,6 +74,7 @@ class RiskOut(BaseModel):
     command_and_control: bool = False
     malicious_downloads: bool = False
     suspicious: bool = False
+    lookalike_domain: bool = False
     sources: list[dict] = []
 
 
@@ -175,7 +176,8 @@ def domain_view(session: Session, row: Domain) -> tuple[DomainOut, str]:
     risk = RiskOut()
     for threat, source_slug in threats:
         attr = {ThreatType.COMMAND_AND_CONTROL: "command_and_control",
-                ThreatType.MALICIOUS_DOWNLOADS: "malicious_downloads"}.get(threat.threat_type, str(threat.threat_type))
+                ThreatType.MALICIOUS_DOWNLOADS: "malicious_downloads",
+                ThreatType.LOOKALIKE_DOMAIN: "lookalike_domain"}.get(threat.threat_type, str(threat.threat_type))
         setattr(risk, attr, True)
         risk.sources.append({"type": str(threat.threat_type), "source": source_slug,
                              "first_seen": threat.first_seen.isoformat()})

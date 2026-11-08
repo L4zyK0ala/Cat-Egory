@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from classification.taxonomy import default_taxonomy
 from database.models import AssignmentOrigin, DataSource, Domain, DomainCategory, ThreatIntelligence, ThreatType
 
 
@@ -15,7 +16,7 @@ def test_domain_lookup(client, engine, admin):
     assert body["domain"] == "xn--bcher-kva.de" and body["display_domain"] == "bücher.de"
     assert body["classification_status"] == "unclassified" and body["categories"] == []
     assert body["risk"]["phishing"] is False and body["data_source"] is None
-    assert body["taxonomy_version"] == "1.0.0"
+    assert body["taxonomy_version"] == default_taxonomy().version
 
 
 def test_domain_lookup_errors(client, clean):

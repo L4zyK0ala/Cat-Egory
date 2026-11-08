@@ -132,6 +132,7 @@ class ThreatType(StrEnum):
     COMMAND_AND_CONTROL = "command-and-control"
     MALICIOUS_DOWNLOADS = "malicious-downloads"
     SUSPICIOUS = "suspicious"
+    LOOKALIKE_DOMAIN = "lookalike-domain"
 
 
 class SourceKind(StrEnum):

@@ -29,7 +29,7 @@ domains ──► scan queue ──► sandboxed Chromium ──► page text, H
                       open database ──► REST API, web UI, feeds (TXT / hosts / CSV / JSON / RPZ)
 ```
 
-- **Taxonomy:** 58 content categories and 7 security-risk categories, versioned and never renumbered
+- **Taxonomy:** 58 content categories and 8 security-risk categories (incl. look-alike domains), versioned and never renumbered
   ([TAXONOMY.md](documentation/TAXONOMY.md)).
 - **Trust rules:** the AI never overrides a human decision. Security-risk flags come only from people or from
   licensed threat feeds, never from a model's claim. Pages that try to instruct the model ("ignore previous

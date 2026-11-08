@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     scan_interval_risk_days: int = 1        # active threat record: re-check daily
     scan_interval_unreachable_days: int = 7 # broken domains are re-checked weekly
     scan_interval_blocked_days: int = 30    # robots.txt / SSRF policy refused
+    # certificate-transparency brand watch (integrations/ct_watch.py)
+    certstream_url: str = "ws://certstream:8080/domains-only"
+    lookalike_top_n: int = Field(default=1000, ge=0, description="protect the top N domains of majestic-million-top "
+                                                              "against homographs and typos; 0 = off")
+    ct_watch_max_per_hour: int = Field(default=30, ge=1, description="look-alike domains queued per hour at most")
     # discovery (first scans of domains from discovery sources; backend/app/discovery.py)
     discovery_daily_budget: int = Field(default=200, ge=0, description="new domains queued per UTC day; 0 = off")
     discovery_batch_size: int = Field(default=10, ge=1, description="new domains queued per 15-minute run")
