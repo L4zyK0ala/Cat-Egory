@@ -164,3 +164,15 @@ img.shot { max-width: 100%; border: 1px solid var(--line); border-radius: 12px; 
 @keyframes blink { 0%, 92%, 100% { transform: scaleY(0); } 95% { transform: scaleY(1); } }
 @keyframes bob { 0%, 100% { transform: translateY(0) rotate(8deg); } 50% { transform: translateY(-8px) rotate(-4deg); } }
 @keyframes swish { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-6deg); } }
+
+/* ---------- quick review */
+kbd { font: 600 11px var(--mono); padding: 1px 6px; border-radius: 6px; border: 1px solid currentColor; opacity: .75; margin-left: 4px; }
+.quick-bar { justify-content: space-between; }
+.quick-bar .keys kbd { margin: 0 2px; }
+.quick-card h2.quick-domain { margin: 0; font: 700 1.5rem var(--mono); word-break: break-all; }
+.quick-title { margin: 6px 0 14px; }
+.chip.quick-main { font-size: 1rem; padding: 6px 12px; }
+.quick-picker { flex: 1 1 260px; min-width: 0; }
+ul.evidence { margin: 0; padding-left: 18px; font-size: 14px; }
+ul.evidence .mono { color: var(--muted); margin-right: 6px; }
+details summary { cursor: pointer; font-size: 14px; }

@@ -204,7 +204,7 @@ def open_review(session: Session, domain: Domain, prediction: AIPrediction | Non
 
 # Reasons that only say "the model was not sure". A later confident (or two-model) classification answers them.
 # Risk claims, injection and model-requested reviews stay open for a person even then.
-SUPERSEDABLE_REASONS = ("low_confidence", "needs_extra_validation", "model_disagreement")
+SUPERSEDABLE_REASONS = ("low_confidence", "needs_extra_validation", "model_disagreement", "verification_sample")
 
 
 def supersede_reviews(session: Session, domain: Domain, note: str, *, reasons=SUPERSEDABLE_REASONS) -> int:

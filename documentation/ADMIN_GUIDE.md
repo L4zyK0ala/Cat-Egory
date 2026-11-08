@@ -91,7 +91,11 @@ $DC exec postgres psql -U category -c "SELECT occurred_at, action, target_id, af
 
 ## Review queue (AI classifications)
 
-Admin UI (`:3012` on `CATEGORY_ADMIN_BIND`): `/admin/reviews` (enter an admin or moderator key). API:
+Admin UI (`:3012` on `CATEGORY_ADMIN_BIND`): `/admin/reviews` (enter an admin or moderator key). The page opens in **quick mode**: one item at a
+time, keys `A` approve, `S` type a category then Enter, `R` reject, `N` skip (shortcuts are off while a text field
+has focus; there is deliberately no Enter-to-approve). *Add 20 published AI answers to verify* queues a random
+sample of AI classifications that were published without a person (reason `verification_sample`): approving or
+correcting them makes them human-verified data and feeds the calibration report. `?view=list` shows the old list. API:
 
 ```bash
 curl -s "$API/api/v1/admin/reviews?limit=10" -H "Authorization: Bearer $CATEGORY_KEY"

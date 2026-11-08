@@ -343,3 +343,23 @@ def test_feed_build_trigger(client, admin, make_key, monkeypatch):
     assert sent == ["category.feeds.build"]
     contributor, _ = make_key("contributor")
     assert client.post("/api/v1/admin/feeds/build", headers=contributor).status_code == 403
+
+
+def test_verification_sample_turns_published_ai_answers_into_verified_data(engine, clean, client, admin):
+    for name in ("a.example.com", "b.example.com", "c.example.com"):
+        run(engine, make_scan(engine, name), Scripted())                     # published by the AI
+    run(engine, make_scan(engine, "unsure.example.com"), Scripted(confidence=0.6))  # already in review
+    r = client.post("/api/v1/admin/reviews/sample", headers=admin, json={"n": 50})
+    assert r.status_code == 200 and r.json() == {"created": 3}
+    assert client.post("/api/v1/admin/reviews/sample", headers=admin, json={"n": 50}).json() == {"created": 0}
+    tasks = client.get("/api/v1/admin/reviews?limit=50", headers=admin).json()["items"]
+    sample = [t for t in tasks if t["reason"] == "verification_sample"]
+    assert {t["domain"] for t in sample} == {"a.example.com", "b.example.com", "c.example.com"}
+    assert all(t["prediction"]["primary_category"] == "news" for t in sample)
+
+    first = sample[0]
+    client.post(f"/api/v1/admin/reviews/{first['id']}/decision", headers=admin, json={"action": "approve"})
+    assert domain(engine, first["domain"]).classification_status == ClassificationStatus.VERIFIED
+    assert client.get("/api/v1/stats").json()["verified_domains"] == 1
+    assert client.post("/api/v1/admin/reviews/sample", headers=admin, json={"n": 0}).status_code == 422
+    assert client.post("/api/v1/admin/reviews/sample", json={"n": 5}).status_code == 401

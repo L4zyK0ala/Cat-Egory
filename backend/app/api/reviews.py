@@ -6,12 +6,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from ai_providers.registry import available
 from classification import calibration
-from classification.engine import REVIEW_SOURCE, apply_categories, record_threats
+from classification.engine import REVIEW_SOURCE, apply_categories, open_review, record_threats
 from classification.taxonomy import default_taxonomy
 from common.config import get_settings
 from common.domains import DomainError, normalize_domain
@@ -20,6 +20,7 @@ from database.models import (
     AssignmentOrigin,
     ClassificationStatus,
     Domain,
+    DomainCategory,
     Evidence,
     ReviewStatus,
     ReviewTask,
@@ -132,6 +133,32 @@ def list_reviews(status: Literal["open", "done", "skipped"] = "open", limit: int
     tasks = list(session.scalars(stmt))
     next_cursor = tasks[limit - 1].id if len(tasks) > limit else None
     return ReviewPage(items=[_review_out(session, t) for t in tasks[:limit]], next_cursor=next_cursor)
+
+
+class SampleIn(BaseModel):
+    n: int = Field(20, ge=1, le=50, description="how many published AI classifications to add for verification")
+
+
+@router.post("/reviews/sample", summary="Queue a random sample of published AI classifications for human verification")
+def sample_for_verification(body: SampleIn, request: Request, principal: Principal = Depends(require("reviews:write")),
+                            session: Session = Depends(get_session)) -> dict:
+    """Confident AI answers are published without a person. Verifying a random sample of them turns them into
+    human-verified data and measures the model's real accuracy (calibration report)."""
+    open_task = exists(select(ReviewTask.id).where(ReviewTask.domain_id == Domain.id,
+                                                   ReviewTask.status == ReviewStatus.OPEN))
+    rows = session.execute(
+        select(Domain, DomainCategory.ai_prediction_id)
+        .join(DomainCategory, DomainCategory.domain_id == Domain.id)
+        .where(Domain.is_active, Domain.classification_status == ClassificationStatus.CLASSIFIED,
+               DomainCategory.valid_to.is_(None), DomainCategory.is_primary,
+               DomainCategory.origin == AssignmentOrigin.AI, DomainCategory.ai_prediction_id.is_not(None), ~open_task)
+        .order_by(func.random()).limit(body.n)).all()
+    for domain, prediction_id in rows:
+        open_review(session, domain, session.get(AIPrediction, prediction_id), "verification_sample")
+    audit.record(session, action="review.sample", target_type="review", after={"created": len(rows)},
+                 principal=principal, request_id=getattr(request.state, "request_id", None))
+    session.commit()
+    return {"created": len(rows)}
 
 
 @router.get("/reviews/{task_id}", response_model=ReviewOut, summary="One review task")

@@ -10,7 +10,7 @@ type Review = { id: number; domain: string; reason: string; current_primary: str
     evidence: { type: string; observation: string }[] } | null };
 type Cat = { id: string; name: string; kind: string; is_group: boolean };
 
-function Screenshot({ api, domain }: { api: string; domain: string }) {
+export function Screenshot({ api, domain }: { api: string; domain: string }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     let url: string | null = null;
