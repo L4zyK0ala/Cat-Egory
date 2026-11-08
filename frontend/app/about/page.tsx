@@ -48,8 +48,10 @@ export default function About() {
 
       <h2>Who We Are</h2>
       <div className="panel stack">
-        <p>Cat-Egory is an independent open-source project started in Türkiye. It pays special attention to Turkish
-          websites and to an early warning for phishing sites that imitate Turkish banks and public services.</p>
+        <p>Cat-Egory is an independent open-source project started in Türkiye by <b>Ahmet Çetin</b>
+          (<a href="https://github.com/L4zyK0ala" rel="noopener">@L4zyK0ala</a> on GitHub), who also maintains it. It pays
+          special attention to Turkish websites and to an early warning for phishing sites that imitate Turkish banks and
+          public services.</p>
         <p className="muted">Classification uses language models served by the EVREN platform. Cat-Egory is not
           affiliated with or endorsed by EVREN.</p>
       </div>
