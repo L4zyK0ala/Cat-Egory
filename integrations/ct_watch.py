@@ -16,6 +16,7 @@ import json
 import logging
 import random
 import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import redis
@@ -95,44 +96,114 @@ def handle(names: list[str], watchlist: Watchlist, client: redis.Redis, settings
     return store(scan(names, watchlist, top), client, settings, session_factory)
 
 
-async def run(settings: Settings) -> None:  # pragma: no cover - network loop, exercised in the live stack
+@dataclass
+class Stats:
+    messages: int = 0     # received from certstream
+    names: int = 0        # scanned
+    hits: int = 0         # look-alikes found
+    queued: int = 0       # scans queued (after dedupe and the hourly cap)
+    dropped: int = 0      # messages dropped because our own queue was full
+
+
+class Pipeline:
+    """Reader → bounded queue → matcher → hits queue → writer. The reader never waits for matching, and matching
+    never waits for Redis or the database, so short bursts from certstream are absorbed instead of skipped."""
+
+    def __init__(self, watchlist: Watchlist, store_fn, *, queue_size: int = 50_000, top: TopIndex | None = None):
+        self.watchlist, self.store_fn, self.top = watchlist, store_fn, top
+        self.messages: asyncio.Queue[str | bytes] = asyncio.Queue(maxsize=queue_size)
+        self.hits: asyncio.Queue[tuple[str, str]] = asyncio.Queue(maxsize=10_000)
+        self.stats = Stats()
+
+    async def read(self, ws) -> None:
+        async for message in ws:
+            self.stats.messages += 1
+            try:
+                self.messages.put_nowait(message)
+            except asyncio.QueueFull:
+                self.stats.dropped += 1
+
+    async def match(self) -> None:
+        handled = 0
+        while True:
+            message = await self.messages.get()
+            try:
+                data = json.loads(message)
+            except ValueError:
+                continue
+            names = data.get("data") if isinstance(data, dict) else None
+            if isinstance(names, list):
+                names = [n for n in names if isinstance(n, str)]
+                self.stats.names += len(names)
+                for hit in scan(names, self.watchlist, self.top):
+                    self.stats.hits += 1
+                    try:
+                        self.hits.put_nowait(hit)
+                    except asyncio.QueueFull:
+                        pass  # the hourly cap would refuse these anyway
+            handled += 1
+            if handled % 200 == 0:
+                await asyncio.sleep(0)  # a non-empty queue never suspends: let the reader run
+
+    async def write(self) -> None:
+        while True:
+            batch = [await self.hits.get()]
+            while not self.hits.empty() and len(batch) < 200:
+                batch.append(self.hits.get_nowait())
+            try:
+                self.stats.queued += await asyncio.to_thread(self.store_fn, batch)
+            except Exception as exc:  # noqa: BLE001 - keep the pipeline alive; the names may come back later
+                log.warning("storing look-alikes failed", extra={"error": type(exc).__name__, "count": len(batch)})
+
+
+async def run(settings: Settings) -> None:  # pragma: no cover - network loop; Pipeline is tested on its own
     import websockets
 
     from database.session import session_factory
 
-    watchlist = default_watchlist()
     client = redis.Redis.from_url(settings.redis_url, socket_timeout=5, socket_connect_timeout=5)
     factory = session_factory()
-    top, top_at = TopIndex(), 0.0
+    pipe = Pipeline(default_watchlist(), lambda hits: store(hits, client, settings, factory))
+    tasks = [asyncio.create_task(pipe.match()), asyncio.create_task(pipe.write())]
+
+    async def tick() -> None:
+        last, top_at = Stats(), 0.0
+        while True:
+            if settings.lookalike_top_n and time.monotonic() - top_at > 3600:  # the source syncs weekly
+                try:
+                    pipe.top = await asyncio.to_thread(_load_top, factory, settings.lookalike_top_n)
+                    log.info("top-domain index loaded", extra={"domains": len(pipe.top.domains)})
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("top-domain index not loaded", extra={"error": type(exc).__name__})
+                top_at = time.monotonic()
+            await asyncio.sleep(60)
+            st = pipe.stats
+            delta = {k: getattr(st, k) - getattr(last, k) for k in ("messages", "names", "hits", "queued", "dropped")}
+            last = Stats(**vars(st))
+            if delta["names"]:
+                await asyncio.to_thread(client.hset, HEARTBEAT_KEY, "ct-watch.stream", int(time.time()))
+            level = logging.WARNING if delta["dropped"] else logging.INFO
+            log.log(level, "stream alive" if delta["names"] else "stream idle",
+                    extra={**{f"{k}_last_minute": v for k, v in delta.items()}, "backlog": pipe.messages.qsize()})
+
+    tasks.append(asyncio.create_task(tick()))
     delay = 1.0
     while True:
         try:
             async with websockets.connect(settings.certstream_url, ping_interval=30, ping_timeout=30,
-                                          max_size=2**20) as ws:
+                                          max_size=2**20, max_queue=None) as ws:
                 log.info("connected", extra={"url": settings.certstream_url})
-                delay, seen, beat = 1.0, 0, time.monotonic()
-                async for message in ws:
-                    data = json.loads(message)
-                    names = data.get("data") if isinstance(data, dict) else None
-                    if settings.lookalike_top_n and time.monotonic() - top_at > 3600:  # source syncs weekly
-                        with factory() as session:
-                            top = await asyncio.to_thread(load_top_index, session, settings.lookalike_top_n)
-                        top_at = time.monotonic()
-                        log.info("top-domain index loaded", extra={"domains": len(top.domains)})
-                    if isinstance(names, list):
-                        seen += len(names)
-                        # matching stays in the loop (a thread hop per message could not keep up with ~1000 msg/s);
-                        # only the rare hits go to a thread for Redis/database writes
-                        if hits := scan([n for n in names if isinstance(n, str)], watchlist, top):
-                            await asyncio.to_thread(store, hits, client, settings, factory)
-                    if time.monotonic() - beat > 60:
-                        client.hset(HEARTBEAT_KEY, "ct-watch.stream", int(time.time()))
-                        log.info("stream alive", extra={"names_last_minute": seen})
-                        seen, beat = 0, time.monotonic()
+                delay = 1.0
+                await pipe.read(ws)
         except Exception as exc:  # noqa: BLE001 - reconnect on any error, with backoff
             log.warning("stream error, reconnecting", extra={"error": type(exc).__name__, "in_seconds": round(delay)})
-            await asyncio.sleep(delay + random.random())  # noqa: S311 - jitter, not security
-            delay = min(delay * 2, 300)
+        await asyncio.sleep(delay + random.random())  # noqa: S311 - jitter, not security
+        delay = min(delay * 2, 300)
+
+
+def _load_top(factory, top_n: int) -> TopIndex:
+    with factory() as session:
+        return load_top_index(session, top_n)
 
 
 if __name__ == "__main__":  # pragma: no cover

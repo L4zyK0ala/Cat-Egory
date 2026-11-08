@@ -206,7 +206,7 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
       certstream: {condition: service_started}
-    deploy: {resources: {limits: {cpus: "0.5", memory: 256m}}}
+    deploy: {resources: {limits: {cpus: "1", memory: 384m}}}
 
   # SSRF-enforcing forward proxy: the crawler's only route to the internet.
   egress-proxy:

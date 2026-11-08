@@ -135,6 +135,12 @@ priority-3 scan. Each name at most once per 30 days, at most `CATEGORY_CT_WATCH_
 phishing copy of a bank would otherwise be published as "banking". Liveness: heartbeat `ct-watch.stream`, alert
 `CtWatchStopped`. To pause it: `$DC stop certstream ct-watch`.
 
+ct-watch reads into a bounded queue (50k messages), matches in a separate task and writes hits in a third, so a
+burst never makes certstream skip certificates ("client's buffer is full" in certstream's log means ct-watch fell
+behind). Every minute it logs `stream alive` with `messages_last_minute`, `names_last_minute`, `hits_last_minute`,
+`queued_last_minute`, `dropped_last_minute` (a warning if > 0) and `backlog`. Load-tested at ~5000 messages/s on
+one core with zero drops (the live stream is ~1000/s).
+
 ### Look-alike domains (homographs and typos of popular sites)
 
 `integrations/lookalike.py` protects the top `CATEGORY_LOOKALIKE_TOP_N` (1000) domains of `majestic-million-top`

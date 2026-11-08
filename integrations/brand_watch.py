@@ -92,6 +92,10 @@ class Watchlist:
                 pass
         return self._quick.search(skeleton(text).replace("-", "")) is not None
 
+    def _under_official(self, name: str) -> bool:
+        parts = name.split(".")
+        return any(".".join(parts[i:]) in self._official for i in range(len(parts) - 1))
+
     def _official_or_restricted(self, name: str, registrable: str) -> bool:
         from classification.registry_rules import rule_for
 
@@ -103,7 +107,7 @@ class Watchlist:
         name = raw.strip().lower().rstrip(".")
         if name.startswith("*."):
             name = name[2:]
-        if not name or " " in name or not self._maybe(name):
+        if not name or " " in name or self._under_official(name) or not self._maybe(name):
             return None
         try:
             nd = normalize_domain(name)

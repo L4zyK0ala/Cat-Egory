@@ -92,6 +92,12 @@ class TopIndex:
                     idx.delete_keys.add(d)
         return idx
 
+    def protected(self, name: str) -> bool:
+        """True if the name is a protected domain or under one (a big share of all certificates: CDN and cloud
+        subdomains of popular sites). Plain set lookups, no normalisation."""
+        parts = name.split(".")
+        return any(".".join(parts[i:]) in self.domains for i in range(len(parts) - 1))
+
     def _maybe(self, name: str) -> bool:
         """Cheap pre-filter without domain normalisation: could any label of the name be a protected label or one
         edit away from it? Almost every certificate name answers no."""
@@ -110,7 +116,7 @@ class TopIndex:
 
     def check(self, raw: str) -> Lookalike | None:
         name = raw.strip().lower().rstrip(".").removeprefix("*.")
-        if not name or not self.domains or not self._maybe(name):
+        if not name or not self.domains or self.protected(name) or not self._maybe(name):
             return None
         try:
             nd = normalize_domain(name)
