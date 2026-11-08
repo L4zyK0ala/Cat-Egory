@@ -84,6 +84,19 @@ $DC exec api python -m backend.cli deactivate-source-domains --source file-impor
 $DC exec api python -m backend.cli deactivate-source-domains --source file-import --yes   # do it
 ```
 
+After switching from the offline mock to a real model (`CATEGORY_AI_PROVIDER=evren`), re-classify what the mock
+answered. Its open review tasks are closed (so nobody approves a keyword guess) and the domains are re-scanned at
+priority 3; human decisions are kept:
+
+```bash
+$DC exec api python -m backend.cli reclassify-provider --provider mock          # dry run
+$DC exec api python -m backend.cli reclassify-provider --provider mock --yes    # do it
+```
+
+When a later classification is applied automatically (≥ 0.90, or two models agree), open review tasks that only
+said "the model was unsure" (or came from the mock) are closed as `skipped` with a note. Risk claims,
+prompt-injection findings and model-requested reviews stay open for a person.
+
 ## 3. Third-party sources
 
 Nothing is synced until a maintainer has read the licence and recorded it:

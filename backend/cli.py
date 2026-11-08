@@ -5,6 +5,7 @@
     python -m backend.cli create-key   --email mod@example.org --name laptop --scopes scans:read,scans:write
     python -m backend.cli list-keys    [--email mod@example.org]
     python -m backend.cli revoke-key   --prefix abcdefghij
+    python -m backend.cli reclassify-provider --provider mock [--yes]
 
 In Docker: ``docker compose ... exec api python -m backend.cli ...`` (add ``-it`` for --password prompts).
 API keys are printed exactly once and stored only as hashes.
@@ -102,6 +103,42 @@ def deactivate_source_domains(session: Session, slug: str, *, dry_run: bool = Fa
     return len(ids), cancelled
 
 
+def reclassify_provider(session: Session, provider: str, *, dry_run: bool = False) -> tuple[int, int]:
+    """Re-scan (and so re-classify) active domains whose latest AI prediction came from ``provider``, e.g. after
+    switching from the offline mock to a real model. Their open review tasks that carry such a prediction are
+    closed first, so nobody approves the old answer. Human decisions are kept. Returns (domains, closed_tasks)."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import func
+
+    from backend.app.services.domains import queue_scans
+    from database.models import AIPrediction, ClassificationStatus, Domain, ReviewStatus, ReviewTask, ScanReason
+
+    latest = (select(AIPrediction.domain_id, AIPrediction.provider,
+                     func.row_number().over(partition_by=AIPrediction.domain_id,
+                                            order_by=(AIPrediction.created_at.desc(), AIPrediction.id.desc()))
+                     .label("rn")).subquery())
+    ids = list(session.scalars(select(Domain.id).join(latest, latest.c.domain_id == Domain.id)
+                               .where(Domain.is_active, latest.c.rn == 1, latest.c.provider == provider)
+                               .order_by(Domain.id)))
+    tasks = list(session.scalars(select(ReviewTask).join(AIPrediction, AIPrediction.id == ReviewTask.ai_prediction_id)
+                                 .where(ReviewTask.domain_id.in_(ids), ReviewTask.status == ReviewStatus.OPEN,
+                                        AIPrediction.provider == provider))) if ids else []
+    if dry_run or not ids:
+        return len(ids), len(tasks)
+    now = datetime.now(UTC)
+    for task in tasks:
+        task.status, task.decided_at = ReviewStatus.SKIPPED, now
+        task.decision_note = f"prediction from provider {provider!r}; domain queued for re-classification"
+    for domain in session.scalars(select(Domain).where(Domain.id.in_(ids),
+                                                       Domain.classification_status == ClassificationStatus.NEEDS_REVIEW)):
+        domain.classification_status = ClassificationStatus.REANALYZE
+    queued = queue_scans(session, ids, reason=ScanReason.RESCAN, priority=3, requested_by_id=None)
+    audit.record(session, action="domains.reclassify_provider", target_type="ai_provider", target_id=provider,
+                 after={"domains": len(ids), "closed_review_tasks": len(tasks), "queued_scans": queued})
+    return len(ids), len(tasks)
+
+
 def _password(args) -> str | None:
     if not getattr(args, "password", False):
         return None
@@ -149,6 +186,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--source", required=True, help="data source slug, e.g. file-import")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
 
+    p = sub.add_parser("reclassify-provider",
+                       help="re-scan domains whose latest AI answer came from one provider (e.g. mock)")
+    p.add_argument("--provider", required=True, help="provider name, e.g. mock")
+    p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
+
     args = parser.parse_args(argv)
     try:
         with session_factory()() as session, session.begin():
@@ -183,6 +225,12 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"deactivated {domains} domains, cancelled {cancelled} queued scans")
                 else:
                     print(f"dry run: {domains} domains would be deactivated (add --yes to do it)")
+            elif args.command == "reclassify-provider":
+                domains, tasks = reclassify_provider(session, args.provider, dry_run=not args.yes)
+                if args.yes:
+                    print(f"queued {domains} domains for re-classification, closed {tasks} open review tasks")
+                else:
+                    print(f"dry run: {domains} domains, {tasks} open review tasks (add --yes to do it)")
     except (CliError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

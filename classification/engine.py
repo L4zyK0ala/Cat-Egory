@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ai_providers.base import AIProvider
@@ -202,6 +202,24 @@ def open_review(session: Session, domain: Domain, prediction: AIPrediction | Non
     return task
 
 
+# Reasons that only say "the model was not sure". A later confident (or two-model) classification answers them.
+# Risk claims, injection and model-requested reviews stay open for a person even then.
+SUPERSEDABLE_REASONS = ("low_confidence", "needs_extra_validation", "model_disagreement")
+
+
+def supersede_reviews(session: Session, domain: Domain, note: str, *, reasons=SUPERSEDABLE_REASONS) -> int:
+    """Close open review tasks whose question a newer classification answered, so nobody later approves the
+    outdated prediction attached to them. Returns how many were closed."""
+    # The offline mock always asks for review; that request carries no information once a real model answered.
+    tasks = list(session.scalars(
+        select(ReviewTask).outerjoin(AIPrediction, AIPrediction.id == ReviewTask.ai_prediction_id)
+        .where(ReviewTask.domain_id == domain.id, ReviewTask.status == ReviewStatus.OPEN,
+               or_(ReviewTask.reason.in_(reasons), AIPrediction.provider == "mock"))))
+    for task in tasks:
+        task.status, task.decided_at, task.decision_note = ReviewStatus.SKIPPED, datetime.now(UTC), note
+    return len(tasks)
+
+
 # ----------------------------------------------------------------------------- decision
 
 
@@ -269,6 +287,7 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
             apply_categories(session, domain, primary=out.primary_category, secondary=out.secondary_categories,
                              confidence=confidence, origin=AssignmentOrigin.AI, taxonomy=taxonomy,
                              status=ClassificationStatus.CLASSIFIED, prediction_id=first.id)
+            supersede_reviews(session, domain, f"superseded by prediction {first.id} (two models agree)")
             outcome.action, outcome.reason = "applied", "two_models_agree"
             return outcome
         task = open_review(session, domain, first, "model_disagreement")
@@ -280,6 +299,7 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
         apply_categories(session, domain, primary=out.primary_category, secondary=out.secondary_categories,
                          confidence=out.confidence, origin=AssignmentOrigin.AI, taxonomy=taxonomy,
                          status=ClassificationStatus.CLASSIFIED, prediction_id=first.id)
+        supersede_reviews(session, domain, f"superseded by prediction {first.id} (high confidence)")
         outcome.action, outcome.reason = "applied", "high_confidence"
         return outcome
 
