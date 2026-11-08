@@ -16,7 +16,7 @@ from classification.taxonomy import Taxonomy
 
 from .schemas import ClassificationInput
 
-PROMPT_VERSION = "2026-11-08.1"
+PROMPT_VERSION = "2026-11-08.2"
 
 _INJECTION_PATTERNS = [
     re.compile(p, re.IGNORECASE)
@@ -64,6 +64,10 @@ Guidance:
 - "confidence" is your probability (0.0-1.0) that primary_category is correct. Use < 0.5 when the page is empty,
   an error page, a login wall, or in a language you cannot read reliably.
 - Parked or for-sale pages: primary_category "parked-domains", site_type "parked".
+- "primary_category": what the site is mainly for, judged by what its visitors do there, not by who runs it.
+  Choose the most specific category that clearly fits; use a broad one (business, information-technology,
+  finance, shopping, media, entertainment) only when no narrower category describes the site's main purpose.
+  For example banking rather than finance for a bank, cybersecurity rather than software for a security vendor.
 - "secondary_categories": only purposes the site clearly serves itself, most relevant first; a news site that
   has a sports section is "news" with "sports", not every topic it mentions. Leave empty when nothing applies.
 - "evidence": 1-3 short factual observations you actually saw, each under 150 characters. "type" must be exactly

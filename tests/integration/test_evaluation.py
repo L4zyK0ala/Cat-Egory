@@ -10,9 +10,12 @@ from database.models import ScanJob
 from tests.integration.test_classification import Scripted, make_scan, run
 
 
-def test_bundled_set_is_valid():
+def test_bundled_sets_are_valid_and_disjoint():
     sites = load_set()
+    holdout = load_set("evaluation_holdout.yaml")  # bare name = bundled set (as in the container)
     assert len(sites) >= 30 and len({s.domain for s in sites}) == len(sites)
+    assert len(holdout) >= 25 and len({s.domain for s in holdout}) == len(holdout)
+    assert not {s.domain for s in sites} & {s.domain for s in holdout}  # never tuned on the holdout
 
 
 def test_set_rejects_unknown_categories(tmp_path: Path):

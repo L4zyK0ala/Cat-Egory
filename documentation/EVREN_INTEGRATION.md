@@ -106,12 +106,15 @@ Run with a project-specific key and record results here. The 2026-11-08 runs wer
 with hand-written inputs, not crawled content:
 
 - [x] `probe()` succeeds with the default model (2026-11-08)
-- [ ] classification of known sites returns valid JSON ≥ 95 % of the time — **2026-11-08, 36 sites,
-      real crawls: 30/35 valid (86 %)**. Causes: 3× evidence type "title" (now mapped, not rejected), 2× answer
-      cut at 1500 tokens (limit raised to 3000, prompt asks for shorter evidence). To be re-measured.
-      Accuracy of valid answers: 29/30 acceptable primary, 26/30 best primary; all 28 answers ≥ 0.90 were
-      correct; the one wrong answer (mozilla.org → business, 0.88) went to review. Latency with real pages
-      (text + screenshot, 2 parallel): median 88 s, p95 146 s, max 168 s.
+- [x] classification of known sites returns valid JSON ≥ 95 % of the time — 2026-11-08, 36 sites, real crawls.
+      First run 30/35 valid (86 %): 3× evidence type "title", 2× answer cut at 1500 tokens. After the fix
+      (`95b54f7`: evidence labels mapped, limit 3000, shorter answers) the 5 failed sites gave **35/35 valid**.
+      Accuracy: 34/35 acceptable primary (97 %), 30/35 best primary (86 %); all 33 answers ≥ 0.90 correct;
+      the one wrong answer (mozilla.org → business, 0.88) went to review. The model tends to pick the general
+      category over the specific one (python.org → information-technology instead of software, cloudflare.com →
+      cloud-computing instead of content-delivery-networks). Latency with real pages (text + screenshot,
+      2 parallel): median 78 s, p95 143 s. resmigazete.gov.tr drops every request whose User-Agent contains
+      "bot", so it is never crawled (by design: the crawler does not hide that it is a bot).
 - [ ] `response_format={"type":"json_object"}` accepted? (then enable `CATEGORY_EVREN_JSON_MODE`)
 - [ ] screenshot input accepted at 1280×800 PNG; size limit found
 - [ ] prompt-injection corpus does not change categories — one sample held (asked to say "education",

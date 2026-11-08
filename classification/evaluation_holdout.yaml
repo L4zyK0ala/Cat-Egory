@@ -1,0 +1,39 @@
+# Held-out sites: never used to tune the prompt. Labelled on 2026-11-08 BEFORE any of them was classified.
+# Use it to check that a prompt change that helped on evaluation_set.yaml also helps on sites it was not tuned on:
+#   python -m classification.evaluation add --set evaluation_holdout.yaml --yes
+#   python -m classification.evaluation report --set evaluation_holdout.yaml
+# Same format as evaluation_set.yaml (accept: first = best answer).
+version: 2026-11-08.1
+sites:
+  # --- Türkiye
+  - {domain: akbank.com, accept: [banking, finance]}
+  - {domain: yapikredi.com.tr, accept: [banking, finance]}
+  - {domain: sozcu.com.tr, accept: [news, media]}
+  - {domain: haberturk.com, accept: [news, media]}
+  - {domain: bilkent.edu.tr, accept: [education, research]}
+  - {domain: saglik.gov.tr, accept: [government, health-information]}
+  - {domain: ptt.gov.tr, accept: [government]}
+  - {domain: vodafone.com.tr, accept: [telecommunications]}
+  - {domain: flypgs.com, accept: [travel]}
+  - {domain: getir.com, accept: [e-commerce, food, shopping]}
+  # --- global
+  - {domain: github.com, accept: [software, information-technology, online-communities]}
+  - {domain: wordpress.org, accept: [software, blogs]}
+  - {domain: nordvpn.com, accept: [vpn-services]}
+  - {domain: anydesk.com, accept: [remote-access, software]}
+  - {domain: akamai.com, accept: [content-delivery-networks, cybersecurity, cloud-computing]}
+  - {domain: godaddy.com, accept: [web-hosting]}
+  - {domain: kaspersky.com, accept: [cybersecurity]}
+  - {domain: tinyurl.com, accept: [url-shorteners]}
+  - {domain: mega.nz, accept: [file-sharing, cloud-computing]}
+  - {domain: britannica.com, accept: [reference]}
+  - {domain: nature.com, accept: [research, science, news]}
+  - {domain: khanacademy.org, accept: [education]}
+  - {domain: coursera.org, accept: [education]}
+  - {domain: twitch.tv, accept: [streaming-media, video, gaming]}
+  - {domain: epicgames.com, accept: [gaming]}
+  - {domain: telegram.org, accept: [messaging]}
+  - {domain: proton.me, accept: [email, cybersecurity, vpn-services]}
+  - {domain: stackexchange.com, accept: [forums, online-communities]}
+  - {domain: medium.com, accept: [blogs]}
+  - {domain: ebay.com, accept: [e-commerce, auctions]}

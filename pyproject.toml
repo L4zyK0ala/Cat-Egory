@@ -41,7 +41,7 @@ dev = ["pytest>=8.3", "respx>=0.22", "ruff>=0.8", "jsonschema>=4.23", "fakeredis
 include = ["common*", "database*", "ai_providers*", "classification*", "crawler*", "integrations*", "feeds*", "backend*"]
 
 [tool.setuptools.package-data]
-classification = ["taxonomy.yaml", "evaluation_set.yaml"]
+classification = ["taxonomy.yaml", "evaluation_set.yaml", "evaluation_holdout.yaml"]
 integrations = ["sources.yaml"]
 database = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
 

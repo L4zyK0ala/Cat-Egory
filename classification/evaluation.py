@@ -3,6 +3,7 @@
     python -m classification.evaluation add [--yes]     # add the sites and queue scans (dry run without --yes)
     python -m classification.evaluation add --failed --yes   # re-queue only sites without a valid answer
     python -m classification.evaluation report [--provider evren]
+    ... --set evaluation_holdout.yaml   # bundled set of sites never used to tune the prompt
 
 ``report`` reads the latest prediction of the given provider for every site, compares its primary category with
 the accepted answers and prints a Markdown report: crawl failures, valid-answer rate, strict / lenient accuracy,
@@ -71,10 +72,20 @@ class Row:
         return self.answered and not self.lenient and self.status == "classified"
 
 
+def resolve_set(path: Path | str) -> Path:
+    """A path, or just the file name of a set bundled with the package (``evaluation_holdout.yaml``)."""
+    path = Path(path)
+    if not path.exists() and (SET_PATH.parent / path.name).exists():
+        return SET_PATH.parent / path.name
+    return path
+
+
 def load_set(path: Path = SET_PATH, taxonomy=None) -> list[Site]:
     from common.domains import normalize_domain
 
     from .taxonomy import default_taxonomy
+
+    path = resolve_set(path)
 
     known = set((taxonomy or default_taxonomy()).assignable_ids("content"))
     with open(path, encoding="utf-8") as fh:
@@ -195,6 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
     p.add_argument("--failed", action="store_true", help="only sites whose latest answer is missing or invalid")
     p.add_argument("--provider", default="evren", help="provider whose answers --failed looks at")
+    p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
     p = sub.add_parser("report", help="print a Markdown report")
     p.add_argument("--provider", default="evren")
     p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
