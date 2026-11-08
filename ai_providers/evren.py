@@ -32,14 +32,20 @@ KNOWN_MODELS: dict[str, dict] = {
 }
 _RETRY_STATUSES = (502, 503, 504)
 _ERROR_KINDS = {401: "auth", 402: "credit", 403: "permission", 429: "rate"}
+# Verified 2026-11-08: while the first request with an Idempotency-Key is still running, a retry with the same
+# key gets HTTP 409 {"error": {"code": "conflict", "message": "bu Idempotency-Key ile bir istek zaten işleniyor"}};
+# once it finishes, the same key returns its answer (HTTP 200). 425 and the message are accepted too, in case
+# the gateway changes the status code.
+_IN_PROGRESS_STATUSES = (409, 425)
+_IN_PROGRESS_WORDS = ("işleniyor", "in progress", "processing")
 
 
 class EvrenProvider(AIProvider):
     name = "evren"
 
-    def __init__(self, *, api_key: str | None, base_url: str, model: str, timeout: float = 120.0,
-                 json_mode: bool = False, max_output_tokens: int = 1500, max_attempts: int = 3,
-                 client: httpx.Client | None = None, **kwargs) -> None:
+    def __init__(self, *, api_key: str | None, base_url: str, model: str, timeout: float = 180.0,
+                 deadline: float = 270.0, json_mode: bool = False, max_output_tokens: int = 1500,
+                 max_attempts: int = 3, client: httpx.Client | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
@@ -47,6 +53,8 @@ class EvrenProvider(AIProvider):
         self._json_mode = json_mode
         self._max_output = min(max_output_tokens, KNOWN_MODELS.get(model, {}).get("max_output", max_output_tokens))
         self._max_attempts = max_attempts
+        self._timeout = timeout
+        self._deadline = max(deadline, 1.0)
         self._client = client or httpx.Client(timeout=httpx.Timeout(timeout, connect=15.0), follow_redirects=False)
 
     @property
@@ -95,18 +103,38 @@ class EvrenProvider(AIProvider):
             "Idempotency-Key": str(uuid.uuid4()),  # same key on retries -> gateway de-duplicates
         }
         url = f"{self._base_url}/v1/chat/completions"
-        resp: httpx.Response | None = None
-        for attempt in range(self._max_attempts):
+        # Every retry reuses the Idempotency-Key, so a request that timed out on our side but finished at the
+        # gateway is answered from its cache instead of being run (and billed) twice. While it is still running
+        # the gateway says so; we wait and ask again until the overall deadline.
+        give_up_at = time.monotonic() + self._deadline
+        failures, polls = 0, 0
+        while True:
+            remaining = give_up_at - time.monotonic()
+            if remaining <= 0:
+                raise ProviderError("timeout", f"no answer within {self._deadline:.0f}s")
             try:
-                resp = self._client.post(url, json=body, headers=headers)
+                resp = self._client.post(url, json=body, headers=headers,
+                                         timeout=httpx.Timeout(min(self._timeout, remaining), connect=15.0))
+            except httpx.TimeoutException:
+                failures += 1  # the gateway may still be working on it; the same key picks up its result
+                if failures >= self._max_attempts:
+                    raise ProviderError("timeout", f"no answer after {failures} attempts") from None
+                wait = 1.0
             except httpx.HTTPError as exc:
-                if attempt == self._max_attempts - 1:
+                failures += 1
+                if failures >= self._max_attempts:
                     raise ProviderError("connection", type(exc).__name__) from exc
+                wait = min(2 + 3 * failures, 10)
             else:
-                if resp.status_code not in _RETRY_STATUSES or attempt == self._max_attempts - 1:
+                if _in_progress(resp):
+                    polls += 1
+                    wait = min(5.0 * polls, 15.0)
+                elif resp.status_code in _RETRY_STATUSES and failures + 1 < self._max_attempts:
+                    failures += 1
+                    wait = min(2 + 3 * failures, 10)
+                else:
                     break
-            time.sleep(min(2 + 3 * attempt, 10))
-        assert resp is not None
+            time.sleep(max(0.0, min(wait, give_up_at - time.monotonic())))
         if resp.status_code != 200:
             raise ProviderError(_ERROR_KINDS.get(resp.status_code, "status"), _error_detail(resp), resp.status_code)
         try:
@@ -124,6 +152,16 @@ class EvrenProvider(AIProvider):
             request_id=payload.get("id") or resp.headers.get("x-request-id"),
             finish_reason=choice.get("finish_reason"),
         )
+
+
+def _in_progress(resp: httpx.Response) -> bool:
+    """The gateway is still running the first request made with this Idempotency-Key."""
+    if resp.status_code in _IN_PROGRESS_STATUSES:
+        return True
+    if not 400 <= resp.status_code < 500 or resp.status_code in _ERROR_KINDS:
+        return False
+    detail = _error_detail(resp).lower()
+    return "idempotency" in detail and any(w in detail for w in _IN_PROGRESS_WORDS)
 
 
 def _error_detail(resp: httpx.Response) -> str:

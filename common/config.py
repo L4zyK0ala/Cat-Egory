@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     evren_base_url: str = "https://evren-llmapi.ssyz.org.tr"
     evren_api_key: SecretStr | None = Field(default=None, description="Bearer token for the EVREN LLM gateway")
     evren_model: str = "qwen3.8-flash-next"
-    evren_timeout_seconds: float = 120.0
+    evren_timeout_seconds: float = Field(default=180.0, description="read timeout of one HTTP request to EVREN")
+    evren_deadline_seconds: float = Field(
+        default=270.0, description="total time for one EVREN call incl. retries and waiting for an in-flight request; "
+                                   "keep 2x below the classify task's 600 s soft limit (second opinion)")
     evren_json_mode: bool = Field(
         default=False,
         description="Send response_format={'type':'json_object'}. Off until the gateway is verified to support it.",

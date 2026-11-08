@@ -14,7 +14,7 @@ from .schemas import ClassificationInput, Completion, ProviderHealth, ProviderRe
 
 
 class ProviderError(Exception):
-    """A provider call failed. ``kind`` is stable: auth, credit, permission, rate, connection, status, config."""
+    """A provider call failed. ``kind`` is stable: auth, credit, permission, rate, connection, timeout, status, config."""
 
     def __init__(self, kind: str, detail: str = "", status_code: int | None = None) -> None:
         super().__init__(f"{kind}: {detail}" if detail else kind)
@@ -22,7 +22,7 @@ class ProviderError(Exception):
 
     @property
     def retryable(self) -> bool:
-        return self.kind in {"rate", "connection"} or (self.status_code or 0) >= 500
+        return self.kind in {"rate", "connection", "timeout"} or (self.status_code or 0) >= 500
 
 
 class AIProvider(abc.ABC):

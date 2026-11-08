@@ -30,6 +30,7 @@ def _evren(settings: Settings) -> AIProvider:
     return EvrenProvider(
         api_key=settings.evren_api_key.get_secret_value() if settings.evren_api_key else None,
         base_url=settings.evren_base_url, model=settings.evren_model, timeout=settings.evren_timeout_seconds,
+        deadline=settings.evren_deadline_seconds,
         json_mode=settings.evren_json_mode, max_text_chars=settings.max_text_chars,
         max_html_chars=settings.max_html_chars,
     )
@@ -56,7 +57,8 @@ def get_second_opinion(settings: Settings | None = None) -> AIProvider | None:
         return EvrenProvider(
             api_key=settings.evren_api_key.get_secret_value() if settings.evren_api_key else None,
             base_url=settings.evren_base_url, model=settings.evren_second_model,
-            timeout=settings.evren_timeout_seconds, json_mode=settings.evren_json_mode,
+            timeout=settings.evren_timeout_seconds,
+            deadline=settings.evren_deadline_seconds, json_mode=settings.evren_json_mode,
             max_text_chars=settings.max_text_chars, max_html_chars=settings.max_html_chars,
         )
     return None

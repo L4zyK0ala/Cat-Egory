@@ -119,6 +119,64 @@ def test_retries_transient_errors_with_same_idempotency_key():
     assert len({c.request.headers["Idempotency-Key"] for c in route.calls}) == 1
 
 
+IN_PROGRESS = {"error": {"message": "status: bu Idempotency-Key ile bir istek zaten işleniyor"}}
+
+
+@respx.mock
+def test_timeout_then_in_progress_waits_for_the_same_request():
+    """Seen live: our read timeout fires, the retry hits the still-running request, later it is answered."""
+    route = respx.post(URL).mock(side_effect=[httpx.ReadTimeout("slow"), httpx.Response(409, json=IN_PROGRESS),
+                                              httpx.Response(400, json=IN_PROGRESS),  # message is enough
+                                              httpx.Response(200, json=_completion(_answer()))])
+    result = _provider().classify(_input())
+    assert result.ok and route.call_count == 4
+    assert len({c.request.headers["Idempotency-Key"] for c in route.calls}) == 1
+
+
+@respx.mock
+def test_in_progress_does_not_use_up_retry_attempts():
+    route = respx.post(URL).mock(side_effect=[httpx.Response(409, json=IN_PROGRESS)] * 5
+                                 + [httpx.Response(200, json=_completion(_answer()))])
+    assert _provider(max_attempts=2).classify(_input()).ok and route.call_count == 6
+
+
+def test_overall_deadline_stops_waiting(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(evren_mod.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(evren_mod.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    with respx.mock:
+        route = respx.post(URL).mock(return_value=httpx.Response(409, json=IN_PROGRESS))
+        result = _provider(deadline=60).classify(_input())
+    assert result.status is ValidationStatus.PROVIDER_ERROR
+    assert result.errors[0].startswith("timeout") and "60s" in result.errors[0]
+    assert 3 <= route.call_count <= 10  # polled with growing pauses, not hammered
+
+
+@respx.mock
+def test_request_timeout_is_capped_by_remaining_deadline():
+    route = respx.post(URL).mock(return_value=httpx.Response(200, json=_completion(_answer())))
+    _provider(timeout=180, deadline=30).classify(_input())
+    assert route.calls.last.request.extensions["timeout"]["read"] <= 30
+
+
+@respx.mock
+def test_repeated_timeouts_become_retryable_timeout_error():
+    from ai_providers.base import ProviderError
+
+    route = respx.post(URL).mock(side_effect=httpx.ReadTimeout("slow"))
+    result = _provider(max_attempts=3).classify(_input())
+    assert result.errors[0].startswith("timeout") and route.call_count == 3
+    assert ProviderError("timeout").retryable
+
+
+@respx.mock
+def test_other_idempotency_errors_are_not_polled():
+    route = respx.post(URL).mock(return_value=httpx.Response(
+        422, json={"error": {"message": "Idempotency-Key reused with a different body"}}))
+    result = _provider().classify(_input())
+    assert result.errors[0].startswith("status") and route.call_count == 1
+
+
 @pytest.mark.parametrize(("status", "kind"), [(401, "auth"), (402, "credit"), (403, "permission"),
                                               (429, "rate"), (400, "status")])
 @respx.mock
