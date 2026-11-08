@@ -34,6 +34,7 @@ def engine():
     with eng.begin() as conn:
         conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
     os.environ["CATEGORY_DATABASE_URL"] = URL
+    os.environ["CATEGORY_ADMIN_ROUTES"] = "true"  # the tests exercise the admin instance; see test_public_api_split
     from common.config import get_settings
 
     get_settings.cache_clear()

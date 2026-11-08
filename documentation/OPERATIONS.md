@@ -20,10 +20,18 @@ Addresses (set `CATEGORY_PUBLIC_BIND` / `CATEGORY_ADMIN_BIND` in `.env`):
 
 | Service | Default | Notes |
 |---|---|---|
-| Web UI | `:3010` | `CATEGORY_PUBLIC_API_URL` must be the API address browsers can reach; `CATEGORY_CORS_ORIGINS` must list the UI origin |
-| API + Swagger | `:8110` (`/api/docs`) | |
-| Grafana | `:3011` | dashboard "Cat-egory overview" is provisioned |
+| Web UI (public) | `:3010` on `CATEGORY_PUBLIC_BIND` | no admin link; `/admin` answers 404. `CATEGORY_PUBLIC_API_URL` must be the API address browsers can reach; `CATEGORY_CORS_ORIGINS` must list the UI origin |
+| API + Swagger (public) | `:8110` on `CATEGORY_PUBLIC_BIND` (`/api/docs`) | lookups, categories, feeds, community reports only: no `/api/v1/admin/*`, no `/metrics` |
+| **Admin UI** | `:3012` on `CATEGORY_ADMIN_BIND` | admin console, review and moderation; talks to the admin API (`CATEGORY_ADMIN_API_URL`, `CATEGORY_ADMIN_CORS_ORIGINS`) |
+| **Admin API** | `:8111` on `CATEGORY_ADMIN_BIND` | everything incl. `/api/v1/admin/*` and `/metrics` (Prometheus scrapes this one) |
+| Grafana | `:3011` on `CATEGORY_ADMIN_BIND` | dashboard "Cat-egory overview" is provisioned |
 | Prometheus | `:9091` | alert rules in `deployment/prometheus/alerts.yml` (no Alertmanager yet) |
+
+**Public and admin are separate.** The admin pages and endpoints are not hidden behind a link: they do not
+exist on the public containers (`CATEGORY_ADMIN_ROUTES=false` on `api`, no `UI_ADMIN` on `frontend`), so even a
+leaked admin key cannot be used through the public address. Keep `CATEGORY_ADMIN_BIND` private (`127.0.0.1` with an
+SSH tunnel, a LAN address, or the VPN address); when the site goes public only `CATEGORY_PUBLIC_BIND` (behind the
+TLS proxy) faces the internet. Admin CLI commands are unaffected (`$DC exec api python -m backend.cli ...`).
 
 Optional: a service key for the UI so server-side renders are not limited like one anonymous visitor:
 

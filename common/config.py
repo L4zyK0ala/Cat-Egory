@@ -65,6 +65,9 @@ class Settings(BaseSettings):
         default=True, description="If Redis is unreachable, allow requests (logged) instead of rejecting them."
     )
     cors_origins: list[str] = []
+    admin_routes: bool = Field(
+        default=False, description="serve /api/v1/admin/* and /metrics. Off on the public API; on only for the "
+                                   "admin instance, which is bound to a private address (CATEGORY_ADMIN_BIND)")
 
     # imports
     max_import_rows: int = 10_000

@@ -89,13 +89,15 @@ def create_app() -> FastAPI:
         ok = all(v == "ok" for v in checks.values())
         return JSONResponse({"status": "ok" if ok else "degraded", "checks": checks}, status_code=200 if ok else 503)
 
-    from . import metrics as business_metrics
+    if settings.admin_routes:
+        # Internal numbers are for the admin instance (and Prometheus) only, never on the public API.
+        from . import metrics as business_metrics
 
-    business_metrics.install()
+        business_metrics.install()
 
-    @app.get("/metrics", include_in_schema=False)
-    def metrics() -> Response:
-        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+        @app.get("/metrics", include_in_schema=False)
+        def metrics() -> Response:
+            return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     if settings.cors_origins:
         # Browser calls from the web UI. No cookies are used (API keys travel in the Authorization header),
@@ -106,11 +108,14 @@ def create_app() -> FastAPI:
                                            "Retry-After", "X-Request-ID", "X-Feed-Version"], max_age=600)
     errors.install(app)
     app.include_router(v1.router)
-    app.include_router(admin.router)
-    app.include_router(reviews.router)
     app.include_router(feeds.router)
     app.include_router(community.public)
-    app.include_router(community.moderation)
+    if settings.admin_routes:
+        # Admin, review and moderation endpoints exist only on the admin instance. On the public API they are
+        # absent (404), so a leaked admin key cannot be used from the internet.
+        app.include_router(admin.router)
+        app.include_router(reviews.router)
+        app.include_router(community.moderation)
     return app
 
 

@@ -70,7 +70,8 @@ docker compose -f deployment/docker-compose.yml --env-file .env exec api \
     python -m backend.cli create-admin --email you@example.org --name "You"   # prints an admin API key
 ```
 
-Web UI `http://127.0.0.1:3010`, API docs `http://127.0.0.1:8110/api/docs`, Grafana `http://127.0.0.1:3011`.
+Web UI `http://127.0.0.1:3010`, API docs `http://127.0.0.1:8110/api/docs`. Admin UI `http://127.0.0.1:3012` and
+admin API `:8111` run as separate containers on the private admin address only; Grafana `:3011`.
 Without an AI key the stack uses an offline keyword matcher (see below). Full guide:
 [OPERATIONS.md](documentation/OPERATIONS.md).
 

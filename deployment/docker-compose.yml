@@ -114,8 +114,13 @@ services:
       postgres: {condition: service_healthy}
     restart: "no"
 
+  # Public API: lookups, categories, feeds, community reports. No admin, review, moderation or /metrics
+  # endpoints exist here (CATEGORY_ADMIN_ROUTES=false), so even a leaked admin key is useless from outside.
   api:
     <<: *backend
+    environment:
+      <<: *backend-env
+      CATEGORY_ADMIN_ROUTES: "false"
     networks: [core, edge]
     ports:
       - "${CATEGORY_PUBLIC_BIND:-127.0.0.1}:${CATEGORY_API_PORT:-8110}:8000"
@@ -123,6 +128,22 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "1", memory: 512m}}}
+
+  # Admin API: everything above plus /api/v1/admin/* and /metrics. Bound to the private admin address only
+  # (CATEGORY_ADMIN_BIND: localhost, LAN or VPN), never to the public one.
+  admin-api:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      CATEGORY_ADMIN_ROUTES: "true"
+      CATEGORY_CORS_ORIGINS: ${CATEGORY_ADMIN_CORS_ORIGINS:-[]}
+    networks: [core, edge]
+    ports:
+      - "${CATEGORY_ADMIN_BIND:-127.0.0.1}:${CATEGORY_ADMIN_API_PORT:-8111}:8000"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: "0.5", memory: 384m}}}
 
   worker:
     <<: *backend
@@ -233,6 +254,28 @@ services:
     depends_on:
       api: {condition: service_started}
     deploy: {resources: {limits: {cpus: "1", memory: 512m}}}
+    restart: unless-stopped
+    logging: *logging
+
+  # Admin UI: same image with UI_ADMIN=true (admin console, review and moderation pages), talking to the admin
+  # API. The public site has no admin link and answers 404 on /admin.
+  admin-ui:
+    image: cat-egory/frontend:dev
+    environment:
+      UI_ADMIN: "true"
+      API_INTERNAL_URL: http://admin-api:8000
+      PUBLIC_API_URL: ${CATEGORY_ADMIN_API_URL:-http://127.0.0.1:8111}
+    read_only: true
+    tmpfs: [/tmp, "/app/.next/cache"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [core, edge]
+    ports:
+      - "${CATEGORY_ADMIN_BIND:-127.0.0.1}:${CATEGORY_ADMIN_WEB_PORT:-3012}:3000"
+    depends_on:
+      frontend: {condition: service_started}   # builds the shared image
+      admin-api: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "0.5", memory: 384m}}}
     restart: unless-stopped
     logging: *logging
 

@@ -4,7 +4,7 @@ All commands assume the Docker stack (`deployment/docker-compose.yml`). Shorthan
 
 ```bash
 DC="docker compose -f deployment/docker-compose.yml --env-file .env"   # prefix with sudo if needed
-API=http://127.0.0.1:8110                                              # or your CATEGORY_PUBLIC_BIND address
+API=http://127.0.0.1:8111                                              # the ADMIN API (CATEGORY_ADMIN_BIND)
 ```
 
 ## Users and API keys
@@ -91,7 +91,7 @@ $DC exec postgres psql -U category -c "SELECT occurred_at, action, target_id, af
 
 ## Review queue (AI classifications)
 
-Web UI: `/admin/reviews` (enter an admin or moderator key). API:
+Admin UI (`:3012` on `CATEGORY_ADMIN_BIND`): `/admin/reviews` (enter an admin or moderator key). API:
 
 ```bash
 curl -s "$API/api/v1/admin/reviews?limit=10" -H "Authorization: Bearer $CATEGORY_KEY"

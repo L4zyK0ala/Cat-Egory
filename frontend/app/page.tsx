@@ -1,6 +1,7 @@
 import { api } from "@/lib/api";
 import type { Category, Stats } from "@/lib/types";
 import SearchBox from "@/components/SearchBox";
+import Mascot from "@/components/Mascot";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -29,9 +30,14 @@ export default async function Dashboard() {
   const days = Object.entries(stats?.daily_scans ?? {}).sort(([a], [b]) => (a < b ? 1 : -1));
   return (
     <>
-      <h1>Open web categorization</h1>
-      <p className="muted">Look up how a website is categorized, download category lists, or help correct the data.</p>
-      <SearchBox />
+      <section className="hero">
+        <div>
+          <h1>Every website, <em>curiously</em> categorized.</h1>
+          <p className="lead">Look up how a website is categorized, download category lists, or help correct the data.</p>
+          <SearchBox />
+        </div>
+        <Mascot />
+      </section>
       {!stats ? (
         <div className="notice error">The API is not reachable right now.</div>
       ) : (
