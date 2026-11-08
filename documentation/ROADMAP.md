@@ -68,7 +68,7 @@ the metadata IP, allows public sites.
 > granting any capability; `crawler.selftest` on the stack reports "chromium sandbox : OK". The no-sandbox mode
 > remains only as an explicit opt-in (`docker-compose.nosandbox.yml`).
 
-## Phase 4 — AI classification ✅ code complete (2026-11-07; not yet run on the Docker stack)
+## Phase 4 — AI classification ✅ (2026-11-07; live with EVREN on the Docker stack since 2026-11-08)
 
 - `classify` task after every successful crawl: stored scan → provider input (text, HTML, screenshot) →
   prediction + evidence (`classification/engine.py`, `backend/app/classify_tasks.py`).
@@ -78,9 +78,12 @@ the metadata IP, allows public sites.
 - Review API + UI: approve / set / reject, confirm threats (→ `threat_intelligence`, source `cat-egory-review`),
   screenshot viewer, provider status, calibration report (accuracy per confidence band from reviews).
 - Tests: 18 integration tests with a scripted provider covering every band and rule.
-- **Not done:** live EVREN run (no project key yet — see `EVREN_INTEGRATION.md` checklist).
+- Live on 2026-11-08 with `qwen3.8-flash-next`: wikipedia.org, example.com, bücher.de classified and published;
+  timeout / in-flight retry behaviour of the gateway verified. Quality is measured on 36 known sites with
+  `python -m classification.evaluation` (results pending).
+- **Open:** a project-specific EVREN key and answers to the terms-of-use questions (`EVREN_INTEGRATION.md`).
 
-## Phase 5 — Public database ✅ code complete (2026-11-07; UI verified locally, not on Docker)
+## Phase 5 — Public database ✅ (2026-11-07; running on the Docker stack, first real feeds 2026-11-08)
 
 - Public API: domain, URL (falls back to registrable domain), history, category listings (keyset), stats.
 - Privacy rule: domains known only from a private import are never listed, counted by name or put in feeds,
@@ -94,7 +97,7 @@ the metadata IP, allows public sites.
   queue, rescan/cancel, provider status), review queue with screenshots, moderation. Checked end to end in
   Chromium against a local API (desktop + 390 px mobile).
 
-## Phase 6 — Community ✅ code complete (2026-11-07)
+## Phase 6 — Community ✅ (2026-11-07)
 
 - Reports (false positive/negative, correction, verification) with evidence URLs, anonymous or with a key;
   new-domain suggestions; votes; moderation queue ordered by score; accept/reject/spam; audit log.
@@ -120,11 +123,11 @@ Alertmanager, off-host backups + restore drill on the real stack, horizontal sca
 | 1 | Compose brings all services up | 1 ✅ (2026-11-07) |
 | 2 | Add a domain | 2 ✅ |
 | 3–5 | Real browser visit, screenshot, HTML/text | 3 ✅ |
-| 6 | Classification via EVREN or mock | 4 ✅ mock / EVREN pending key |
+| 6 | Classification via EVREN or mock | 4 ✅ (EVREN live 2026-11-08) |
 | 7 | Results in Postgres | 3–4 ✅ |
-| 8 | Search in web UI | 5 ✅ (local) |
+| 8 | Search in web UI | 5 ✅ |
 | 9 | Category via public API | 5 ✅ |
 | 10 | JSON/CSV/TXT/RPZ | 5 ✅ |
 | 11 | Community report | 6 ✅ |
-| 12 | Security + automated tests | ✅ 320+ tests; sandbox verified |
+| 12 | Security + automated tests | ✅ 330+ tests, CI on GitHub Actions; sandbox verified |
 | 13 | Pluggable providers & sources | ✅ |

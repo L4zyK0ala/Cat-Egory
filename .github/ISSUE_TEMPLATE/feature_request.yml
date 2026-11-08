@@ -1,0 +1,20 @@
+name: Feature or taxonomy proposal
+description: A new feature, data source or change to the category taxonomy.
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options: [Feature, New third-party data source, Taxonomy change, Documentation]
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: For a data source, link its licence / terms of use. For a taxonomy change, give example domains.
+    validations: {required: true}
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is it needed?

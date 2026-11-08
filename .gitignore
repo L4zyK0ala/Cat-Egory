@@ -23,3 +23,7 @@ node_modules/
 # local data
 data/
 *.log
+
+# operator output
+backups/
+evaluation-*.md

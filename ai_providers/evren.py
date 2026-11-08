@@ -1,7 +1,7 @@
 """EVREN LLM gateway adapter (https://evren.ssyz.org.tr/).
 
 What is verified and what is not is tracked in documentation/EVREN_INTEGRATION.md. In short, as of
-2026-10-31 a separate, working production client confirmed:
+2026-10-31 a separate working client confirmed (and Cat-egory itself on 2026-11-08):
 
 * OpenAI-compatible ``POST {base}/v1/chat/completions`` on ``https://evren-llmapi.ssyz.org.tr``
 * ``Authorization: Bearer <key>``; ``Idempotency-Key`` header accepted
