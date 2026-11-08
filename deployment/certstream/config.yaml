@@ -27,7 +27,7 @@ stream_processing: []
 general:
   disable_default_logs: false   # Google's log list (the logs Chrome trusts)
   buffer_sizes:
-    websocket: 300
+    websocket: 3000              # per client; absorbs bursts after (re)connects (domains-only messages are small)
     ctlog: 1000
     dispatcher: 10000
   drop_old_logs: true

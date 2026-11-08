@@ -69,6 +69,7 @@ class TopIndex:
     domains: set[str] = field(default_factory=set)
     by_skeleton: dict[str, list[tuple[str, str]]] = field(default_factory=dict)   # skeleton -> [(domain, label)]
     by_delete: dict[tuple[str, str], set[tuple[str, str]]] = field(default_factory=dict)  # (del, suffix) -> {(dom, sk)}
+    delete_keys: set[str] = field(default_factory=set)  # every deletion string, for the cheap pre-filter
 
     @classmethod
     def build(cls, registrable_domains: list[str]) -> TopIndex:
@@ -88,11 +89,28 @@ class TopIndex:
             if len(sk) >= MIN_TYPO:
                 for d in _deletes(sk):
                     idx.by_delete.setdefault((d, nd.public_suffix), set()).add((nd.ascii, sk))
+                    idx.delete_keys.add(d)
         return idx
+
+    def _maybe(self, name: str) -> bool:
+        """Cheap pre-filter without domain normalisation: could any label of the name be a protected label or one
+        edit away from it? Almost every certificate name answers no."""
+        for label in name.split(".")[:-1]:
+            if label.startswith("xn--"):
+                try:
+                    label = idna.decode(label)
+                except idna.IDNAError:
+                    continue
+            sk = skeleton(label)
+            if sk in self.by_skeleton:
+                return True
+            if len(sk) >= MIN_TYPO - 1 and not self.delete_keys.isdisjoint(_deletes(sk)):
+                return True
+        return False
 
     def check(self, raw: str) -> Lookalike | None:
         name = raw.strip().lower().rstrip(".").removeprefix("*.")
-        if not name or not self.domains:
+        if not name or not self.domains or not self._maybe(name):
             return None
         try:
             nd = normalize_domain(name)

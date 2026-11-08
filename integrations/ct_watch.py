@@ -67,22 +67,32 @@ def ingest(session: Session, name: str, label: str) -> int:
     return result.scans_queued
 
 
-def handle(names: list[str], watchlist: Watchlist, client: redis.Redis, settings: Settings, session_factory,
-           top: TopIndex | None = None) -> int:
-    """Turkish brands first (integrations/ct_watchlist.yaml), then homographs/typos of the most popular domains."""
-    queued = 0
+def scan(names: list[str], watchlist: Watchlist, top: TopIndex | None = None) -> list[tuple[str, str]]:
+    """(name, label) for every look-alike: Turkish brands first (integrations/ct_watchlist.yaml), then homographs and
+    typos of the most popular domains. Pure CPU and fast (pre-filters), so it runs inside the stream loop."""
+    hits = []
     for raw in names:
         if match := watchlist.match(raw):
-            name, label = match.name, match.brand.label
+            hits.append((match.name, match.brand.label))
         elif top is not None and (hit := top.check(raw)):
-            name, label = hit.name, f"{hit.target} ({hit.kind})"
-        else:
-            continue
+            hits.append((hit.name, f"{hit.target} ({hit.kind})"))
+    return hits
+
+
+def store(hits: list[tuple[str, str]], client: redis.Redis, settings: Settings, session_factory) -> int:
+    """Admit (dedupe, hourly cap) and add the hits. Database and Redis I/O: runs in a worker thread."""
+    queued = 0
+    for name, label in hits:
         if not admit(client, name, settings):
             continue
         with session_factory() as session, session.begin():
             queued += ingest(session, name, label)
     return queued
+
+
+def handle(names: list[str], watchlist: Watchlist, client: redis.Redis, settings: Settings, session_factory,
+           top: TopIndex | None = None) -> int:
+    return store(scan(names, watchlist, top), client, settings, session_factory)
 
 
 async def run(settings: Settings) -> None:  # pragma: no cover - network loop, exercised in the live stack
@@ -111,8 +121,10 @@ async def run(settings: Settings) -> None:  # pragma: no cover - network loop, e
                         log.info("top-domain index loaded", extra={"domains": len(top.domains)})
                     if isinstance(names, list):
                         seen += len(names)
-                        await asyncio.to_thread(handle, [n for n in names if isinstance(n, str)], watchlist, client,
-                                                settings, factory, top)
+                        # matching stays in the loop (a thread hop per message could not keep up with ~1000 msg/s);
+                        # only the rare hits go to a thread for Redis/database writes
+                        if hits := scan([n for n in names if isinstance(n, str)], watchlist, top):
+                            await asyncio.to_thread(store, hits, client, settings, factory)
                     if time.monotonic() - beat > 60:
                         client.hset(HEARTBEAT_KEY, "ct-watch.stream", int(time.time()))
                         log.info("stream alive", extra={"names_last_minute": seen})
