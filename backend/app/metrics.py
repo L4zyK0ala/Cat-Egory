@@ -79,6 +79,36 @@ class DatabaseCollector(Collector):
                                                      value=1)])
 
 
+class HeartbeatCollector(Collector):
+    """When each Celery task last succeeded (written by the worker into Redis). Separate from the database
+    collector so that one failing store does not hide the other."""
+
+    def __init__(self, client_factory=None) -> None:
+        self._client_factory = client_factory
+
+    def _client(self):
+        if self._client_factory is not None:
+            return self._client_factory()
+        from .deps import get_redis
+
+        return get_redis()
+
+    def collect(self):
+        from .worker import HEARTBEAT_KEY
+
+        g = GaugeMetricFamily("category_task_last_success_timestamp_seconds",
+                              "Unix time of the last successful run of each Celery task", labels=["task"])
+        try:
+            beats = self._client().hgetall(HEARTBEAT_KEY)
+        except Exception as exc:  # noqa: BLE001 - metrics must never break the scrape
+            log.warning("heartbeats unavailable", extra={"error": type(exc).__name__})
+            return iter([GaugeMetricFamily("category_heartbeats_up", "1 if task heartbeats could be read", value=0)])
+        for task, ts in sorted(beats.items()):
+            name = task.decode() if isinstance(task, bytes) else str(task)
+            g.add_metric([name], float(ts))
+        return iter([g, GaugeMetricFamily("category_heartbeats_up", "1 if task heartbeats could be read", value=1)])
+
+
 _installed = False
 
 
@@ -86,4 +116,5 @@ def install() -> None:
     global _installed
     if not _installed:
         REGISTRY.register(DatabaseCollector())
+        REGISTRY.register(HeartbeatCollector())
         _installed = True

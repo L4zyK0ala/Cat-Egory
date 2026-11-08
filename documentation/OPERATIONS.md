@@ -169,8 +169,14 @@ volume (restore by extracting into an empty `cat-egory_objectdata` volume while 
 `/metrics` on the API exports HTTP metrics and database-derived gauges (cached 30 s):
 `category_domains{status}`, `category_scan_jobs{status}`, `category_open_reviews`,
 `category_pending_submissions`, `category_active_threats`, `category_ai_predictions_24h{status}`,
-`category_feed_age_seconds`, `category_db_metrics_up`. Alerts: API down, DB metrics down, scan backlog,
-stale feeds, > 20 % invalid AI answers, API 5xx.
+`category_feed_age_seconds`, `category_db_metrics_up`, and from Redis
+`category_task_last_success_timestamp_seconds{task}` (written by the worker after every successful Celery task)
+with `category_heartbeats_up`. Alerts: API down, DB metrics down, scan backlog, stale feeds, > 20 % invalid AI
+answers, API 5xx, **scheduler stopped** (no scan dispatch for 5 minutes: beat or the worker is down), scheduler
+never ran, discovery stopped for an hour, heartbeats unreadable.
+
+Celery beat stores its last-run times in the `beatdata` volume, so a restart or rebuild does not delay hourly
+tasks (feeds, source syncs) by up to an hour.
 
 ## 6. Upgrades
 

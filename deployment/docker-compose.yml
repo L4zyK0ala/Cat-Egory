@@ -205,7 +205,8 @@ services:
   beat:
     <<: *backend
     command: ["celery", "-A", "backend.app.worker:celery_app", "beat", "--loglevel", "INFO",
-              "--schedule", "/tmp/celerybeat-schedule"]
+              "--schedule", "/var/lib/celery-beat/schedule"]
+    volumes: [beatdata:/var/lib/celery-beat]   # last-run times survive restarts and rebuilds
     healthcheck: {disable: true}
     networks: [core]
     depends_on:
@@ -280,3 +281,4 @@ volumes:
   objectdata: {}
   promdata: {}
   grafanadata: {}
+  beatdata: {}

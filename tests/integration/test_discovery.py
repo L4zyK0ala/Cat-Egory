@@ -68,19 +68,20 @@ def test_discovery_budget_order_and_once(engine, clean):
     with Session(engine) as s, s.begin():
         assert queue_discovery(s, budget, entries=entries) == 2  # batch size
     # best rank across sources first: big (1 in top) and haber (1 in tr), then banka (2 in tr), then mid (3)
-    assert [q[0] for q in queued(engine)] == ["big.example.com", "haber.example.com.tr"]
+    # (jobs queued in one batch share queued_at and have random ids, so compare the batch as a set)
+    assert {q[0] for q in queued(engine)} == {"big.example.com", "haber.example.com.tr"}
     assert {q[1:] for q in queued(engine)} == {("discovery", PRIORITY)}
     with Session(engine) as s, s.begin():
         assert queue_discovery(s, budget, entries=entries) == 1  # only 1 left of today's budget of 3
         assert queue_discovery(s, budget, entries=entries) == 0
-    assert [q[0] for q in queued(engine)][2:] == ["banka.example.com.tr"]
+    assert {q[0] for q in queued(engine)} - {"big.example.com", "haber.example.com.tr"} == {"banka.example.com.tr"}
 
     tomorrow = datetime.now(UTC) + timedelta(days=1)
     with Session(engine) as s, s.begin():
         assert queue_discovery(s, budget, entries=entries, now=tomorrow) == 1  # a new day, one domain left
         s.execute(ScanJob.__table__.update().values(status=JobStatus.SUCCEEDED))
         assert queue_discovery(s, budget, entries=entries, now=tomorrow) == 0  # each domain only once
-    assert [q[0] for q in queued(engine)][3:] == ["mid.example.com"]
+    assert len(queued(engine)) == 4 and "mid.example.com" in {q[0] for q in queued(engine)}
 
 
 def test_discovery_waits_for_other_work_and_needs_approval(engine, clean, client, admin):

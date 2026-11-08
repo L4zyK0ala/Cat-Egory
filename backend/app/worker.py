@@ -9,7 +9,13 @@
 """
 from __future__ import annotations
 
+import logging
+import time
+from functools import lru_cache
+
+import redis
 from celery import Celery
+from celery.signals import task_success
 from kombu import Queue
 
 from common.config import get_settings
@@ -46,6 +52,30 @@ celery_app.conf.update(
     },
     timezone="UTC",
 )
+
+
+# ----------------------------------------------------------------------------- heartbeats
+
+HEARTBEAT_KEY = "category:task-heartbeat"  # hash: task name -> unix time of its last success
+log = logging.getLogger("category.worker")
+
+
+@lru_cache(maxsize=1)
+def _heartbeat_client(url: str) -> redis.Redis:
+    return redis.Redis.from_url(url, socket_timeout=1, socket_connect_timeout=1)
+
+
+@task_success.connect
+def record_heartbeat(sender=None, **_kwargs) -> None:
+    """Remember when each task last succeeded. The API exports it (category_task_last_success_timestamp_seconds),
+    and alerts fire when the 10-second dispatcher stops, i.e. when beat or the worker is down."""
+    name = getattr(sender, "name", None)
+    if not name:
+        return
+    try:
+        _heartbeat_client(get_settings().redis_url).hset(HEARTBEAT_KEY, name, int(time.time()))
+    except redis.RedisError as exc:  # never fail a task because the heartbeat could not be written
+        log.debug("heartbeat not recorded", extra={"task": name, "error": type(exc).__name__})
 
 
 @celery_app.task(name="category.maintenance.ping")

@@ -25,3 +25,20 @@ groups:
         expr: sum(rate(category_http_requests_total{status=~"5.."}[10m])) > 0.1
         for: 10m
         annotations: {summary: "API is returning 5xx responses"}
+      # Celery heartbeats: the dispatcher runs every 10 s, so a quiet 5 minutes means beat or the worker stopped.
+      - alert: SchedulerStopped
+        expr: time() - category_task_last_success_timestamp_seconds{task="category.scan.dispatch"} > 300
+        for: 2m
+        annotations: {summary: "No scan dispatch for 5 minutes: Celery beat or the worker is not running"}
+      - alert: SchedulerNeverRan
+        expr: absent(category_task_last_success_timestamp_seconds{task="category.scan.dispatch"}) and on() up{job="cat-egory-api"} == 1
+        for: 15m
+        annotations: {summary: "No task heartbeat recorded yet: Celery beat or the worker has not run"}
+      - alert: DiscoveryStopped
+        expr: time() - category_task_last_success_timestamp_seconds{task="category.discovery.queue"} > 3600
+        for: 15m
+        annotations: {summary: "The discovery task has not succeeded for an hour"}
+      - alert: HeartbeatsUnreadable
+        expr: category_heartbeats_up == 0
+        for: 10m
+        annotations: {summary: "API cannot read task heartbeats from Redis"}

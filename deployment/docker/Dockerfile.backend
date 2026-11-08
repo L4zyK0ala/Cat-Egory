@@ -17,6 +17,8 @@ RUN python -m venv /opt/venv && /opt/venv/bin/pip install .
 FROM python:3.12.16-slim-bookworm
 ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --home /app --shell /usr/sbin/nologin app
+# Celery beat keeps its last-run times here (a named volume), so restarts do not reset the schedule.
+RUN install -d -o 10001 -g 10001 -m 0750 /var/lib/celery-beat
 COPY --from=build /opt/venv /opt/venv
 WORKDIR /app
 COPY alembic.ini ./
