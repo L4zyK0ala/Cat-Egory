@@ -19,7 +19,7 @@ QUEUES = ("crawl", "scan", "classify", "ingest", "feeds", "maintenance")
 settings = get_settings()
 celery_app = Celery("category", broker=settings.redis_url, backend=settings.redis_url,
                     include=["backend.app.scan_tasks", "backend.app.classify_tasks", "backend.app.feed_tasks",
-                             "backend.app.ingest_tasks"])
+                             "backend.app.ingest_tasks", "backend.app.discovery"])
 celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
@@ -42,6 +42,7 @@ celery_app.conf.update(
         "scan-schedule": {"task": "category.scan.schedule", "schedule": 300.0},
         "feeds-build": {"task": "category.feeds.build", "schedule": 3600.0},
         "sources-sync": {"task": "category.ingest.sync_due", "schedule": 3600.0},
+        "discovery-queue": {"task": "category.discovery.queue", "schedule": 900.0, "options": {"expires": 800}},
     },
     timezone="UTC",
 )

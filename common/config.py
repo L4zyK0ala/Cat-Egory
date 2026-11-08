@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     scan_interval_risk_days: int = 1        # active threat record: re-check daily
     scan_interval_unreachable_days: int = 7 # broken domains are re-checked weekly
     scan_interval_blocked_days: int = 30    # robots.txt / SSRF policy refused
+    # discovery (first scans of domains from discovery sources; backend/app/discovery.py)
+    discovery_daily_budget: int = Field(default=200, ge=0, description="new domains queued per UTC day; 0 = off")
+    discovery_batch_size: int = Field(default=10, ge=1, description="new domains queued per 15-minute run")
+    discovery_max_queued: int = Field(default=20, ge=1, description="pause while this many scans are waiting")
     schedule_batch_size: int = 500          # scans queued per scheduler run
     artifact_retention_days: int = 180
     stale_scan_minutes: int = 15

@@ -1,0 +1,49 @@
+# DRAFT — Turkish brands to watch in Certificate Transparency logs (phishing early warning). Not used yet.
+# Review before use: every official domain below must be checked, and tokens must not match ordinary words
+# (card names such as "bonus" or "maximum" were left out for that reason).
+#
+# How a new certificate name will be matched (planned):
+#   * the registrable name is lower-cased, IDN-decoded, Turkish letters folded (ı→i, ş→s, ...) and common
+#     look-alikes folded (0→o, 1→l, rn→m, vv→w); then split into tokens on "-" "." and digits.
+#   * `tokens` (short, ambiguous) match only a whole token: "ptt-kargo-odeme.com" yes, "optt.com" no.
+#   * `substrings` (long, distinctive) match anywhere: "garantibbvamobil-giris.net".
+#   * names under an `official` domain are ignored; matches are queued for a scan at high priority and always
+#     end in human review (a model's suspicion never becomes a published threat flag).
+version: draft-2026-11-08
+brands:
+  # --- banks and payment
+  - {name: Garanti BBVA, sector: bank, substrings: [garantibbva], official: [garantibbva.com.tr]}
+  - {name: Ziraat Bankası, sector: bank, substrings: [ziraatbank], official: [ziraatbank.com.tr]}  # not "ziraat": agriculture sites
+  - {name: İş Bankası, sector: bank, substrings: [isbankasi, isbank], official: [isbank.com.tr]}
+  - {name: Akbank, sector: bank, substrings: [akbank], official: [akbank.com]}
+  - {name: Yapı Kredi, sector: bank, substrings: [yapikredi], tokens: [worldcard], official: [yapikredi.com.tr]}
+  - {name: Halkbank, sector: bank, substrings: [halkbank], official: [halkbank.com.tr]}
+  - {name: VakıfBank, sector: bank, substrings: [vakifbank], official: [vakifbank.com.tr]}
+  - {name: DenizBank, sector: bank, substrings: [denizbank], official: [denizbank.com]}
+  - {name: QNB, sector: bank, substrings: [finansbank], tokens: [qnb], official: [qnb.com.tr]}
+  - {name: TEB, sector: bank, tokens: [teb], official: [teb.com.tr]}
+  - {name: Enpara, sector: bank, substrings: [enpara], official: [enpara.com]}
+  - {name: Kuveyt Türk, sector: bank, substrings: [kuveytturk], official: [kuveytturk.com.tr]}
+  - {name: Papara, sector: payment, substrings: [papara], official: [papara.com]}
+  # --- public services
+  - {name: e-Devlet, sector: government, substrings: [edevlet, turkiyegov], official: [turkiye.gov.tr]}
+  - {name: PTT, sector: government, tokens: [ptt], substrings: [pttkargo, pttavm], official: [ptt.gov.tr, pttavm.com]}
+  - {name: HGS, sector: government, tokens: [hgs], official: [ptt.gov.tr]}
+  - {name: SGK, sector: government, tokens: [sgk], official: [sgk.gov.tr]}
+  - {name: Gelir İdaresi, sector: government, tokens: [gib], substrings: [gelirdaresi, gelir-idaresi], official: [gib.gov.tr]}
+  - {name: MHRS / e-Nabız, sector: government, substrings: [enabiz], tokens: [mhrs], official: [mhrs.gov.tr, enabiz.gov.tr]}
+  # --- cargo
+  - {name: Yurtiçi Kargo, sector: cargo, substrings: [yurticikargo], official: [yurticikargo.com]}
+  - {name: Aras Kargo, sector: cargo, substrings: [araskargo], official: [araskargo.com.tr]}
+  - {name: MNG Kargo, sector: cargo, substrings: [mngkargo], official: [mngkargo.com.tr]}
+  - {name: Sürat Kargo, sector: cargo, substrings: [suratkargo], official: [suratkargo.com.tr]}
+  # --- e-commerce and telecom
+  - {name: Trendyol, sector: e-commerce, substrings: [trendyol], official: [trendyol.com]}
+  - {name: Hepsiburada, sector: e-commerce, substrings: [hepsiburada], official: [hepsiburada.com]}
+  - {name: Sahibinden, sector: e-commerce, substrings: [sahibinden], official: [sahibinden.com]}
+  - {name: Turkcell, sector: telecom, substrings: [turkcell], official: [turkcell.com.tr]}
+  - {name: Vodafone TR, sector: telecom, substrings: [vodafone], official: [vodafone.com.tr, vodafone.com]}
+  - {name: Türk Telekom, sector: telecom, substrings: [turktelekom], official: [turktelekom.com.tr]}
+  # --- travel
+  - {name: Türk Hava Yolları, sector: travel, substrings: [turkishairlines], tokens: [thy], official: [turkishairlines.com, thy.com]}
+  - {name: Pegasus, sector: travel, substrings: [flypgs], official: [flypgs.com]}

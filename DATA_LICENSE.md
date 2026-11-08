@@ -12,3 +12,7 @@
 > preview.
 
 Every feed and API response states the licence and attribution that apply to it.
+
+Domain names that reached Cat-egory through a third-party list keep that list's provenance (shown per domain).
+Approved lists: none yet. Candidates are in `integrations/sources.yaml`; the first planned discovery source is
+the Majestic Million (© Majestic, CC BY 3.0).

@@ -18,9 +18,13 @@ elsewhere), a size cap and a timeout. Entries are parsed as untrusted text.
 """
 from __future__ import annotations
 
+import csv
+import io
 import logging
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from backend.app import audit
 from backend.app.services.domains import normalize_rows
-from backend.app.services.imports import parse_csv, parse_text
+from backend.app.services.imports import HEADER_NAMES, parse_text
 from crawler.ssrf import BlockedError, check_url, resolve_public
 from database.models import (
     DataSource,
@@ -133,11 +137,47 @@ def download(url: str, *, client: httpx.Client | None = None, resolver=None) -> 
             client.close()
 
 
-def parse(data: bytes, data_format: str | None) -> list[tuple[int, str]]:
+def _csv_rows(data: bytes) -> Iterator[tuple[int, str]]:
+    """Stream (line number, value) from a CSV feed, keeping only the domain column. Large lists (a top-1M CSV is
+    ~80 MB with 12 columns) would not fit in a worker's memory if every cell were kept."""
+    try:
+        sample = data[:4096].decode("utf-8-sig", errors="replace")
+        delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
+    except csv.Error:
+        delimiter = ","
+    # Decode while reading: one decoded copy of a 100 MB file would cost several hundred MB.
+    stream = io.TextIOWrapper(io.BytesIO(data), encoding="utf-8-sig", errors="replace", newline="")
+    column, first = 0, True
+    for n, cells in enumerate(csv.reader(stream, delimiter=delimiter), start=1):
+        if not any(c.strip() for c in cells):
+            continue
+        if first:
+            first = False
+            header = [c.strip().lower() for c in cells]
+            found = next((i for i, name in enumerate(header) if name in HEADER_NAMES), None)
+            if found is not None:
+                column = found
+                continue
+        value = cells[column].strip() if column < len(cells) else ""
+        if value and not value.startswith("#"):
+            yield n, value
+
+
+def select_rows(rows: Iterable[tuple[int, str]], entry: dict[str, Any]) -> list[tuple[int, str]]:
+    """Apply a catalogue entry's filters while reading, keeping the source's order: ``include_suffixes``
+    (e.g. ``[tr]``: only names ending in ``.tr``) then ``max_entries`` (the first N). At most MAX_ENTRIES."""
+    if suffixes := entry.get("include_suffixes"):
+        ends = tuple("." + str(x).lower().strip(".") for x in suffixes)
+        rows = ((n, v) for n, v in rows if v.strip().lower().rstrip(".").endswith(ends))
+    limit = entry.get("max_entries")
+    return list(islice(rows, min(int(limit), MAX_ENTRIES) if limit is not None else MAX_ENTRIES))
+
+
+def parse(data: bytes, data_format: str | None, entry: dict[str, Any] | None = None) -> list[tuple[int, str]]:
     if data_format == "csv":
-        rows = parse_csv(data, MAX_ENTRIES)
-        return [(n, v) for n, v in rows]
-    return parse_text(data, MAX_ENTRIES)  # hosts, domains, url-list (a URL's host is extracted when normalising)
+        return select_rows(_csv_rows(data), entry or {})
+    # hosts, domains, url-list (a URL's host is extracted when normalising)
+    return select_rows(parse_text(data, MAX_ENTRIES), entry or {})
 
 
 # ----------------------------------------------------------------------------- sync
@@ -168,7 +208,8 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
     result = SyncResult(slug=slug)
     try:
         raw = data if data is not None else download(source.feed_url, client=client, resolver=resolver)
-        rows = parse(raw, source.data_format)
+        rows = parse(raw, source.data_format, entry)
+        del raw
     except SourceError as exc:
         source.last_error = f"{exc.code}: {exc}"[:500]
         result.errors.append(source.last_error)
@@ -176,8 +217,10 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
 
     domains, invalid, _ = normalize_rows(rows)
     result.entries, result.valid, result.invalid = len(rows), len(domains), len(invalid)
+    rank = {d.ascii: i for i, d in enumerate(domains, start=1)}  # position in the (filtered) source list
     label = entry.get("category")
     ids: list[int] = []
+    ranks: dict[int, int] = {}
     for start in range(0, len(domains), _CHUNK):
         chunk = domains[start:start + _CHUNK]
         stmt = insert(Domain).values([
@@ -187,14 +230,18 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
         ]).on_conflict_do_nothing(index_elements=[Domain.normalized_domain]).returning(Domain.id)
         result.new_domains += len(session.execute(stmt).all())
         names = [d.ascii for d in chunk]
-        ids += list(session.scalars(select(Domain.id).where(Domain.normalized_domain.in_(names))))
+        for domain_id, name in session.execute(select(Domain.id, Domain.normalized_domain)
+                                               .where(Domain.normalized_domain.in_(names))):
+            ids.append(domain_id)
+            ranks[domain_id] = rank[name]
 
     for start in range(0, len(ids), _CHUNK):
         chunk = ids[start:start + _CHUNK]
-        prov = insert(DomainSourceRecord).values([{"domain_id": i, "source_id": source.id, "source_category": label}
-                                                  for i in chunk])
+        prov = insert(DomainSourceRecord).values([{"domain_id": i, "source_id": source.id, "source_category": label,
+                                                   "source_rank": ranks.get(i)} for i in chunk])
         session.execute(prov.on_conflict_do_update(index_elements=["domain_id", "source_id"],
-                                                   set_={"last_seen": now, "is_listed": True, "source_category": label}))
+                                                   set_={"last_seen": now, "is_listed": True, "source_category": label,
+                                                         "source_rank": prov.excluded.source_rank}))
     listed = set(ids)
     stale = [r for r in session.scalars(select(DomainSourceRecord.domain_id).where(
         DomainSourceRecord.source_id == source.id, DomainSourceRecord.is_listed)) if r not in listed]

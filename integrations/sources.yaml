@@ -2,7 +2,42 @@
 # terms and recorded them with `python -m integrations.cli approve ...` (stored in source_licenses, audited).
 # "believed_license" is our current understanding only and MUST be checked on the source's own site.
 # Feed URLs are believed correct as of 2026-11; verify them too. Third-party data is never relicensed.
+#
+# Discovery sources (discover: true) only bring domains in; backend/app/discovery.py scans them slowly under a
+# daily budget. Filters: include_suffixes (e.g. [tr]) and max_entries (the first N, in the source's order).
 sources:
+  - slug: majestic-million-top
+    name: Majestic Million (top 20,000)
+    homepage: https://majestic.com/reports/majestic-million
+    terms_url: https://majestic.com/reports/majestic-million
+    feed_url: https://downloads.majestic.com/majestic_million.csv
+    kind: dataset
+    format: csv          # header row; the "Domain" column is used
+    discover: true
+    max_entries: 20000
+    update_interval_seconds: 604800
+    attribution: "Majestic Million, majestic.com, CC BY 3.0"
+    believed_license: >-
+      CC BY 3.0 Unported - the download page says "Licensed under a Creative Commons Attribution 3.0 Unported
+      License" (read 2026-11-08). Approve with --license-slug CC-BY-3.0 after reading it yourself.
+    license_status: unverified
+    notes: About 80 MB, refreshed daily by Majestic; synced weekly. Ranked by referring subnets.
+
+  - slug: majestic-million-tr
+    name: Majestic Million (all .tr domains)
+    homepage: https://majestic.com/reports/majestic-million
+    terms_url: https://majestic.com/reports/majestic-million
+    feed_url: https://downloads.majestic.com/majestic_million.csv
+    kind: dataset
+    format: csv
+    discover: true
+    include_suffixes: [tr]
+    update_interval_seconds: 604800
+    attribution: "Majestic Million, majestic.com, CC BY 3.0"
+    believed_license: >-
+      CC BY 3.0 Unported (same list as majestic-million-top, filtered to names ending in .tr).
+    license_status: unverified
+
   - slug: stevenblack-hosts
     name: StevenBlack/hosts (unified)
     homepage: https://github.com/StevenBlack/hosts

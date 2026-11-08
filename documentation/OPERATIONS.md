@@ -59,6 +59,7 @@ into the weaker mode with `-f deployment/docker-compose.nosandbox.yml`; do not c
 | `category.scan.schedule` | 5 min | queues re-scans for domains whose `next_scan` has passed (≤ 500 per run) |
 | `category.feeds.build` | 1 h | rebuilds feeds; only changed files get a new version |
 | `category.ingest.sync_due` | 1 h | syncs approved third-party sources whose interval elapsed |
+| `category.discovery.queue` | 15 min | first scans of domains from discovery sources, under a daily budget |
 | `category.maintenance.provider_health` | 5 min | configuration-level AI provider check (no paid call) |
 
 Re-scan interval, chosen after every scan (settings `CATEGORY_SCAN_INTERVAL_*`):
@@ -123,6 +124,30 @@ $DC exec api python -m integrations.cli approve urlhaus --license-slug <SPDX> --
     --license-url <url> --redistribution yes|no --commercial yes|no --attribution-required yes|no \
     --reviewer you@example.org --notes "read terms on YYYY-MM-DD"
 $DC exec api python -m integrations.cli sync urlhaus
+```
+
+### Discovery (popular-site lists)
+
+Entries with `discover: true` in `integrations/sources.yaml` only bring domains in; syncing never scans. The
+`category.discovery.queue` task then queues their first scans slowly, most popular first, at priority 8 (after
+manual and scheduled work): at most `CATEGORY_DISCOVERY_BATCH_SIZE` (10) per run, `CATEGORY_DISCOVERY_DAILY_BUDGET`
+(200) per UTC day, and nothing while `CATEGORY_DISCOVERY_MAX_QUEUED` (20) scans are waiting. One classification
+uses ~7k EVREN tokens, so 200/day is ~1.4M tokens (~10 % of the account's daily quota). Large CSV feeds are
+streamed (a 1M-row list needs ~15 MB), so run syncs in the `worker` container.
+
+The first discovery sources are two views of the Majestic Million (CC BY 3.0, licence read on its download page
+on 2026-11-08): `majestic-million-top` (first 20,000) and `majestic-million-tr` (all `.tr` names). After reading
+the licence yourself:
+
+```bash
+for s in majestic-million-top majestic-million-tr; do
+  $DC exec -T worker python -m integrations.cli register $s
+  $DC exec -T worker python -m integrations.cli approve $s --license-slug CC-BY-3.0 \
+      --license-name "Creative Commons Attribution 3.0 Unported" \
+      --license-url https://creativecommons.org/licenses/by/3.0/ --redistribution yes --commercial yes \
+      --attribution-required yes --reviewer you@example.org --notes "read majestic.com/reports/majestic-million"
+  $DC exec -T worker python -m integrations.cli sync $s     # or wait for the hourly sync
+done
 ```
 
 Sources with `--redistribution no` are used internally only: their threat flags are not shown by the API and

@@ -88,6 +88,7 @@ class ScanReason(StrEnum):
     SCHEDULED = "scheduled"
     COMMUNITY = "community"
     RESCAN = "rescan"
+    DISCOVERY = "discovery"  # first scan of a domain found through a discovery source (daily budget)
 
 
 class JobStatus(StrEnum):
@@ -367,11 +368,14 @@ class DomainSourceRecord(Base):
     domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
     source_id: Mapped[int] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False, index=True)
     source_category: Mapped[str | None] = mapped_column(String(200))  # the label the source used
+    # Position in the source's list after its filters (1 = first). Discovery scans popular domains first.
+    source_rank: Mapped[int | None] = mapped_column(Integer)
     first_seen: Mapped[datetime] = _now()
     last_seen: Mapped[datetime] = _now()
     is_listed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
-    __table_args__ = (UniqueConstraint("domain_id", "source_id"),)
+    __table_args__ = (UniqueConstraint("domain_id", "source_id"),
+                      Index("ix_domain_source_records_source_rank", "source_id", "source_rank"))
 
 
 class Url(Base):
