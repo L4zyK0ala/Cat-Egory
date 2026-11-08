@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: A website is in the wrong category
-    url: https://github.com/L4zyK0ala/Cat-egory/blob/main/CONTRIBUTING.md#data
+    url: https://github.com/L4zyK0ala/Cat-Egory/blob/main/CONTRIBUTING.md#data
     about: Category corrections go through the community report form of a running instance, with evidence, not through issues.
   - name: Security vulnerability
-    url: https://github.com/L4zyK0ala/Cat-egory/security/advisories/new
+    url: https://github.com/L4zyK0ala/Cat-Egory/security/advisories/new
     about: Please report vulnerabilities privately. Do not open a public issue.

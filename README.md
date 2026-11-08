@@ -1,6 +1,6 @@
 # Cat-egory
 
-[![CI](https://github.com/L4zyK0ala/Cat-egory/actions/workflows/ci.yml/badge.svg)](https://github.com/L4zyK0ala/Cat-egory/actions/workflows/ci.yml)
+[![CI](https://github.com/L4zyK0ala/Cat-Egory/actions/workflows/ci.yml/badge.svg)](https://github.com/L4zyK0ala/Cat-Egory/actions/workflows/ci.yml)
 [![Code: Apache-2.0](https://img.shields.io/badge/code-Apache--2.0-blue.svg)](LICENSE)
 [![Data: CC BY 4.0](https://img.shields.io/badge/data-CC%20BY%204.0-lightgrey.svg)](DATA_LICENSE.md)
 
