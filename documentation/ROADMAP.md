@@ -116,6 +116,10 @@ verification and reachability decide the interval; `category.scan.schedule` queu
 Done later (2026-11-08): Certificate-transparency brand watch (certstream + ct-watch, look-alike matching,
 forced human review), public/admin split, scheduler heartbeats and alerts, discovery under a daily budget.
 
+Done later (2026-11-09): Threats module, step 1 (`THREATS.md`): URL-scoped threat records that never flag
+a whole site, one public-visibility rule, admin threats API with evidence notes, threat disputes/reports via
+the community form, exact-link lookup in the UI.
+
 Open: TLS reverse proxy and production deployment,
 Alertmanager, off-host backups + restore drill on the real stack, horizontal scaling, ZAP/container scans.
 

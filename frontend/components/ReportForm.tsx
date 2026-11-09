@@ -4,11 +4,13 @@ import { call } from "@/lib/client";
 
 type Option = { id: string; name: string };
 
-export default function ReportForm({ api, domain, categories, current }: {
+export default function ReportForm({ api, domain, categories, current, risks = [], currentRisks = [] }: {
   api: string; domain: string; categories: Option[]; current: string[];
+  risks?: Option[]; currentRisks?: string[];  // security-threat categories, and the flags this domain has now
 }) {
   const [type, setType] = useState("false_positive");
-  const [category, setCategory] = useState(current[0] ?? "");
+  const [category, setCategory] = useState(current[0] ?? currentRisks[0] ?? "");
+  const label = (id: string) => [...categories, ...risks].find((x) => x.id === id)?.name ?? id;
   const [proposed, setProposed] = useState(categories[0]?.id ?? "");
   const [reason, setReason] = useState("");
   const [evidence, setEvidence] = useState("");
@@ -32,7 +34,11 @@ export default function ReportForm({ api, domain, categories, current }: {
     <form className="panel stack" onSubmit={submit}>
       <div className="row">
         <label>Report type{" "}
-          <select value={type} onChange={(e) => setType(e.target.value)}>
+          <select value={type} onChange={(e) => {
+            setType(e.target.value);
+            // a threat can only be reported as missing; the main category must be a content category
+            if (e.target.value === "category_correction" && risks.some((r) => r.id === proposed)) setProposed(categories[0]?.id ?? "");
+          }}>
             <option value="false_positive">A category is wrong</option>
             <option value="false_negative">A category is missing</option>
             <option value="category_correction">The main category should be…</option>
@@ -41,12 +47,22 @@ export default function ReportForm({ api, domain, categories, current }: {
         </label>
         {type === "false_positive" && (
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Wrong category">
-            {current.map((c) => <option key={c} value={c}>{categories.find((x) => x.id === c)?.name ?? c}</option>)}
+            {current.map((c) => <option key={c} value={c}>{label(c)}</option>)}
+            {currentRisks.length > 0 && (
+              <optgroup label="Security warnings">
+                {currentRisks.map((c) => <option key={c} value={c}>{label(c)}</option>)}
+              </optgroup>
+            )}
           </select>
         )}
         {(type === "false_negative" || type === "category_correction") && (
           <select value={proposed} onChange={(e) => setProposed(e.target.value)} aria-label="Category">
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {type === "false_negative" && risks.length > 0 && (
+              <optgroup label="Security threat (the site is dangerous)">
+                {risks.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </optgroup>
+            )}
           </select>
         )}
       </div>

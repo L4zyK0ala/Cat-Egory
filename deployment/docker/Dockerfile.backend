@@ -11,6 +11,7 @@ COPY classification classification
 COPY crawler crawler
 COPY integrations integrations
 COPY feeds feeds
+COPY threats threats
 COPY backend backend
 RUN python -m venv /opt/venv && /opt/venv/bin/pip install .
 

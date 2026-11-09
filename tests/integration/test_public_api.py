@@ -3,7 +3,14 @@ from sqlalchemy.orm import Session
 
 from classification.engine import apply_categories, record_threats
 from classification.taxonomy import default_taxonomy
-from database.models import AssignmentOrigin, ClassificationStatus, Domain
+from database.models import (
+    AssignmentOrigin,
+    ClassificationStatus,
+    DataSource,
+    Domain,
+    ThreatIntelligence,
+    ThreatType,
+)
 
 TAX = default_taxonomy()
 
@@ -89,3 +96,18 @@ def test_risk_category_listing_and_stats(engine, client, admin):
     stats = client.get("/api/v1/stats").json()
     assert stats["threats"] == {"phishing": 1} and stats["total_domains"] == 1
     assert stats["pending_reviews"] == 0 and stats["ai_valid_answer_rate_30d"] is None
+
+
+def test_stats_count_only_publishable_threats(engine, client, admin):
+    """Same rule as the domain page: internal-licence sources and unpublished domains never show up in stats."""
+    add(client, admin, "shown.example.com", "internal.example.com")
+    client.post("/api/v1/admin/domains/import", headers=admin, data={"scan": "none"},
+                files={"file": ("private.txt", b"hidden.example.net\n", "text/plain")})
+    with Session(engine) as s, s.begin():
+        by_name = {d.normalized_domain: d for d in s.scalars(select(Domain))}
+        record_threats(s, by_name["shown.example.com"], ["phishing"])
+        record_threats(s, by_name["hidden.example.net"], ["phishing"])  # private import: not published
+        internal = s.scalar(select(DataSource).where(DataSource.slug == "file-import"))  # licence "internal"
+        s.add(ThreatIntelligence(domain_id=by_name["internal.example.com"].id, threat_type=ThreatType.MALWARE,
+                                 source_id=internal.id))
+    assert client.get("/api/v1/stats").json()["threats"] == {"phishing": 1}

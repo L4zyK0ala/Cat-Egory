@@ -82,12 +82,19 @@ export default async function Dashboard() {
             <section>
               <h2>Security Threats</h2>
               <div className="panel">
-                {Object.keys(stats.threats).length === 0 ? <p className="muted">No active threat records.</p> : (
-                  <table><tbody>
-                    {Object.entries(stats.threats).map(([t, n]) => (
-                      <tr key={t}><td><Link href={`/categories/${t}`}>{names[t] ?? t}</Link></td><td className="num">{n}</td></tr>
-                    ))}
-                  </tbody></table>
+                {Object.keys(stats.threats).length === 0 && Object.keys(stats.threat_urls ?? {}).length === 0 ? (
+                  <p className="muted">No confirmed threats yet. A threat appears here only after a reviewer confirms it or
+                    a licensed threat feed reports it; an AI&apos;s claim alone never becomes a threat flag.</p>
+                ) : (
+                  <table>
+                    <thead><tr><th>Threat</th><th className="num">Domains</th><th className="num">Single pages</th></tr></thead>
+                    <tbody>
+                      {[...new Set([...Object.keys(stats.threats), ...Object.keys(stats.threat_urls ?? {})])].map((t) => (
+                        <tr key={t}><td><Link href={`/categories/${t}`}>{names[t] ?? t}</Link></td>
+                          <td className="num">{stats.threats[t] ?? 0}</td><td className="num">{stats.threat_urls?.[t] ?? 0}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             </section>

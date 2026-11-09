@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { api, ApiError, publicApiUrl } from "@/lib/api";
-import type { Category, DomainInfo, HistoryItem } from "@/lib/types";
+import type { Category, DomainInfo, HistoryItem, Risk, UrlLookup } from "@/lib/types";
 import SearchBox from "@/components/SearchBox";
 import ReportForm from "@/components/ReportForm";
 
@@ -15,9 +15,20 @@ function when(value: string | null) {
   return value ? new Date(value).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" }) : "–";
 }
 
-export default async function DomainPage({ params }: { params: Promise<{ domain: string }> }) {
+function flagged(risk: Risk) {
+  return Object.entries(RISK_LABELS).filter(([k]) => risk[k as keyof Risk] === true);
+}
+
+export default async function DomainPage({ params, searchParams }: {
+  params: Promise<{ domain: string }>; searchParams: Promise<{ url?: string | string[] }>;
+}) {
   const { domain } = await params;
   const name = decodeURIComponent(domain);
+  const link = (v => (Array.isArray(v) ? v[0] : v))((await searchParams).url)?.slice(0, 2000);
+  // A full link was searched: also check that exact page (a phishing page can sit on an otherwise fine site).
+  const lookup = link
+    ? await api<UrlLookup>(`/api/v1/url?url=${encodeURIComponent(link)}`, 60).catch(() => null)
+    : null;
   let info: DomainInfo | null = null;
   let error: ApiError | null = null;
   let viaParent = false;
@@ -52,10 +63,13 @@ export default async function DomainPage({ params }: { params: Promise<{ domain:
   }
   const [history, taxonomy] = await Promise.all([
     api<{ history: HistoryItem[] }>(`/api/v1/history/${encodeURIComponent(info.domain)}`, 60).catch(() => ({ history: [] })),
-    api<{ items: Category[] }>("/api/v1/categories?kind=content", 3600).catch(() => ({ items: [] as Category[] })),
+    api<{ items: Category[] }>("/api/v1/categories", 3600).catch(() => ({ items: [] as Category[] })),
   ]);
   const names = Object.fromEntries(taxonomy.items.map((c) => [c.id, c.name]));
-  const risks = Object.entries(RISK_LABELS).filter(([k]) => info!.risk[k as keyof typeof info.risk] === true);
+  const risks = flagged(info.risk);
+  const pick = (kind: Category["kind"]) => taxonomy.items
+    .filter((c) => c.kind === kind && !c.is_group && !c.deprecated_in).map((c) => ({ id: c.id, name: c.name }));
+  const linkRisks = lookup ? flagged(lookup.url_risk) : [];
   return (
     <>
       <SearchBox initial={info.display_domain} />
@@ -63,6 +77,14 @@ export default async function DomainPage({ params }: { params: Promise<{ domain:
         <span className={`badge ${info.classification_status}`}>{info.classification_status.replace("_", " ")}</span></div>
       {info.display_domain !== info.domain && <div className="mono muted">{info.domain}</div>}
       {viaParent && <div className="notice">{name} is not listed itself; showing its registrable domain {info.domain}.</div>}
+      {lookup && (
+        <div className={`notice ${linkRisks.length ? "error" : ""}`}>
+          <div className="mono" style={{ overflowWrap: "anywhere", fontSize: 13 }}>{lookup.normalized_url}</div>
+          {linkRisks.length ? <>This exact link is confirmed as:{" "}
+            {linkRisks.map(([k, label]) => <span key={k} className="badge danger" style={{ marginRight: 6 }}>{label}</span>)}</>
+            : "No confirmed threat report for this exact link. The site's own result is below."}
+        </div>
+      )}
       <div className="grid2" style={{ marginTop: 16 }}>
         <section className="panel">
           <h2 style={{ marginTop: 0 }}>Categories</h2>
@@ -75,8 +97,16 @@ export default async function DomainPage({ params }: { params: Promise<{ domain:
             Source: {info.data_source ?? "–"}. Percentages are model confidence, not measured accuracy.
           </p>
           <h2>Security</h2>
-          {risks.length === 0 ? <p className="muted">No active threat records.</p> :
+          {risks.length === 0 ? <p className="muted">No confirmed threats for this domain (from reviewers or licensed threat
+            feeds; AI claims are not shown as threats).</p> :
             risks.map(([k, label]) => <span key={k} className="badge danger" style={{ marginRight: 6 }}>{label}</span>)}
+          {info.risk.reported_urls > 0 && (
+            <p className="notice" style={{ fontSize: 13 }}>
+              {info.risk.reported_urls === 1 ? "One page" : `${info.risk.reported_urls} pages`} on this site{" "}
+              {info.risk.reported_urls === 1 ? "is" : "are"} confirmed as a threat. The site itself is not flagged; this
+              usually means it was hacked. Paste a full link into the search box to check that page.
+            </p>
+          )}
         </section>
         <section className="panel">
           <table><tbody>
@@ -103,7 +133,8 @@ export default async function DomainPage({ params }: { params: Promise<{ domain:
       </div>
       <h2>Is Something Wrong?</h2>
       <ReportForm api={publicApiUrl()} domain={info.domain} current={info.categories.map((c) => c.id)}
-                  categories={taxonomy.items.filter((c) => !c.is_group && !c.deprecated_in).map((c) => ({ id: c.id, name: c.name }))} />
+                  categories={pick("content")} risks={pick("risk")}
+                  currentRisks={[...new Set(info.risk.sources.map((s) => s.type))]} />
     </>
   );
 }

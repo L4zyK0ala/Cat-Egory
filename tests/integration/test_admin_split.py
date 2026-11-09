@@ -27,7 +27,8 @@ def public_client(engine, fake_redis, monkeypatch):
 
 ADMIN_PATHS = [("get", "/api/v1/admin/me"), ("get", "/api/v1/admin/scans"), ("post", "/api/v1/admin/domains"),
                ("get", "/api/v1/admin/reviews"), ("post", "/api/v1/admin/feeds/build"),
-               ("get", "/api/v1/admin/submissions"), ("get", "/api/v1/admin/providers"), ("get", "/metrics")]
+               ("get", "/api/v1/admin/submissions"), ("get", "/api/v1/admin/providers"), ("get", "/api/v1/admin/threats"),
+               ("post", "/api/v1/admin/threats/withdraw"), ("get", "/metrics")]
 
 
 @pytest.mark.parametrize(("method", "path"), ADMIN_PATHS)

@@ -26,10 +26,10 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | `GET /api/v1/categories?kind=content\|risk` | ✅ | taxonomy (current version) |
 | `GET /api/v1/categories/{id}` | ✅ | one category |
 | `GET /api/v1/domain/{domain}` | ✅ P2 | current classification + risk (ETag / 304) |
-| `GET /api/v1/url?url=…` | ✅ P5 | URL-level classification, falls back to domain |
+| `GET /api/v1/url?url=…` | ✅ P5 | URL-level classification, falls back to domain; `url_risk` = threats confirmed for this exact link |
 | `GET /api/v1/categories/{id}/domains?cursor=…` | ✅ P5 | domains in a category (paginated) |
 | `GET /api/v1/history/{domain}` | ✅ P5 | category timeline |
-| `GET /api/v1/stats` | ✅ P5 | counts for dashboard |
+| `GET /api/v1/stats` | ✅ P5 | counts for dashboard (`threats`: flagged domains, `threat_urls`: single reported pages) |
 | `GET /api/v1/feeds` (index), `GET /api/v1/feeds/{category}.txt` | ✅ P5 | domain list |
 | `GET /api/v1/feeds/{category}.hosts`, `{category}.rpz` | ✅ P5 | hosts format (`0.0.0.0 domain`) |
 | `GET /api/v1/feeds/all.json`, `all.csv` (aliases `all-domains.*`) | ✅ P5 | full dump |
@@ -45,6 +45,7 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | `GET /api/v1/admin/providers`, `GET /api/v1/admin/calibration` | ✅ P4 | provider status, accuracy per band |
 | `GET /api/v1/admin/reviews`, `POST /api/v1/admin/reviews/{id}/decision`, `GET /api/v1/admin/domains/{d}/screenshot` | ✅ P4 | human review |
 | `GET /api/v1/admin/submissions`, `POST /api/v1/admin/submissions/{id}/moderate` | ✅ P6 | moderation |
+| `GET /api/v1/admin/threats`, `POST /api/v1/admin/threats`, `POST /api/v1/admin/threats/withdraw` | ✅ | threat records by hand (domain or one URL, evidence required); see `THREATS.md` |
 
 ## Response shapes
 
@@ -62,8 +63,9 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
   ],
   "risk": {
     "malware": false, "phishing": false, "scam": false, "fraud": false,
-    "command_and_control": false, "malicious_downloads": false,
-    "sources": []
+    "command_and_control": false, "malicious_downloads": false, "suspicious": false, "lookalike_domain": false,
+    "sources": [],
+    "reported_urls": 0
   },
   "classification_status": "verified",
   "last_updated": "2026-11-07T10:00:00Z",
@@ -81,7 +83,9 @@ Notes
   slug `information-technology`.
 - `risk` flags come **only** from `threat_intelligence` (verified sources) or from human-reviewed
   classifications; an unreviewed AI suspicion is not exposed as `true`. `risk.sources[]` lists
-  `{type, source, license, first_seen}` for each true flag.
+  `{type, source, first_seen}` for each true flag. Only domain-scoped records set flags; single reported pages
+  on the host (e.g. a hacked site) only raise `reported_urls`, and their URLs are not published
+  (`documentation/THREATS.md`).
 - Unknown domain → `404` with `{"error": {"code": "not_found"}}` and a hint to submit it.
 - Confidence is shown as given, with the documented caveat that it is not a calibrated accuracy figure.
 

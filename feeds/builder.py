@@ -6,7 +6,8 @@ Outputs (per content category and per security-threat category, plus combined fi
 * ``<category>.hosts``  ``0.0.0.0 domain`` (hosts-file blockers, Pi-hole)
 * ``<category>.rpz``    DNS Response Policy Zone (BIND/Unbound/PowerDNS); answers NXDOMAIN for domain + subdomains
 * ``all.csv`` / ``all.json``  every published domain with its categories
-* ``rpz``               (served name) = ``security.rpz``: every domain with an active threat record
+* ``rpz``               (served name) = ``security.rpz``: every domain with an active domain-scoped threat
+  record (single reported URLs are not in domain feeds: blocking them would block the whole host)
 
 Every file carries title, version, last-modified, taxonomy version, licence and attribution. Only published
 domains (see ``backend.app.publication``) are included. Content categories and our own threat confirmations
@@ -32,6 +33,7 @@ from classification.engine import REVIEW_SOURCE
 from classification.taxonomy import Taxonomy
 from database.models import DataSource, Domain, DomainCategory, FeedRelease, ThreatIntelligence
 from database.publication import OWN_DATA_LICENSE, publishable, published
+from threats.records import domain_scoped
 
 log = logging.getLogger("category.feeds")
 LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
@@ -98,7 +100,8 @@ def threat_members(session: Session) -> dict[str, list[str]]:
         select(ThreatIntelligence.threat_type, Domain.normalized_domain)
         .join(Domain, Domain.id == ThreatIntelligence.domain_id)
         .join(DataSource, DataSource.id == ThreatIntelligence.source_id)
-        .where(ThreatIntelligence.is_active, Domain.is_active, publishable(), DataSource.slug.in_(THREAT_SOURCES))
+        .where(ThreatIntelligence.is_active, Domain.is_active, publishable(), DataSource.slug.in_(THREAT_SOURCES),
+               domain_scoped())  # a phishing page on a hacked site must not block the whole site
         .distinct().order_by(Domain.normalized_domain)
     ):
         members.setdefault(str(threat), []).append(domain)

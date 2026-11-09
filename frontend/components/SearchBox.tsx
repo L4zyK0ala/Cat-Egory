@@ -13,12 +13,15 @@ export default function SearchBox({ initial = "" }: { initial?: string }) {
         const raw = value.trim();
         if (!raw) return;
         let host = raw;
+        let link = "";
         try {
-          host = new URL(raw.includes("://") ? raw : `http://${raw}`).hostname;
+          const u = new URL(raw.includes("://") ? raw : `http://${raw}`);
+          host = u.hostname;
+          if ((u.pathname !== "/" && u.pathname !== "") || u.search) link = raw;  // a full link: check that page too
         } catch {
           /* let the API report invalid input */
         }
-        router.push(`/domain/${encodeURIComponent(host)}`);
+        router.push(`/domain/${encodeURIComponent(host)}${link ? `?url=${encodeURIComponent(link)}` : ""}`);
       }}
     >
       <input type="search" aria-label="Domain or URL" placeholder="Search a domain or URL, e.g. example.com"

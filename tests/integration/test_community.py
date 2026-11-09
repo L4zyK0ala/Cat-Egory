@@ -136,3 +136,35 @@ def test_votes_and_permissions(engine, client, site, make_key, admin):
     assert client.get("/api/v1/admin/submissions", headers=voter).status_code == 403
     readonly, _ = make_key("admin", scopes=["scans:read"])
     assert report(client, readonly).status_code == 403
+
+
+def test_threat_reports(engine, client, site, make_key, admin, monkeypatch):
+    """A threat flag can be disputed or reported like a category; it never marks the classification disputed."""
+    monkeypatch.setattr(get_settings(), "dispute_threshold", 1)
+    from classification.engine import record_threats
+    from database.models import DataSource, ThreatIntelligence, ThreatType
+
+    with Session(engine) as s, s.begin():
+        d = s.scalar(select(Domain).where(Domain.normalized_domain == "club.example.com"))
+        record_threats(s, d, ["phishing"])
+        feed = s.scalar(select(DataSource).where(DataSource.slug == "community"))  # stands in for a feed
+        s.add(ThreatIntelligence(domain_id=d.id, threat_type=ThreatType.SCAM, source_id=feed.id))
+    owner, user = make_key("contributor")[0], make_key("contributor")[0]
+    assert report(client, owner, category="phishing", reason="We are the owners; there is no login form.") \
+        .status_code == 202
+    assert report(client, user, type="false_negative", category="malware",
+                  reason="The download button serves an .exe flagged by antivirus.").status_code == 202
+    assert report(client, user, category="not-a-category").status_code == 422
+    assert state(engine)[2] == "classified"  # threat reports do not dispute the content classification
+
+    queue = {q["category"]: q["id"] for q in client.get("/api/v1/admin/submissions", headers=admin).json()}
+    for sub in queue.values():
+        assert client.post(f"/api/v1/admin/submissions/{sub}/moderate", headers=admin,
+                           json={"action": "accept"}).status_code == 200
+    risk = client.get("/api/v1/domain/club.example.com").json()["risk"]
+    assert (risk["phishing"], risk["malware"], risk["scam"]) == (False, True, True)  # third-party scam stays
+    assert state(engine)[0] == "gambling"  # categories untouched
+    with Session(engine) as s:
+        withdrawn = s.scalar(select(AuditLog.after).where(AuditLog.action == "community.moderate",
+                                                          AuditLog.after["threat_withdrawn"].astext == "phishing"))
+        assert withdrawn["withdrawn"] == 1 and withdrawn["third_party_remaining"] == 0

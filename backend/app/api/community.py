@@ -1,5 +1,10 @@
 """Community (Phase 6): reports, domain suggestions, votes and moderation.
 
+Threat flags (phishing, malware, ...) can be reported the same way: ``false_positive`` with a risk category
+disputes a flag on the domain (accepting it withdraws our own reviewer record; a third-party feed's record stays
+and is counted in the result), ``false_negative`` with a risk category reports a threat (accepting it records
+one). Threat reports never mark the content classification as ``disputed``.
+
 Abuse controls: anonymous writes share the strict ``write`` rate limit (per hashed IP); one pending report per
 reporter and domain; a domain only shows as ``disputed`` once ``dispute_threshold`` distinct reporters have
 open reports; nothing a contributor sends changes public data until a moderator accepts it. Free text is stored
@@ -15,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
-from classification.engine import REVIEW_SOURCE, apply_categories, current_assignments
+from classification.engine import REVIEW_SOURCE, apply_categories, current_assignments, record_threats
 from classification.taxonomy import default_taxonomy
 from common.config import get_settings
 from common.domains import DomainError, normalize_domain, normalize_url
@@ -31,9 +36,12 @@ from database.models import (
     ModerationStatus,
     ScanReason,
     SubmissionType,
+    ThreatIntelligence,
+    ThreatType,
 )
 from database.publication import publishable
 from database.session import get_session
+from threats.records import domain_scoped, withdraw
 
 from .. import audit
 from ..deps import Principal, get_principal, rate_limit, require
@@ -45,6 +53,7 @@ moderation = APIRouter(prefix="/api/v1/admin/submissions", tags=["moderation"],
                        dependencies=[Depends(rate_limit("write"))])
 
 TAX = default_taxonomy()
+RISK_IDS = frozenset(TAX.assignable_ids("risk"))
 
 
 # ----------------------------------------------------------------------------- schemas
@@ -106,8 +115,9 @@ def _normalize(value: str) -> str:
         raise ApiError(422, "invalid_domain", str(exc), details={"code": exc.code}) from exc
 
 
-def _check_categories(ids: list[str], kind: str = "content") -> None:
-    allowed = set(TAX.assignable_ids(kind))
+def _check_categories(ids: list[str], *, threats: bool = False) -> None:
+    """Content categories; with ``threats`` also the security-threat (risk) categories."""
+    allowed = set(TAX.assignable_ids("content")) | (RISK_IDS if threats else set())
     bad = [c for c in ids if c not in allowed]
     if bad:
         raise ApiError(422, "invalid_category", f"unknown or non-assignable categories: {bad}")
@@ -132,7 +142,8 @@ def _reporters(session: Session, domain_id: int) -> int:
                                                       CommunitySubmission.submitter_fingerprint))))
         .where(CommunitySubmission.domain_id == domain_id, CommunitySubmission.status == ModerationStatus.PENDING,
                CommunitySubmission.type.in_([SubmissionType.FALSE_POSITIVE, SubmissionType.FALSE_NEGATIVE,
-                                             SubmissionType.CATEGORY_CORRECTION]))) or 0
+                                             SubmissionType.CATEGORY_CORRECTION]),
+               ~CommunitySubmission.proposed_category_ids.overlap(sorted(RISK_IDS)))) or 0  # threat reports apart
 
 
 def refresh_dispute(session: Session, domain: Domain) -> None:
@@ -167,7 +178,7 @@ def report(body: ReportIn, request: Request, principal: Principal = Depends(get_
     if body.type in ("false_positive", "false_negative"):
         if not body.category:
             raise ApiError(422, "validation_error", "category is required for this report type")
-        _check_categories([body.category])
+        _check_categories([body.category], threats=True)  # a content category or a threat flag
     if body.type == "category_correction":
         if not body.proposed_categories:
             raise ApiError(422, "validation_error", "proposed_categories is required for category_correction")
@@ -299,6 +310,9 @@ def moderate(submission_id: int, body: ModerateIn, request: Request,
                                 reason=ScanReason.COMMUNITY, requested_by_id=principal.user_id)
             sub.domain_id = session.scalar(select(Domain.id).where(Domain.normalized_domain == sub.submitted_domain))
             result |= {"created": added.created, "scans_queued": added.scans_queued}
+        elif _threat_report(sub):
+            domain = session.get(Domain, sub.domain_id, with_for_update=True)
+            result |= _accept_threat_report(session, sub, domain)
         else:
             domain = session.get(Domain, sub.domain_id, with_for_update=True)
             primary, secondary = _accepted_categories(session, sub, domain, body)
@@ -322,6 +336,24 @@ def moderate(submission_id: int, body: ModerateIn, request: Request,
                  request_id=getattr(request.state, "request_id", None))
     session.commit()
     return _detail(session, sub)
+
+
+def _threat_report(sub: CommunitySubmission) -> bool:
+    return (sub.type in (SubmissionType.FALSE_POSITIVE, SubmissionType.FALSE_NEGATIVE)
+            and bool(sub.proposed_category_ids) and sub.proposed_category_ids[0] in RISK_IDS)
+
+
+def _accept_threat_report(session: Session, sub: CommunitySubmission, domain: Domain) -> dict:
+    threat = ThreatType(sub.proposed_category_ids[0])
+    if sub.type == SubmissionType.FALSE_NEGATIVE:
+        record_threats(session, domain, [threat.value], reference=f"community:{sub.id}")
+        return {"threat_recorded": threat.value}
+    withdrawn = withdraw(session, domain=domain, threat=threat)
+    remaining = session.scalar(select(func.count()).select_from(ThreatIntelligence).where(
+        ThreatIntelligence.domain_id == domain.id, ThreatIntelligence.threat_type == threat,
+        ThreatIntelligence.is_active, domain_scoped())) or 0
+    # remaining > 0: a third-party feed still lists it; the moderator should report the mistake to that feed.
+    return {"threat_withdrawn": threat.value, "withdrawn": withdrawn, "third_party_remaining": remaining}
 
 
 def _accepted_categories(session: Session, sub: CommunitySubmission, domain: Domain,

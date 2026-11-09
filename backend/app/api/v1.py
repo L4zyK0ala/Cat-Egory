@@ -7,8 +7,8 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import Date, cast, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, Date, cast, func, select
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from common.domains import DomainError, normalize_domain, normalize_url
 from database.models import (
@@ -22,13 +22,14 @@ from database.models import (
     ReviewTask,
     ScanJob,
     Screenshot,
-    SourceLicense,
     TaxonomyVersion,
     ThreatIntelligence,
     ThreatType,
+    Url,
 )
 from database.publication import publishable, published
 from database.session import get_session
+from threats.records import domain_scoped, public, url_scoped
 
 from ..deps import Principal, get_principal, rate_limit
 from ..errors import ApiError
@@ -76,6 +77,9 @@ class RiskOut(BaseModel):
     suspicious: bool = False
     lookalike_domain: bool = False
     sources: list[dict] = []
+    # Single pages on this host that are confirmed as threats (e.g. a phishing page on a hacked site). They do
+    # not flag the domain itself; the URLs are not published (they can contain a victim's address).
+    reported_urls: int = 0
 
 
 class DomainOut(BaseModel):
@@ -99,6 +103,7 @@ class UrlOut(BaseModel):
     normalized_url: str
     match: Literal["host", "registrable_domain"]
     result: DomainOut
+    url_risk: RiskOut  # threats confirmed for this exact URL (normalised), independent of the domain's flags
 
 
 class HistoryItem(BaseModel):
@@ -161,26 +166,17 @@ def domain_view(session: Session, row: Domain) -> tuple[DomainOut, str]:
         .where(DomainCategory.domain_id == row.id, DomainCategory.valid_to.is_(None))
         .order_by(DomainCategory.is_primary.desc(), Category.code)
     ).all()
+    # internal-use-only threat data is never exposed (threats.records.public)
     threats = session.execute(
-        select(ThreatIntelligence, DataSource.slug)
-        .join(DataSource, DataSource.id == ThreatIntelligence.source_id)
-        .join(SourceLicense, SourceLicense.id == DataSource.license_id)
-        .where(ThreatIntelligence.domain_id == row.id, ThreatIntelligence.is_active,
-               SourceLicense.redistribution_allowed)  # internal-use-only threat data is never exposed
-    ).all()
+        public(select(ThreatIntelligence, DataSource.slug)).where(ThreatIntelligence.domain_id == row.id)).all()
     tag = "|".join([str(row.id), row.updated_at.isoformat(), str(row.last_scanned), str(row.classification_status),
                     *(f"{dc.id}:{dc.valid_from.isoformat()}" for dc, _, _ in current),
                     *(f"t{t.id}:{t.last_seen.isoformat()}" for t, _ in threats)])
 
-    # Risk flags come only from threat-intelligence rows (verified sources / human review), never from raw AI claims.
-    risk = RiskOut()
-    for threat, source_slug in threats:
-        attr = {ThreatType.COMMAND_AND_CONTROL: "command_and_control",
-                ThreatType.MALICIOUS_DOWNLOADS: "malicious_downloads",
-                ThreatType.LOOKALIKE_DOMAIN: "lookalike_domain"}.get(threat.threat_type, str(threat.threat_type))
-        setattr(risk, attr, True)
-        risk.sources.append({"type": str(threat.threat_type), "source": source_slug,
-                             "first_seen": threat.first_seen.isoformat()})
+    # Risk flags come only from threat-intelligence rows (verified sources / human review), never from raw AI
+    # claims; and only domain-scoped rows flag the domain.
+    risk = _risk([(t, s) for t, s in threats if t.url_id is None])
+    risk.reported_urls = len({t.url_id for t, _ in threats if t.url_id is not None})
     primary_source = next((src for dc, _, src in current if dc.is_primary), None)
     out = DomainOut(
         domain=row.normalized_domain, display_domain=row.domain, registrable_domain=row.registrable_domain,
@@ -192,6 +188,18 @@ def domain_view(session: Session, row: Domain) -> tuple[DomainOut, str]:
         taxonomy_version=_current_version(session),
     )
     return out, tag
+
+
+def _risk(threats: list[tuple[ThreatIntelligence, str]]) -> RiskOut:
+    risk = RiskOut()
+    for threat, source_slug in threats:
+        attr = {ThreatType.COMMAND_AND_CONTROL: "command_and_control",
+                ThreatType.MALICIOUS_DOWNLOADS: "malicious_downloads",
+                ThreatType.LOOKALIKE_DOMAIN: "lookalike_domain"}.get(threat.threat_type, str(threat.threat_type))
+        setattr(risk, attr, True)
+        risk.sources.append({"type": str(threat.threat_type), "source": source_slug,
+                             "first_seen": threat.first_seen.isoformat()})
+    return risk
 
 
 def _etag(tag: str) -> str:
@@ -237,11 +245,12 @@ def category_domains(category_id: str, response: Response, primary_only: bool = 
     category = session.get(Category, category_id)
     if category is None:
         raise ApiError(404, "not_found", "category not found")
-    if category.kind == "risk":
-        stmt = (select(Domain.id, Domain.normalized_domain, ThreatIntelligence.first_seen)
-                .join(ThreatIntelligence, ThreatIntelligence.domain_id == Domain.id)
-                .where(ThreatIntelligence.threat_type == category_id, ThreatIntelligence.is_active,
-                       Domain.is_active, publishable()))
+    if category.kind == "risk":  # same rules as the domain page: public, domain-scoped records only
+        stmt = (public(select(Domain.id, Domain.normalized_domain)
+                       .join(ThreatIntelligence, ThreatIntelligence.domain_id == Domain.id))
+                .where(ThreatIntelligence.threat_type == category_id, domain_scoped(), Domain.is_active,
+                       publishable())
+                .distinct())  # one row per domain even when several sources report it
     else:
         stmt = (select(Domain.id, Domain.normalized_domain, DomainCategory.is_primary)
                 .join(DomainCategory, DomainCategory.domain_id == Domain.id)
@@ -286,8 +295,12 @@ def get_url(url: str, request: Request, response: Response, principal: Principal
     if row is None:
         raise _not_found()
     out, tag = domain_view(session, row)
-    return _cached(request, response, tag + match) or UrlOut(url=url[:2000], normalized_url=normalized.url,
-                                                              match=match, result=out)
+    url_threats = session.execute(
+        public(select(ThreatIntelligence, DataSource.slug).join(Url, Url.id == ThreatIntelligence.url_id))
+        .where(Url.url_hash == normalized.sha256, Url.domain_id == row.id)).all()
+    tag += match + "".join(f"|u{t.id}:{t.last_seen.isoformat()}" for t, _ in url_threats)
+    return _cached(request, response, tag) or UrlOut(url=url[:2000], normalized_url=normalized.url, match=match,
+                                                     result=out, url_risk=_risk(url_threats))
 
 
 @router.get("/history/{domain}", response_model=HistoryOut, summary="Category history of a domain (newest first)")
@@ -332,8 +345,16 @@ def stats(response: Response, session: Session = Depends(get_session)) -> dict:
     daily_out: dict[str, dict[str, int]] = {}
     for day, status, n in daily:
         daily_out.setdefault(day.isoformat(), {})[str(status)] = n
-    threats = dict(session.execute(select(ThreatIntelligence.threat_type, func.count())
-                                   .where(ThreatIntelligence.is_active).group_by(ThreatIntelligence.threat_type)).all())
+    # Same rules as the domain page: public threat records on published domains. Domains flagged as a whole and
+    # single reported URLs (on otherwise legitimate sites) are counted apart.
+    def threat_counts(scope: ColumnElement[bool], counted: InstrumentedAttribute) -> dict:
+        return {str(k): v for k, v in session.execute(
+            public(select(ThreatIntelligence.threat_type, func.count(func.distinct(counted)))
+                   .join(Domain, Domain.id == ThreatIntelligence.domain_id))
+            .where(scope, Domain.is_active, publishable())
+            .group_by(ThreatIntelligence.threat_type)).all()}
+    threats = threat_counts(domain_scoped(), ThreatIntelligence.domain_id)
+    threat_urls = threat_counts(url_scoped(), ThreatIntelligence.url_id)
     response.headers["Cache-Control"] = "public, max-age=60"
     return {
         "generated_at": now.isoformat(),
@@ -349,6 +370,7 @@ def stats(response: Response, session: Session = Depends(get_session)) -> dict:
         "ai_predictions_30d": predictions,
         "ai_valid_answer_rate_30d": round(valid / predictions, 4) if predictions else None,
         "category_distribution": [{"category": c, "domains": n} for c, n in distribution],
-        "threats": {str(k): v for k, v in threats.items()},
+        "threats": threats,
+        "threat_urls": threat_urls,
         "daily_scans": daily_out,
     }
