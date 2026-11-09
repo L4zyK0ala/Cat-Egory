@@ -190,7 +190,7 @@ def second_opinion_tasks(session: Session) -> list[int]:
 def _lookalike_verdicts(session: Session):
     """(task, prediction, verdict) for every open look-alike review (classification.engine.parked_check)."""
     from backend.app.classify_tasks import policy_from
-    from classification.engine import is_lookalike_reason, parked_check, prediction_has_injection
+    from classification.engine import is_lookalike_reason, lookalike_verdict
     from database.models import AIPrediction, ReviewStatus, ReviewTask
 
     policy = policy_from(get_settings())
@@ -198,14 +198,7 @@ def _lookalike_verdicts(session: Session):
                            .where(ReviewTask.status == ReviewStatus.OPEN).order_by(ReviewTask.id)).all()
     for task, pred in rows:
         if is_lookalike_reason(task.reason):
-            verdict = parked_check(primary=pred.primary_category_id,
-                                   confidence=float(pred.confidence) if pred.confidence is not None else None,
-                                   risk=pred.risk_flags, injection=prediction_has_injection(session, pred.id),
-                                   policy=policy)
-            if verdict == "second_opinion" and session.scalar(select(AIPrediction.id).where(
-                    AIPrediction.domain_id == task.domain_id, AIPrediction.id > pred.id).limit(1)):
-                verdict = "models_disagree"  # a second model already answered and did not agree
-            yield task, pred, verdict
+            yield task, pred, lookalike_verdict(session, task, pred, policy)
 
 
 def triage_lookalikes(session: Session, *, dry_run: bool = False) -> tuple[list[str], dict[str, int]]:

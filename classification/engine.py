@@ -452,17 +452,25 @@ def settle_with_second_opinion(session: Session, task: ReviewTask, scan: ScanRes
     return "disagree"
 
 
+def lookalike_verdict(session: Session, task: ReviewTask, first: AIPrediction, policy: ConfidencePolicy) -> str:
+    """parked_check for an open look-alike review's prediction, plus ``models_disagree`` when the first model was
+    0.70-0.89 sure it is parked but a later answer (the second model's) already exists: never asked twice."""
+    verdict = parked_check(primary=first.primary_category_id,
+                           confidence=float(first.confidence) if first.confidence is not None else None,
+                           risk=first.risk_flags, injection=prediction_has_injection(session, first.id), policy=policy)
+    if verdict == "second_opinion" and session.scalar(select(AIPrediction.id).where(
+            AIPrediction.domain_id == task.domain_id, AIPrediction.id > first.id).limit(1)):
+        return "models_disagree"
+    return verdict
+
+
 def settle_parked_lookalike(session: Session, task: ReviewTask, scan: ScanResult | None, result: ProviderResult,
                             *, policy: ConfidencePolicy, recheck_days: int) -> str:
     """An open look-alike review whose page the first model called parked with 0.70-0.89 confidence: if the
     second model also calls it parked (no risk beyond the name), close it and watch the domain. Returns
     "applied", "disagree" (task left as it is), "error" or "skipped"."""
     first = session.get(AIPrediction, task.ai_prediction_id) if task.ai_prediction_id else None
-    if task.status != ReviewStatus.OPEN or not is_lookalike_reason(task.reason) or first is None or \
-            parked_check(primary=first.primary_category_id,
-                         confidence=float(first.confidence) if first.confidence is not None else None,
-                         risk=first.risk_flags, injection=prediction_has_injection(session, first.id),
-                         policy=policy) != "second_opinion":
+    if task.status != ReviewStatus.OPEN or not is_lookalike_reason(task.reason) or first is None:
         return "skipped"
     domain = session.get(Domain, task.domain_id, with_for_update=True)
     second = record_prediction(session, domain, scan, result)

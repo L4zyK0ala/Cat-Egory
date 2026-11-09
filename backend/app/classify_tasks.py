@@ -14,6 +14,7 @@ from classification.engine import (
     build_input,
     decide,
     is_lookalike_reason,
+    lookalike_verdict,
     settle_parked_lookalike,
     settle_with_second_opinion,
 )
@@ -75,6 +76,9 @@ def second_opinion_for_task(session: Session, task_id: int, settings: Settings, 
     scan = session.get(ScanResult, first.scan_result_id) if first and first.scan_result_id else None
     if scan is None:
         return "skipped"  # nothing to show the second model; a person decides
+    if is_lookalike_reason(task.reason) and lookalike_verdict(session, task, first, policy_from(settings)) \
+            != "second_opinion":
+        return "skipped"  # not an unsure parked page, or the second model already answered (queued twice)
     taxonomy = load_taxonomy(settings.taxonomy_path) if settings.taxonomy_path else default_taxonomy()
     result = second.classify(build_input(session, scan, store, use_screenshot=settings.classify_use_screenshot))
     if is_lookalike_reason(task.reason):  # a parked look-alike the first model was 0.70-0.89 sure about

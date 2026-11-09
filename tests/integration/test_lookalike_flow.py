@@ -182,3 +182,21 @@ def test_unsure_parked_lookalikes_are_settled_by_a_second_model(engine, top_sour
     assert cli.main(["triage-lookalikes"]) == 0
     printed = capsys.readouterr().out
     assert "left open:" in printed and "the second model disagreed" in printed
+
+
+def test_a_second_opinion_queued_twice_asks_the_model_once(engine, top_source):
+    from backend import cli
+    from backend.app.classify_tasks import second_opinion_for_task
+    from tests.integration.test_classification import S
+
+    parked = dict(primary_category="parked-domains", secondary_categories=[], risk_categories=["lookalike-domain"])
+    run(engine, make_scan(engine, "gooogle.com"), Scripted(confidence=0.8, **parked))
+    with Session(engine) as s:
+        (task_id,) = cli.second_opinion_tasks(s)
+    first, again = Scripted(model="second", primary_category="banking"), Scripted(model="second", **parked)
+    for provider in (first, again):  # the CLI was run twice before the worker got to it
+        with Session(engine) as s, s.begin():
+            second_opinion_for_task(s, task_id, S, second=provider)
+    assert (first.calls, again.calls) == (1, 0)
+    with Session(engine) as s:
+        assert cli.second_opinion_tasks(s) == []
