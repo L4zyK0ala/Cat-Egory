@@ -139,6 +139,12 @@ def test_parked_lookalike_whose_only_claim_is_the_name_is_watched(engine, top_so
     out = run(engine, make_scan(engine, "goog1e.com"),
               Scripted(risk_categories=["lookalike-domain"], requires_human_review=True, **parked))
     assert out.action == "watch"  # on a look-alike the model asks for a person because of the name alone
+    out = run(engine, make_scan(engine, "gooqle.com"),
+              Scripted(risk_categories=["lookalike-domain", "suspicious"], **parked))
+    assert (out.action, out.reason) == ("watch", "parked_lookalike")  # patteon.com: a vague claim, no page evidence
+    out = run(engine, make_scan(engine, "googlle.com"),
+              Scripted(risk_categories=["suspicious", "scam"], **parked))
+    assert out.action == "review"  # a concrete claim still goes to a person
 
 
 def test_unsure_parked_lookalikes_are_settled_by_a_second_model(engine, top_source, capsys):

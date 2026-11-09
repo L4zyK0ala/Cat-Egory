@@ -32,7 +32,7 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
 
 | Path | Scope | Notes |
 |---|---|---|
-| CT brand watch (`integrations/ct_watch.py`) | domain | new certificates resembling watched brands or top sites → scan → threat-candidate queue (`brand_lookalike`, `lookalike_of:<site>`); parked pages (model ≥ 0.90, no risk claim beyond the name) are only watched, re-checked weekly |
+| CT brand watch (`integrations/ct_watch.py`) | domain | new certificates resembling watched brands or top sites → scan → threat-candidate queue (`brand_lookalike`, `lookalike_of:<site>`); parked pages (model ≥ 0.90, no risk claim beyond the name: only `lookalike-domain` or `suspicious`) are only watched, re-checked weekly |
 | Review decision (`POST /admin/reviews/{id}/decision`, `risk`) | domain | reviewer ticks threat categories |
 | Admin threats API (`POST /api/v1/admin/threats`) | domain or URL | evidence note required (10–2000 chars) |
 | Community report (`false_negative` + threat category) | domain | becomes a record only when a moderator accepts it |

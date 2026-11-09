@@ -240,10 +240,10 @@ def is_lookalike_reason(reason: str) -> bool:
     return reason == "brand_lookalike" or reason.startswith("lookalike_of:")
 
 
-# A model looking at a look-alike often adds "lookalike-domain" because of the name alone. Our own detector
-# (CT brand watch / top-site typo and homograph index) already established that, so on a parked page this claim
-# adds nothing a person must decide now.
-NAME_ONLY_RISKS = frozenset({"lookalike-domain"})
+# A model looking at a look-alike often adds "lookalike-domain", or the vaguer "suspicious", because of the name
+# alone. Our own detector (CT brand watch / top-site typo and homograph index) already established that, so on a
+# parked page these claims add nothing a person must decide now. Concrete claims (phishing, scam, ...) still do.
+NAME_ONLY_RISKS = frozenset({"lookalike-domain", "suspicious"})
 
 
 def parked_check(*, primary: str | None, confidence: float | None, risk: list[str] | tuple, injection: bool,
