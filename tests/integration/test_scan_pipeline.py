@@ -257,3 +257,26 @@ def test_schedule_due(client, engine, admin):
         s.execute(ScanJob.__table__.update().values(status="cancelled"))
     with Session(engine) as s, s.begin():
         assert schedule_due(s, S, now=later) == 1  # inactive domains are never re-scanned
+
+
+def test_our_failures_are_retried_soon_and_can_be_requeued(client, engine, admin, capsys):
+    """A broken sandbox after a reboot is not the site's fault: retry within hours, not next week."""
+    from backend import cli
+
+    add(client, admin, "ok.com", "missing.com")
+    run_precheck(engine, "missing.com")  # NXDOMAIN: the site's problem
+    _, job_id = run_precheck(engine, "ok.com")
+    failure = CrawlResult(job_id=job_id, domain="ok.com", requested_url="https://ok.com/",
+                          error_code="sandbox_unavailable", error_detail="AppArmor profile not loaded")
+    with Session(engine) as s, s.begin():
+        assert store_result(s, failure, job_id, S) == "failed"
+    with Session(engine) as s:
+        d = s.scalar(select(Domain).where(Domain.normalized_domain == "ok.com"))
+        assert d.classification_status == ClassificationStatus.UNCLASSIFIED  # not "unreachable"
+        assert (d.next_scan - d.last_scanned) == timedelta(hours=S.scan_retry_infra_hours)
+
+    assert cli.main(["retry-infra-failures"]) == 0
+    assert "dry run: would queue 1 domains for a new scan: ok.com" in capsys.readouterr().out
+    assert cli.main(["retry-infra-failures", "--yes"]) == 0
+    assert jobs(engine)["ok.com"].status == JobStatus.QUEUED
+    assert jobs(engine)["missing.com"].status == JobStatus.FAILED  # left alone

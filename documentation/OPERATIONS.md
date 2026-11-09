@@ -58,6 +58,17 @@ Verified on Ubuntu (kernel 7.0, `apparmor_restrict_unprivileged_userns=1`, Docke
 the AppArmor profile the crawler container does not start (safe failure). Hosts that cannot load it can opt
 into the weaker mode with `-f deployment/docker-compose.nosandbox.yml`; do not crawl untrusted input then.
 
+**After a reboot or host maintenance.** Scans that fail on our side (`sandbox_unavailable`, `internal_error`,
+`storage_error`, `proxy_unavailable`) never mark a site unreachable and are retried after
+`scan_retry_infra_hours` (6). Seen on 2026-11-09 after the RAM upgrade: ~200 failures in 6 hours until the stack
+was restarted. Check `sudo aa-status | grep cat-egory` and `$DC exec crawler python -m crawler.selftest`, then
+re-queue what failed instead of waiting:
+
+```bash
+$DC exec api python -m backend.cli retry-infra-failures          # dry run (last 48 h)
+$DC exec api python -m backend.cli retry-infra-failures --yes
+```
+
 ## 2. Scheduled work (Celery beat)
 
 | Task | Every | What |

@@ -7,6 +7,9 @@ from typing import Any
 # error codes that are worth retrying later
 RETRYABLE = frozenset({"timeout", "connection_failed", "proxy_unavailable", "browser_crashed", "internal_error",
                        "robots_unavailable", "dns_timeout", "dns_failure", "storage_error"})
+# Failures on our side (sandbox, crawler, storage, egress proxy), not the site's: retried within hours, never a
+# reason to call a site unreachable.
+INFRA_ERRORS = frozenset({"sandbox_unavailable", "internal_error", "storage_error", "proxy_unavailable"})
 # Codes the egress proxy returns when the target is unreachable (as opposed to forbidden by policy).
 PROXY_NETWORK_CODES = {"dns_failure": "dns_failure", "dns_no_answer": "dns_failure", "connect_failed": "connection_failed"}
 

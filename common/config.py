@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     scan_interval_risk_days: int = 1        # active threat record: re-check daily
     scan_interval_unreachable_days: int = 7 # broken domains are re-checked weekly
     scan_interval_blocked_days: int = 30    # robots.txt / SSRF policy refused
+    scan_retry_infra_hours: int = 6         # our sandbox / crawler / storage failed: try again soon
     # certificate-transparency brand watch (integrations/ct_watch.py)
     certstream_url: str = "ws://certstream:8080/domains-only"
     lookalike_top_n: int = Field(default=1000, ge=0, description="protect the top N domains of majestic-million-top "

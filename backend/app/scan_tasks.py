@@ -20,7 +20,7 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from common.config import Settings, get_settings
-from crawler.result import CrawlResult
+from crawler.result import INFRA_ERRORS, CrawlResult
 from crawler.ssrf import why_blocked
 from database.models import (
     ClassificationStatus,
@@ -204,7 +204,10 @@ def store_result(session: Session, result: CrawlResult, job_id: str, settings: S
     job.error_detail = result.error_detail
 
     domain.last_scanned = now
-    domain.next_scan = now + timedelta(days=rescan_days(session, domain, scan, job.status, settings))
+    if job.status == JobStatus.FAILED and result.error_code in INFRA_ERRORS:
+        domain.next_scan = now + timedelta(hours=settings.scan_retry_infra_hours)  # our fault, not the site's
+    else:
+        domain.next_scan = now + timedelta(days=rescan_days(session, domain, scan, job.status, settings))
     domain.scan_count += 1
     if job.status == JobStatus.FAILED and result.error_code in UNREACHABLE_CODES \
             and domain.classification_status == ClassificationStatus.UNCLASSIFIED:

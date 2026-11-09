@@ -227,6 +227,31 @@ def _watch(domain, days: int) -> None:
     domain.next_scan = datetime.now(UTC) + timedelta(days=days)
 
 
+def retry_infra_failures(session: Session, *, hours: int = 48, dry_run: bool = False) -> list[str]:
+    """Re-queue domains whose latest scan failed on our side (crawler.result.INFRA_ERRORS: sandbox, crawler,
+    storage, egress proxy) within the last ``hours``, e.g. after a reboot. Returns the domains."""
+    from sqlalchemy import func
+
+    from backend.app.services.domains import queue_scans
+    from crawler.result import INFRA_ERRORS
+    from database.models import Domain, JobStatus, ScanJob, ScanReason
+
+    since = datetime.now(UTC) - timedelta(hours=hours)
+    latest = (select(ScanJob.domain_id, ScanJob.status, ScanJob.error_code,
+                     func.row_number().over(partition_by=ScanJob.domain_id,
+                                            order_by=(ScanJob.queued_at.desc(), ScanJob.id.desc())).label("rn"))
+              .where(ScanJob.queued_at >= since).subquery())
+    rows = session.execute(select(Domain.id, Domain.normalized_domain).join(latest, latest.c.domain_id == Domain.id)
+                           .where(Domain.is_active, latest.c.rn == 1, latest.c.status == JobStatus.FAILED,
+                                  latest.c.error_code.in_(sorted(INFRA_ERRORS)))
+                           .order_by(Domain.id)).all()
+    if rows and not dry_run:
+        queued = queue_scans(session, [r[0] for r in rows], reason=ScanReason.RESCAN, priority=5, requested_by_id=None)
+        audit.record(session, action="scans.retry_infra_failures", target_type="scan_job",
+                     after={"domains": len(rows), "queued": queued, "hours": hours})
+    return [r[1] for r in rows]
+
+
 def _password(args) -> str | None:
     if not getattr(args, "password", False):
         return None
@@ -291,6 +316,11 @@ def main(argv: list[str] | None = None) -> int:
                        help="close open look-alike reviews of parked pages (kept under watch, re-checked weekly)")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
 
+    p = sub.add_parser("retry-infra-failures",
+                       help="re-queue domains whose last scan failed on our side (sandbox, crawler, storage)")
+    p.add_argument("--hours", type=int, default=48, help="look back this many hours (default 48)")
+    p.add_argument("--yes", action="store_true", help="really queue them (default is a dry run)")
+
     args = parser.parse_args(argv)
     try:
         with session_factory()() as session, session.begin():
@@ -349,6 +379,10 @@ def main(argv: list[str] | None = None) -> int:
                 names = triage_lookalikes(session, dry_run=not args.yes)
                 verb = "closed" if args.yes else "dry run: would close"
                 print(f"{verb} {len(names)} parked look-alike reviews" + (f": {', '.join(names[:10])} ..." if names else ""))
+            elif args.command == "retry-infra-failures":
+                names = retry_infra_failures(session, hours=args.hours, dry_run=not args.yes)
+                verb = "queued" if args.yes else "dry run: would queue"
+                print(f"{verb} {len(names)} domains for a new scan" + (f": {', '.join(names[:10])} ..." if names else ""))
             elif args.command == "reclassify-provider":
                 domains, tasks = reclassify_provider(session, args.provider, dry_run=not args.yes)
                 if args.yes:
