@@ -126,3 +126,16 @@ def test_threat_flags_on_popular_or_official_sites_need_confirmation(engine, top
     assert r.status_code == 409
     assert client.post(f"/api/v1/admin/submissions/{sub['id']}/moderate", headers=admin,
                        json={"action": "accept", "confirm_protected": True}).status_code == 200
+
+
+def test_parked_lookalike_whose_only_claim_is_the_name_is_watched(engine, top_source):
+    """gsoogle.com: parked page, the model adds "lookalike-domain" because of the name alone."""
+    parked = dict(primary_category="parked-domains", secondary_categories=[], confidence=0.95)
+    out = run(engine, make_scan(engine, "gooogle.com"), Scripted(risk_categories=["lookalike-domain"], **parked))
+    assert (out.action, out.reason) == ("watch", "parked_lookalike")
+    out = run(engine, make_scan(engine, "googie.com"),
+              Scripted(risk_categories=["lookalike-domain", "phishing"], **parked))
+    assert out.action == "review"  # any claim beyond the name: a person decides
+    out = run(engine, make_scan(engine, "goog1e.com"),
+              Scripted(risk_categories=["lookalike-domain"], requires_human_review=True, **parked))
+    assert out.action == "review"  # the model asked for a person

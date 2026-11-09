@@ -172,7 +172,8 @@ rn→m; official domains and .gov.tr/.edu.tr/… never match) and adds matches f
 priority-3 scan. Each name at most once per 30 days, at most `CATEGORY_CT_WATCH_MAX_PER_HOUR` (5; one reviewer's
 pace) per hour. **These domains go to the threat-candidate queue (reason `brand_lookalike`)**, however confident
 the model is: a phishing copy of a bank would otherwise be published as "banking". The one exception: the model is
-≥ 0.90 sure the page is parked / for sale / a placeholder and claims no risk — then nothing is published, no review
+≥ 0.90 sure the page is parked / for sale / a placeholder and claims no risk beyond the name itself (a lone
+`lookalike-domain`, which our own detector already established) — then nothing is published, no review
 is opened, and the domain is re-checked every 7 days (`lookalike_recheck_days`); once the page changes it comes
 back to a person. (About 80 % of look-alike names are parked.) Older open reviews of that kind:
 `$DC exec api python -m backend.cli triage-lookalikes [--yes]`. Liveness: heartbeat `ct-watch.stream`, alert

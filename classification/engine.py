@@ -240,13 +240,20 @@ def is_lookalike_reason(reason: str) -> bool:
     return reason == "brand_lookalike" or reason.startswith("lookalike_of:")
 
 
+# A model looking at a look-alike often adds "lookalike-domain" because of the name alone. Our own detector
+# (CT brand watch / top-site typo and homograph index) already established that, so on a parked page this claim
+# adds nothing a person must decide now.
+NAME_ONLY_RISKS = frozenset({"lookalike-domain"})
+
+
 def parked_answer(*, primary: str | None, confidence: float | None, risk: list[str] | tuple, injection: bool,
                   wants_human: bool, policy: ConfidencePolicy) -> bool:
     """A look-alike whose page is plainly a parked / for-sale / placeholder page: the model is sure (auto-approve
-    band) and claims nothing risky. Such a name is watched (re-checked weekly), not shown to a person yet; a
-    threat flag still needs a person once the page turns into something."""
-    return (primary == PARKED and confidence is not None and confidence >= policy.auto_approve and not risk
-            and not injection and not wants_human)
+    band) and claims nothing risky beyond the name itself. Such a name is watched (re-checked weekly), not shown
+    to a person yet, and nothing is published; a threat flag still needs a person once the page turns into
+    something. The model's own "please ask a person" and injection signals still send it to review."""
+    return (primary == PARKED and confidence is not None and confidence >= policy.auto_approve
+            and set(risk) <= NAME_ONLY_RISKS and not injection and not wants_human)
 
 
 def close_lookalike_reviews(session: Session, domain: Domain, note: str) -> int:
