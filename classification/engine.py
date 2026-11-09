@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.orm import Session
 
 from ai_providers.base import AIProvider
@@ -222,6 +222,41 @@ def supersede_reviews(session: Session, domain: Domain, note: str, *, reasons=SU
 
 BRAND_WATCH_SOURCE = "ct-brand-watch"  # integrations/ct_watch.py
 
+# Review reasons that ask "is this a threat?" rather than "which category?". They form their own queue, so a
+# flood of look-alike candidates does not bury category reviews (and vice versa).
+THREAT_CANDIDATE_REASONS = ("brand_lookalike", "risk_claim")
+PARKED = "parked-domains"
+
+
+def is_threat_candidate(reason: str) -> bool:
+    return reason in THREAT_CANDIDATE_REASONS or reason.startswith("lookalike_of:")
+
+
+def threat_candidate() -> ColumnElement[bool]:
+    return or_(ReviewTask.reason.in_(THREAT_CANDIDATE_REASONS), ReviewTask.reason.like("lookalike\\_of:%", escape="\\"))
+
+
+def is_lookalike_reason(reason: str) -> bool:
+    return reason == "brand_lookalike" or reason.startswith("lookalike_of:")
+
+
+def parked_answer(*, primary: str | None, confidence: float | None, risk: list[str] | tuple, injection: bool,
+                  wants_human: bool, policy: ConfidencePolicy) -> bool:
+    """A look-alike whose page is plainly a parked / for-sale / placeholder page: the model is sure (auto-approve
+    band) and claims nothing risky. Such a name is watched (re-checked weekly), not shown to a person yet; a
+    threat flag still needs a person once the page turns into something."""
+    return (primary == PARKED and confidence is not None and confidence >= policy.auto_approve and not risk
+            and not injection and not wants_human)
+
+
+def close_lookalike_reviews(session: Session, domain: Domain, note: str) -> int:
+    tasks = [t for t in session.scalars(select(ReviewTask).where(ReviewTask.domain_id == domain.id,
+                                                                 ReviewTask.status == ReviewStatus.OPEN))
+             if is_lookalike_reason(t.reason)]
+    for task in tasks:
+        task.status, task.decided_at, task.decision_note = ReviewStatus.SKIPPED, datetime.now(UTC), note
+    return len(tasks)
+
 
 def lookalike_reason(session: Session, domain: Domain) -> str | None:
     """Why this domain may imitate a brand or a popular site, or None. Such domains always go to a person."""
@@ -265,7 +300,8 @@ def _review_reason(result: ProviderResult, decision: Decision) -> str:
 
 def decide(session: Session, domain: Domain, scan: ScanResult | None, result: ProviderResult, *,
            taxonomy: Taxonomy, policy: ConfidencePolicy, data: ClassificationInput | None = None,
-           second_provider: AIProvider | None = None, reanalyze_days: int = 1) -> Outcome:
+           second_provider: AIProvider | None = None, reanalyze_days: int = 1,
+           lookalike_recheck_days: int = 7) -> Outcome:
     first = record_prediction(session, domain, scan, result)
     outcome = Outcome(action="invalid", prediction_ids=[first.id])
 
@@ -286,6 +322,14 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
     human_primary = next((r.category_id for r in human_rows if r.is_primary), None)
 
     if human_primary is None and (lookalike := lookalike_reason(session, domain)):
+        if parked_answer(primary=out.primary_category, confidence=out.confidence, risk=out.risk_categories,
+                         injection=bool(result.injection_signals), wants_human=out.requires_human_review,
+                         policy=policy):
+            # Most look-alike names from certificate logs are parked. Nothing to decide yet: keep watching.
+            close_lookalike_reviews(session, domain, f"parked look-alike (prediction {first.id}); watched")
+            _mark_reanalyze(domain, lookalike_recheck_days)
+            outcome.action, outcome.reason = "watch", "parked_lookalike"
+            return outcome
         # A possible copy of a known brand or popular site: a convincing phishing page would otherwise be published
         # as "banking". A person decides, however sure the model is.
         task = open_review(session, domain, first, lookalike)
@@ -336,6 +380,36 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
     domain.classification_status = _review_status(domain)
     outcome.action, outcome.reason, outcome.review_task_id = "review", task.reason, task.id
     return outcome
+
+
+def settle_with_second_opinion(session: Session, task: ReviewTask, scan: ScanResult | None,
+                               result: ProviderResult, *, taxonomy: Taxonomy) -> str:
+    """Answer an open ``needs_extra_validation`` review (first model 0.70-0.89 sure) with a second model's
+    answer, the same rule ``decide`` applies to new classifications: same primary category -> published as an AI
+    classification (confidence = the lower of the two), task closed; otherwise the task stays for a person as
+    ``model_disagreement``. Returns "applied", "disagree", "error" (provider failed, task untouched) or "skipped"."""
+    first = session.get(AIPrediction, task.ai_prediction_id) if task.ai_prediction_id else None
+    if (task.status != ReviewStatus.OPEN or task.reason != "needs_extra_validation" or first is None
+            or first.primary_category_id is None or first.risk_flags or first.requires_human_review):
+        return "skipped"
+    domain = session.get(Domain, task.domain_id, with_for_update=True)
+    if any(r.origin in (AssignmentOrigin.HUMAN, AssignmentOrigin.COMMUNITY)
+           for r in current_assignments(session, domain.id)) or lookalike_reason(session, domain):
+        return "skipped"  # a person decided already, or a look-alike: never settled by models
+    second = record_prediction(session, domain, scan, result)
+    if not result.ok:
+        return "error"
+    out = result.output
+    if out.primary_category == first.primary_category_id and not out.risk_categories \
+            and not result.injection_signals and not out.requires_human_review:
+        confidence = min(float(first.confidence or 0), out.confidence)
+        apply_categories(session, domain, primary=first.primary_category_id, secondary=first.secondary_category_ids,
+                         confidence=confidence, origin=AssignmentOrigin.AI, taxonomy=taxonomy,
+                         status=ClassificationStatus.CLASSIFIED, prediction_id=first.id)
+        supersede_reviews(session, domain, f"settled by second opinion (prediction {second.id}): models agree")
+        return "applied"
+    task.reason = "model_disagreement"
+    return "disagree"
 
 
 def _review_status(domain: Domain) -> ClassificationStatus:

@@ -100,7 +100,9 @@ class Settings(BaseSettings):
     certstream_url: str = "ws://certstream:8080/domains-only"
     lookalike_top_n: int = Field(default=1000, ge=0, description="protect the top N domains of majestic-million-top "
                                                               "against homographs and typos; 0 = off")
-    ct_watch_max_per_hour: int = Field(default=30, ge=1, description="look-alike domains queued per hour at most")
+    # One reviewer can look at a handful of threat candidates an hour; more only grows the queue.
+    ct_watch_max_per_hour: int = Field(default=5, ge=1, description="look-alike domains queued per hour at most")
+    lookalike_recheck_days: int = Field(default=7, ge=1, description="re-check interval for parked look-alikes")
     # discovery (first scans of domains from discovery sources; backend/app/discovery.py)
     discovery_daily_budget: int = Field(default=200, ge=0, description="new domains queued per UTC day; 0 = off")
     discovery_batch_size: int = Field(default=10, ge=1, description="new domains queued per 15-minute run")

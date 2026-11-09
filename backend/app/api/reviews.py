@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ai_providers.registry import available
 from classification import calibration
-from classification.engine import REVIEW_SOURCE, apply_categories, open_review, record_threats
+from classification.engine import REVIEW_SOURCE, apply_categories, open_review, record_threats, threat_candidate
 from classification.taxonomy import default_taxonomy
 from common.config import get_settings
 from common.domains import DomainError, normalize_domain
@@ -125,9 +125,15 @@ def _review_out(session: Session, task: ReviewTask) -> ReviewOut:
 
 @router.get("/reviews", response_model=ReviewPage, summary="Review queue (oldest first)")
 def list_reviews(status: Literal["open", "done", "skipped"] = "open", limit: int = Query(20, ge=1, le=100),
-                 cursor: int | None = None, _: Principal = Depends(require("reviews:write")),
+                 cursor: int | None = None,
+                 queue: Literal["all", "categories", "threats"] = Query(
+                     "all", description="categories = which category is right; threats = look-alike and "
+                                        "threat-claim candidates (is this dangerous?)"),
+                 _: Principal = Depends(require("reviews:write")),
                  session: Session = Depends(get_session)) -> ReviewPage:
     stmt = select(ReviewTask).where(ReviewTask.status == status).order_by(ReviewTask.id).limit(limit + 1)
+    if queue != "all":
+        stmt = stmt.where(threat_candidate() if queue == "threats" else ~threat_candidate())
     if cursor:
         stmt = stmt.where(ReviewTask.id > cursor)
     tasks = list(session.scalars(stmt))

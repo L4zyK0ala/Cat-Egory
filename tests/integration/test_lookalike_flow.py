@@ -51,3 +51,44 @@ def test_ct_stream_queues_homographs_of_popular_sites(engine, top_source):
     queued = handle(names, default_watchlist(), fakeredis.FakeRedis(), Settings(_env_file=None),
                     sessionmaker(bind=engine), top)
     assert queued == 2
+
+
+def test_parked_lookalikes_are_watched_not_queued(engine, top_source, client, admin, capsys):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from backend import cli
+    from database.models import ClassificationStatus, Domain, ReviewStatus, ReviewTask
+
+    parked = dict(primary_category="parked-domains", secondary_categories=[])
+    out = run(engine, make_scan(engine, "amazom.com"), Scripted(confidence=0.96, **parked))
+    assert (out.action, out.reason) == ("watch", "parked_lookalike")
+    with Session(engine) as s:
+        d = s.scalar(select(Domain).where(Domain.normalized_domain == "amazom.com"))
+        assert d.classification_status == ClassificationStatus.REANALYZE and d.primary_category_id is None
+        assert timedelta(days=6) < d.next_scan - datetime.now(UTC) <= timedelta(days=7)  # re-checked weekly
+    # not sure it is parked, a threat claim, or a real page: a person looks
+    assert run(engine, make_scan(engine, "amazan.com"), Scripted(confidence=0.8, **parked)).action == "review"
+    assert run(engine, make_scan(engine, "anazon.com"),
+               Scripted(confidence=0.97, risk_categories=["phishing"], **parked)).action == "review"
+    assert run(engine, make_scan(engine, "amazcn.com"), Scripted(primary_category="banking")).action == "review"
+
+    # queues: look-alikes and threat claims apart from category questions
+    run(engine, make_scan(engine, "news.example.com"), Scripted(confidence=0.6))
+    by_queue = {q: [i["domain"] for i in client.get("/api/v1/admin/reviews", headers=admin,
+                                                    params={"queue": q}).json()["items"]]
+                for q in ("categories", "threats", "all")}
+    assert by_queue["categories"] == ["news.example.com"]
+    assert by_queue["threats"] == ["amazan.com", "anazon.com", "amazcn.com"] and len(by_queue["all"]) == 4
+    stats = client.get("/api/v1/stats").json()
+    assert (stats["pending_reviews"], stats["pending_threat_candidates"]) == (1, 3)
+
+    # a review opened before the rule existed (sure, parked) is closed by the triage command
+    with Session(engine) as s, s.begin():
+        d = s.scalar(select(Domain).where(Domain.normalized_domain == "amazom.com"))
+        s.add(ReviewTask(domain_id=d.id, reason="lookalike_of:amazon.com", status=ReviewStatus.OPEN,
+                         ai_prediction_id=out.prediction_ids[0]))
+    assert cli.main(["triage-lookalikes"]) == 0 and "dry run: would close 1" in capsys.readouterr().out
+    assert cli.main(["triage-lookalikes", "--yes"]) == 0 and "closed 1 parked" in capsys.readouterr().out
+    assert client.get("/api/v1/stats").json()["pending_threat_candidates"] == 3  # the unsure ones stay

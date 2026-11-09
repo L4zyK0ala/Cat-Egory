@@ -201,7 +201,7 @@ services:
     environment:
       <<: *backend-env
       CATEGORY_CERTSTREAM_URL: ws://certstream:8080/domains-only
-      CATEGORY_CT_WATCH_MAX_PER_HOUR: ${CATEGORY_CT_WATCH_MAX_PER_HOUR:-30}
+      CATEGORY_CT_WATCH_MAX_PER_HOUR: ${CATEGORY_CT_WATCH_MAX_PER_HOUR:-5}
       CATEGORY_LOOKALIKE_TOP_N: ${CATEGORY_LOOKALIKE_TOP_N:-1000}
     healthcheck: {disable: true}   # no web server; liveness is the ct-watch.stream heartbeat (alert CtWatchStopped)
     networks: [core, ct]

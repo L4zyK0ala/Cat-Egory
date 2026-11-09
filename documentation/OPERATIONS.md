@@ -107,6 +107,24 @@ When a later classification is applied automatically (≥ 0.90, or two models ag
 said "the model was unsure" (or came from the mock) are closed as `skipped` with a note. Risk claims,
 prompt-injection findings and model-requested reviews stay open for a person.
 
+### Second opinion (0.70–0.89 band)
+
+With `CATEGORY_EVREN_SECOND_MODEL` set (a different model than `CATEGORY_EVREN_MODEL`, e.g. `deepseek-v4.1-flash`),
+an answer in the 0.70–0.89 band is shown to the second model; if both pick the same primary category it is
+published (confidence = the lower of the two), otherwise it waits for a person as `model_disagreement`. Reviews
+opened while no second model was set get one with (runs in the worker, which holds the key):
+
+```bash
+$DC exec worker python -m backend.cli second-opinion          # dry run
+$DC exec worker python -m backend.cli second-opinion --yes    # queue them (category.classify.second_opinion)
+```
+
+### Two review queues
+
+`GET /api/v1/admin/reviews?queue=categories|threats|all`. *Threat candidates* are look-alikes (`brand_lookalike`,
+`lookalike_of:<site>`) and model threat claims (`risk_claim`); everything else is a category review. Quick Review
+has a selector, the dashboard counts them apart (`pending_reviews`, `pending_threat_candidates`).
+
 ### Registry allocation rules (.gov.tr, .edu.tr, …)
 
 Some Turkish suffixes are only allocated to one kind of holder after a document check (TRABİS, "belgeli alan
@@ -130,9 +148,13 @@ continuously (~150 GB/day); nothing is stored** — read-only file system, no vo
 forwarding off (`deployment/certstream/config.yaml`). `ct-watch` (our image, no internet access) matches every name
 against `integrations/ct_watchlist.yaml` (look-alike folding: Turkish letters, Cyrillic/Greek look-alikes, 0/1/l,
 rn→m; official domains and .gov.tr/.edu.tr/… never match) and adds matches from the source `ct-brand-watch` with a
-priority-3 scan. Each name at most once per 30 days, at most `CATEGORY_CT_WATCH_MAX_PER_HOUR` (30) per hour.
-**These domains always go to the review queue (reason `brand_lookalike`)**, however confident the model is: a
-phishing copy of a bank would otherwise be published as "banking". Liveness: heartbeat `ct-watch.stream`, alert
+priority-3 scan. Each name at most once per 30 days, at most `CATEGORY_CT_WATCH_MAX_PER_HOUR` (5; one reviewer's
+pace) per hour. **These domains go to the threat-candidate queue (reason `brand_lookalike`)**, however confident
+the model is: a phishing copy of a bank would otherwise be published as "banking". The one exception: the model is
+≥ 0.90 sure the page is parked / for sale / a placeholder and claims no risk — then nothing is published, no review
+is opened, and the domain is re-checked every 7 days (`lookalike_recheck_days`); once the page changes it comes
+back to a person. (About 80 % of look-alike names are parked.) Older open reviews of that kind:
+`$DC exec api python -m backend.cli triage-lookalikes [--yes]`. Liveness: heartbeat `ct-watch.stream`, alert
 `CtWatchStopped`. To pause it: `$DC stop certstream ct-watch`.
 
 ct-watch reads into a bounded queue (50k messages), matches in a separate task and writes hits in a third, so a

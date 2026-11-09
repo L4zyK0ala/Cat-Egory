@@ -44,6 +44,8 @@ function Quick({ api }: { api: string }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [choice, setChoice] = useState("");
   const [risk, setRisk] = useState<string[]>([]);
+  // Two queues: "which category?" first; look-alikes and threat claims ("is this dangerous?") apart.
+  const [queue, setQueue] = useState<"categories" | "threats">("categories");
   const picker = useRef<HTMLInputElement>(null);
 
   const content = useMemo(() => cats.filter((c) => c.kind === "content" && !c.is_group), [cats]);
@@ -53,12 +55,12 @@ function Quick({ api }: { api: string }) {
   const next = items[1];
 
   const load = useCallback(async () => {
-    const [r, c] = await Promise.all([call<{ items: Review[] }>(api, "/api/v1/admin/reviews?limit=50"),
+    const [r, c] = await Promise.all([call<{ items: Review[] }>(api, `/api/v1/admin/reviews?limit=50&queue=${queue}`),
                                       call<{ items: Cat[] }>(api, "/api/v1/categories", { auth: false })]);
     if (r.ok) setItems(r.data.items); else setMsg({ ok: false, text: `${r.message} (${r.code})` });
     if (c.ok) setCats(c.data.items);
     setLoaded(true);
-  }, [api]);
+  }, [api, queue]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { setChoice(""); setRisk([]); }, [current?.id]);
 
@@ -114,13 +116,21 @@ function Quick({ api }: { api: string }) {
   return (
     <div className="stack quick">
       <div className="row quick-bar">
-        <span><b>{done}</b> decided · <b>{items.length}</b> left</span>
+        <span className="row">
+          <select value={queue} aria-label="Queue" onChange={(e) => { setQueue(e.target.value as typeof queue); setMsg(null); }}>
+            <option value="categories">Category reviews</option>
+            <option value="threats">Threat candidates</option>
+          </select>
+          <span><b>{done}</b> decided · <b>{items.length}</b> left</span>
+        </span>
         <button className="secondary" onClick={sample}>Add 20 Published AI Answers to Verify</button>
         <span className="muted keys"><kbd>A</kbd> approve · <kbd>S</kbd> category · <kbd>R</kbd> reject · <kbd>N</kbd> skip</span>
       </div>
       {msg && <div className={`notice ${msg.ok ? "ok" : "error"}`} role="status">{msg.text}</div>}
       {!current ? (
-        <div className="panel"><p>Nothing left to review. Add a sample of published AI answers to verify them.</p></div>
+        <div className="panel"><p>{queue === "threats" ? "No threat candidates waiting. Parked look-alikes are watched "
+          + "automatically and come back here when their page changes."
+          : "Nothing left to review. Add a sample of published AI answers to verify them."}</p></div>
       ) : (
         <div className="panel quick-card">
           <div className="row">

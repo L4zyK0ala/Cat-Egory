@@ -17,7 +17,7 @@ export type UrlLookup = { url: string; normalized_url: string; match: string; re
 export type HistoryItem = { category: string; primary: boolean; origin: string; confidence: number | null; valid_from: string; valid_to: string | null };
 export type Stats = {
   generated_at: string; total_domains: number; categorized_domains: number; verified_domains: number;
-  by_status: Record<string, number>; pending_reviews: number; domains_scanned_today: number; total_screenshots: number;
+  by_status: Record<string, number>; pending_reviews: number; pending_threat_candidates: number; domains_scanned_today: number; total_screenshots: number;
   ai_predictions_30d: number; ai_valid_answer_rate_30d: number | null;
   category_distribution: { category: string; domains: number }[]; threats: Record<string, number>;
   threat_urls: Record<string, number>;

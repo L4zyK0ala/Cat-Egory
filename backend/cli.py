@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from backend.app import audit
 from backend.app.security import ROLE_SCOPES, generate_api_key, hash_password, validate_scopes
+from common.config import get_settings
 from database.models import ApiKey, Role, User
 from database.session import session_factory
 
@@ -175,6 +176,57 @@ def apply_registry_rules(session: Session, *, dry_run: bool = False) -> list[str
     return done
 
 
+def second_opinion_tasks(session: Session) -> list[int]:
+    """Open reviews that only wait because the first model was 0.70-0.89 sure (oldest first)."""
+    from database.models import ReviewStatus, ReviewTask
+
+    return list(session.scalars(select(ReviewTask.id).where(ReviewTask.status == ReviewStatus.OPEN,
+                                                            ReviewTask.reason == "needs_extra_validation")
+                                .order_by(ReviewTask.id)))
+
+
+def triage_lookalikes(session: Session, *, dry_run: bool = False) -> list[str]:
+    """Close open look-alike reviews whose page the model calls parked with auto-approve confidence and no risk
+    (the rule new classifications follow, classification.engine.parked_answer). The domains stay watched:
+    re-checked every ``lookalike_recheck_days``; a changed page comes back to a person. Returns the domains."""
+    from backend.app.classify_tasks import policy_from
+    from classification.engine import close_lookalike_reviews, is_lookalike_reason, parked_answer
+    from database.models import AIPrediction, Domain, Evidence, EvidenceType, ReviewStatus, ReviewTask
+
+    settings = get_settings()
+    policy = policy_from(settings)
+    names = []
+    rows = session.execute(select(ReviewTask, AIPrediction).join(AIPrediction, AIPrediction.id == ReviewTask.ai_prediction_id)
+                           .where(ReviewTask.status == ReviewStatus.OPEN).order_by(ReviewTask.id)).all()
+    for task, pred in rows:
+        if not is_lookalike_reason(task.reason):
+            continue
+        injection = session.scalar(select(Evidence.id).where(Evidence.ai_prediction_id == pred.id,
+                                                             Evidence.type == EvidenceType.SYSTEM).limit(1)) is not None
+        if not parked_answer(primary=pred.primary_category_id,
+                             confidence=float(pred.confidence) if pred.confidence is not None else None,
+                             risk=pred.risk_flags, injection=injection, wants_human=pred.requires_human_review,
+                             policy=policy):
+            continue
+        domain = session.get(Domain, task.domain_id)
+        names.append(domain.normalized_domain)
+        if not dry_run:
+            close_lookalike_reviews(session, domain, f"parked look-alike (prediction {pred.id}); watched")
+            _watch(domain, settings.lookalike_recheck_days)
+    if names and not dry_run:
+        audit.record(session, action="reviews.triage_lookalikes", target_type="review",
+                     after={"closed": len(names), "recheck_days": settings.lookalike_recheck_days})
+    return names
+
+
+def _watch(domain, days: int) -> None:
+    from database.models import ClassificationStatus
+
+    if domain.classification_status not in (ClassificationStatus.CLASSIFIED, ClassificationStatus.VERIFIED):
+        domain.classification_status = ClassificationStatus.REANALYZE
+    domain.next_scan = datetime.now(UTC) + timedelta(days=days)
+
+
 def _password(args) -> str | None:
     if not getattr(args, "password", False):
         return None
@@ -231,6 +283,14 @@ def main(argv: list[str] | None = None) -> int:
                        help="classify unreadable .gov.tr/.edu.tr/... domains from their registry allocation rule")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
 
+    p = sub.add_parser("second-opinion",
+                       help="ask the second EVREN model about open mid-confidence reviews (run in the worker)")
+    p.add_argument("--yes", action="store_true", help="really queue them (default is a dry run)")
+
+    p = sub.add_parser("triage-lookalikes",
+                       help="close open look-alike reviews of parked pages (kept under watch, re-checked weekly)")
+    p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
+
     args = parser.parse_args(argv)
     try:
         with session_factory()() as session, session.begin():
@@ -269,6 +329,26 @@ def main(argv: list[str] | None = None) -> int:
                 names = apply_registry_rules(session, dry_run=not args.yes)
                 verb = "classified" if args.yes else "dry run: would classify"
                 print(f"{verb} {len(names)} domains" + (f": {', '.join(names[:20])}" if names else ""))
+            elif args.command == "second-opinion":
+                from ai_providers.registry import get_second_opinion
+
+                ids = second_opinion_tasks(session)
+                if get_second_opinion() is None:
+                    raise CliError("no second model: set CATEGORY_EVREN_SECOND_MODEL (different from "
+                                   "CATEGORY_EVREN_MODEL) and run this in the worker container")
+                if not args.yes:
+                    print(f"dry run: {len(ids)} open reviews would get a second opinion (add --yes to do it)")
+                else:
+                    from backend.app.worker import celery_app
+
+                    for task_id in ids:
+                        celery_app.send_task("category.classify.second_opinion", args=[task_id])
+                    print(f"queued {len(ids)} reviews for a second opinion; agreeing answers are published, "
+                          "the rest stay in the review queue as model_disagreement")
+            elif args.command == "triage-lookalikes":
+                names = triage_lookalikes(session, dry_run=not args.yes)
+                verb = "closed" if args.yes else "dry run: would close"
+                print(f"{verb} {len(names)} parked look-alike reviews" + (f": {', '.join(names[:10])} ..." if names else ""))
             elif args.command == "reclassify-provider":
                 domains, tasks = reclassify_provider(session, args.provider, dry_run=not args.yes)
                 if args.yes:

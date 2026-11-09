@@ -60,6 +60,7 @@ export default async function Dashboard() {
             <Tile label="Categorized" value={stats.categorized_domains} />
             <Tile label="Verified" value={stats.verified_domains} />
             <Tile label="Pending reviews" value={stats.pending_reviews} />
+            <Tile label="Threat candidates" value={stats.pending_threat_candidates ?? 0} />
             <Tile label="Scanned today" value={stats.domains_scanned_today} />
             <Tile label="Screenshots" value={stats.total_screenshots} />
             <Tile label="AI valid answers (30d)" value={rate == null ? "–" : `${(rate * 100).toFixed(1)}%`} />

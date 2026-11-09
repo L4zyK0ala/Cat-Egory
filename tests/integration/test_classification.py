@@ -363,3 +363,47 @@ def test_verification_sample_turns_published_ai_answers_into_verified_data(engin
     assert client.get("/api/v1/stats").json()["verified_domains"] == 1
     assert client.post("/api/v1/admin/reviews/sample", headers=admin, json={"n": 0}).status_code == 422
     assert client.post("/api/v1/admin/reviews/sample", json={"n": 5}).status_code == 401
+
+
+def test_second_opinion_settles_waiting_reviews(engine, clean):
+    """Reviews opened while no second model was configured get one later (CLI second-opinion)."""
+    from backend.app.classify_tasks import second_opinion_for_task
+    from backend.cli import second_opinion_tasks
+
+    for name in ("a.example.com", "b.example.com", "c.example.com", "d.example.com"):
+        run(engine, make_scan(engine, name), Scripted(confidence=0.8))
+    with Session(engine) as s:
+        waiting = second_opinion_tasks(s)
+    assert len(waiting) == 4 and reviews(engine) == [("needs_extra_validation", "open")] * 4
+
+    def settle(task_id, provider):
+        with Session(engine) as s, s.begin():
+            return second_opinion_for_task(s, task_id, S, second=provider)
+
+    a, b, c, d = waiting
+    assert settle(a, Scripted(model="second", confidence=0.86)) == "applied"
+    assert current(engine, "a.example.com") == [("news", True, "ai"), ("sports", False, "ai")]
+    assert domain(engine, "a.example.com").classification_status == ClassificationStatus.CLASSIFIED
+    assert float(domain(engine, "a.example.com").confidence) == 0.8  # the lower of the two
+    assert settle(b, Scripted(model="second", primary_category="blogs")) == "disagree"
+    assert domain(engine, "b.example.com").classification_status == ClassificationStatus.NEEDS_REVIEW
+    assert settle(c, Scripted(model="second", risk_categories=["scam"])) == "disagree"  # a risk claim: a person
+    assert settle(d, Scripted(model="second", fail=True)) == "error"  # retried later, task untouched
+    assert settle(a, Scripted(model="second")) == "skipped"  # already settled
+    assert reviews(engine) == [("needs_extra_validation", "skipped"), ("model_disagreement", "open"),
+                               ("model_disagreement", "open"), ("needs_extra_validation", "open")]
+    with Session(engine) as s:
+        assert second_opinion_tasks(s) == [d]
+
+
+def test_second_opinion_cli_needs_a_second_model(engine, clean, capsys, monkeypatch):
+    from backend import cli
+    from common.config import get_settings
+
+    run(engine, make_scan(engine), Scripted(confidence=0.8))
+    monkeypatch.setattr(get_settings(), "evren_second_model", None)
+    assert cli.main(["second-opinion"]) == 1 and "CATEGORY_EVREN_SECOND_MODEL" in capsys.readouterr().err
+    monkeypatch.setattr(get_settings(), "ai_provider", "evren")
+    monkeypatch.setattr(get_settings(), "evren_second_model", "deepseek-v4.1-flash")
+    assert cli.main(["second-opinion"]) == 0
+    assert "dry run: 1 open reviews" in capsys.readouterr().out

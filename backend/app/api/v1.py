@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import ColumnElement, Date, cast, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
+from classification.engine import threat_candidate
 from common.domains import DomainError, normalize_domain, normalize_url
 from database.models import (
     AIPrediction,
@@ -363,7 +364,11 @@ def stats(response: Response, session: Session = Depends(get_session)) -> dict:
                                 + by_status.get(ClassificationStatus.VERIFIED, 0)),
         "verified_domains": by_status.get(ClassificationStatus.VERIFIED, 0),
         "by_status": {str(k): v for k, v in by_status.items()},
-        "pending_reviews": count(select(func.count()).select_from(ReviewTask).where(ReviewTask.status == ReviewStatus.OPEN)),
+        # category questions and threat candidates (look-alikes, threat claims) are two separate queues
+        "pending_reviews": count(select(func.count()).select_from(ReviewTask)
+                                 .where(ReviewTask.status == ReviewStatus.OPEN, ~threat_candidate())),
+        "pending_threat_candidates": count(select(func.count()).select_from(ReviewTask)
+                                           .where(ReviewTask.status == ReviewStatus.OPEN, threat_candidate())),
         "domains_scanned_today": count(select(func.count(func.distinct(ScanJob.domain_id)))
                                        .where(ScanJob.finished_at >= today, ScanJob.status == "succeeded")),
         "total_screenshots": count(select(func.count()).select_from(Screenshot)),
