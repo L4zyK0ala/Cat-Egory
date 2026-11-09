@@ -75,6 +75,12 @@ footer .brand b { color: var(--red); }
 .tile .value { font: 700 2rem/1.1 var(--serif); color: var(--red); margin-top: 6px; font-variant-numeric: tabular-nums; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+/* Two panels side by side end on the same line; a shorter table spreads its rows over the height. */
+.equal-panels > section { display: flex; flex-direction: column; }
+.equal-panels > section > .panel { flex: 1; }
+.equal-panels > section > .panel > table { height: 100%; }
+.equal-panels thead th { height: 1px; }
+.equal-panels td { vertical-align: middle; }
 .stack > * + * { margin-top: 12px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 

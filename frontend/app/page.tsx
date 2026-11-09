@@ -76,7 +76,7 @@ export default async function Dashboard() {
             <Tile label="AI predictions (30d)" value={stats.ai_predictions_30d}
                   hint="AI answers in the last 30 days, second opinions included. One domain can have several (rescans, second model)." />
           </div>
-          <div className="grid2">
+          <div className="grid2 equal-panels">
             <section>
               <h2>Category Distribution <Hint text="The 15 most common main categories among published domains. A domain counts once, under its main category." /></h2>
               <div className="panel">
