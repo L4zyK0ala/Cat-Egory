@@ -47,6 +47,7 @@ from .. import audit
 from ..deps import Principal, get_principal, rate_limit, require
 from ..errors import ApiError
 from ..services.domains import add_domains, get_source
+from .reviews import guard_protected
 
 public = APIRouter(prefix="/api/v1/community", tags=["community"], dependencies=[Depends(rate_limit("write"))])
 moderation = APIRouter(prefix="/api/v1/admin/submissions", tags=["moderation"],
@@ -103,6 +104,8 @@ class ModerateIn(BaseModel):
     primary: str | None = Field(default=None, description="override / required when the primary category is removed")
     secondary: list[str] | None = Field(default=None, max_length=5)
     note: str | None = Field(default=None, max_length=2000)
+    confirm_protected: bool = Field(default=False, description="flag a threat on a popular or official site "
+                                                               "anyway (otherwise 409 protected_domain)")
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -312,6 +315,8 @@ def moderate(submission_id: int, body: ModerateIn, request: Request,
             result |= {"created": added.created, "scans_queued": added.scans_queued}
         elif _threat_report(sub):
             domain = session.get(Domain, sub.domain_id, with_for_update=True)
+            if sub.type == SubmissionType.FALSE_NEGATIVE and not body.confirm_protected:
+                guard_protected(session, domain.normalized_domain)  # "this is phishing" about a popular site
             result |= _accept_threat_report(session, sub, domain)
         else:
             domain = session.get(Domain, sub.domain_id, with_for_update=True)

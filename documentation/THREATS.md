@@ -38,6 +38,11 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
 | Community report (`false_negative` + threat category) | domain | becomes a record only when a moderator accepts it |
 | Licensed threat feed (`integrations/sources.yaml`, `kind: threat_feed`) | domain | none approved yet; URLhaus internal-only at most |
 
+A threat flag on a popular site (Majestic top list), a watched brand's official domain or a restricted suffix
+(.gov.tr, .edu.tr, ...) — or any subdomain of these — is refused with 409 `protected_domain` until the reviewer
+confirms (`confirm_protected`; the UI asks). Added after `*.smoot.apple.com` was once flagged as scam by mistake.
+Look-alikes are other registrable domains and are not affected (`threats/guard.py`).
+
 Withdraw: `POST /api/v1/admin/threats/withdraw` (reason required) or an accepted community dispute.
 List (all sources, incl. internal, with URLs and evidence): `GET /api/v1/admin/threats?scope=&active=`.
 All writes are audit-logged (`threat.record`, `threat.withdraw`, `community.moderate`).

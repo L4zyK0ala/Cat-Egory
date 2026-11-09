@@ -25,6 +25,7 @@ from threats.records import UnknownDomain, domain_scoped, record_url_threats, ur
 from .. import audit
 from ..deps import Principal, rate_limit, require
 from ..errors import ApiError
+from .reviews import guard_protected
 
 router = APIRouter(prefix="/api/v1/admin/threats", tags=["threats"], dependencies=[Depends(rate_limit("write"))])
 
@@ -43,6 +44,8 @@ class Target(BaseModel):
 class RecordIn(Target):
     types: list[str] = Field(min_length=1, max_length=8, description="security-threat category ids")
     evidence: str = Field(min_length=10, max_length=2000, description="what the reviewer saw (kept internal)")
+    confirm_protected: bool = Field(default=False, description="flag a threat on a popular or official site "
+                                                               "anyway (otherwise 409 protected_domain)")
 
 
 class WithdrawIn(Target):
@@ -217,11 +220,15 @@ def record(body: RecordIn, request: Request, principal: Principal = Depends(requ
     if body.url is not None:
         url = _url(session, body.url, create=True)
         assert url is not None
+        if not body.confirm_protected:
+            guard_protected(session, session.get(Domain, url.domain_id).normalized_domain)
         record_url_threats(session, url.normalized_url, types, reference=reference)
         session.flush()
         target, scope, where = url.normalized_url, "url", ThreatIntelligence.url_id == url.id
     else:
         domain = _domain(session, body.domain or "")
+        if not body.confirm_protected:
+            guard_protected(session, domain.normalized_domain)
         record_threats(session, domain, types, reference=reference)
         session.flush()
         target, scope, where = domain.normalized_domain, "domain", (

@@ -92,3 +92,37 @@ def test_parked_lookalikes_are_watched_not_queued(engine, top_source, client, ad
     assert cli.main(["triage-lookalikes"]) == 0 and "dry run: would close 1" in capsys.readouterr().out
     assert cli.main(["triage-lookalikes", "--yes"]) == 0 and "closed 1 parked" in capsys.readouterr().out
     assert client.get("/api/v1/stats").json()["pending_threat_candidates"] == 3  # the unsure ones stay
+
+
+def test_threat_flags_on_popular_or_official_sites_need_confirmation(engine, top_source, client, admin, make_key):
+    """A subdomain of a popular site (here amazon.com from the top list), a brand's official domain or a .gov.tr
+    name is almost never a threat: the API asks for confirmation (409 protected_domain) first."""
+    names = ["api-glb.smoot.amazon.com", "giris.akbank.com", "ornek.gov.tr", "random-shop.net"]
+    for name in names:
+        run(engine, make_scan(engine, name), Scripted(confidence=0.6))  # opens a category review
+    tasks = {t["domain"]: t["id"] for t in client.get("/api/v1/admin/reviews", headers=admin).json()["items"]}
+
+    def decide(name, **extra):
+        return client.post(f"/api/v1/admin/reviews/{tasks[name]}/decision", headers=admin,
+                           json={"action": "approve", "risk": ["scam"]} | extra)
+
+    for name, owner in (("api-glb.smoot.amazon.com", "amazon.com"), ("giris.akbank.com", "akbank.com"),
+                        ("ornek.gov.tr", ".gov.tr")):
+        r = decide(name)
+        assert r.status_code == 409 and r.json()["error"]["code"] == "protected_domain", name
+        assert r.json()["error"]["details"]["owner"] == owner
+    assert decide("api-glb.smoot.amazon.com", confirm_protected=True).status_code == 200
+    assert decide("random-shop.net").status_code == 200  # an ordinary site: no question
+
+    # the same guard on the admin threats API and when accepting a "this is phishing" report
+    body = {"domain": "giris.akbank.com", "types": ["phishing"], "evidence": "login form on the page"}
+    assert client.post("/api/v1/admin/threats", headers=admin, json=body).status_code == 409
+    assert client.post("/api/v1/admin/threats", headers=admin, json=body | {"confirm_protected": True}).status_code == 201
+    client.post("/api/v1/community/report", headers=make_key("contributor")[0], json={
+        "domain": "ornek.gov.tr", "type": "false_negative", "category": "phishing",
+        "reason": "The page asks for e-Devlet passwords."})
+    sub = client.get("/api/v1/admin/submissions", headers=admin).json()[0]
+    r = client.post(f"/api/v1/admin/submissions/{sub['id']}/moderate", headers=admin, json={"action": "accept"})
+    assert r.status_code == 409
+    assert client.post(f"/api/v1/admin/submissions/{sub['id']}/moderate", headers=admin,
+                       json={"action": "accept", "confirm_protected": True}).status_code == 200

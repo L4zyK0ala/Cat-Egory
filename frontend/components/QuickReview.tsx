@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { call } from "@/lib/client";
+import { call, postConfirmed } from "@/lib/client";
 import KeyGate from "./KeyGate";
 import { Screenshot } from "./ReviewQueue";
 
@@ -79,7 +79,7 @@ function Quick({ api }: { api: string }) {
     }
     setBusy(true);
     const body = { action, ...(primary ? { primary, secondary: [] } : {}), risk };
-    const res = await call(api, `/api/v1/admin/reviews/${current.id}/decision`, { method: "POST", body: JSON.stringify(body) });
+    const res = await postConfirmed(api, `/api/v1/admin/reviews/${current.id}/decision`, body);
     setBusy(false);
     if (res.ok || res.code === "already_decided") {
       const verb = action === "approve" ? "approved" : action === "set" ? `set to ${name(primary!)}` : "rejected";

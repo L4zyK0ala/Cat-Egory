@@ -42,3 +42,14 @@ export async function call<T>(base: string, path: string, init: RequestInit & { 
     return { ok: false, status: 0, code: "network", message: e instanceof Error ? e.message : "request failed" };
   }
 }
+
+/** POST a decision that may need the reviewer's confirmation: the API answers 409 ``protected_domain`` when a
+ *  threat would be flagged on a popular or official site (threats/guard.py). Ask, then resend confirmed. */
+export async function postConfirmed<T>(base: string, path: string, body: Record<string, unknown>): Promise<ApiResult<T>> {
+  const first = await call<T>(base, path, { method: "POST", body: JSON.stringify(body) });
+  if (first.ok || first.code !== "protected_domain") return first;
+  if (!window.confirm(`${first.message}\n\nFlag it anyway?`)) {
+    return { ok: false, status: 409, code: "cancelled", message: "Not flagged: popular or official site." };
+  }
+  return call<T>(base, path, { method: "POST", body: JSON.stringify({ ...body, confirm_protected: true }) });
+}

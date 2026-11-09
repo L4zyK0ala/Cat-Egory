@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { call, getKey } from "@/lib/client";
+import { call, getKey, postConfirmed } from "@/lib/client";
 import KeyGate from "./KeyGate";
 
 type Review = { id: number; domain: string; reason: string; current_primary: string | null; page_title: string | null;
@@ -31,7 +31,7 @@ function Item({ api, r, cats, onDone }: { api: string; r: Review; cats: Cat[]; o
   const [error, setError] = useState("");
   async function decide(action: "approve" | "set" | "reject") {
     const body = { action, ...(action === "set" ? { primary, secondary: [] } : {}), risk, note: note || null };
-    const res = await call(api, `/api/v1/admin/reviews/${r.id}/decision`, { method: "POST", body: JSON.stringify(body) });
+    const res = await postConfirmed(api, `/api/v1/admin/reviews/${r.id}/decision`, body);
     if (res.ok) onDone(); else setError(`${res.message} (${res.code})`);
   }
   const p = r.prediction;

@@ -28,12 +28,21 @@ from database.models import (
 )
 from database.models import Screenshot as ScreenshotRow
 from database.session import get_session
+from threats.guard import protected_owner
 
 from .. import audit
 from ..deps import Principal, rate_limit, require
 from ..errors import ApiError
 
 router = APIRouter(prefix="/api/v1/admin", tags=["review"], dependencies=[Depends(rate_limit("write"))])
+
+
+def guard_protected(session: Session, name: str) -> None:
+    """Refuse a threat flag on a popular/official site unless the client confirmed it (threats/guard.py)."""
+    if owner := protected_owner(session, name):
+        raise ApiError(409, "protected_domain",
+                       f"{name} belongs to {owner}, a popular or official site; a threat flag here is usually a "
+                       "mistake. Confirm to flag it anyway.", details={"owner": owner})
 
 
 def get_store():
@@ -89,6 +98,8 @@ class DecisionIn(BaseModel):
     secondary: list[str] = Field(default_factory=list, max_length=5)
     risk: list[str] = Field(default_factory=list, description="confirmed security-threat categories")
     note: str | None = Field(default=None, max_length=2000)
+    confirm_protected: bool = Field(default=False, description="flag a threat on a popular or official site "
+                                                               "anyway (otherwise 409 protected_domain)")
 
 
 def _prediction(session: Session, prediction_id: int | None) -> PredictionOut | None:
@@ -193,6 +204,8 @@ def decide_review(task_id: int, body: DecisionIn, request: Request,
     bad_risk = [r for r in body.risk if r not in risk_ids]
     if bad_risk:
         raise ApiError(422, "invalid_category", f"unknown security-threat categories: {bad_risk}")
+    if body.risk and not body.confirm_protected:
+        guard_protected(session, domain.normalized_domain)
 
     primary, secondary, confidence = None, [], None
     if body.action == "approve":

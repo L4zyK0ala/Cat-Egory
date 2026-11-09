@@ -94,6 +94,11 @@ class Watchlist:
                 pass
         return self._quick.search(skeleton(text).replace("-", "")) is not None
 
+    def official_domain(self, name: str) -> str | None:
+        """The brand's official domain ``name`` is (or is under), or None."""
+        parts = name.split(".")
+        return next((d for i in range(len(parts) - 1) if (d := ".".join(parts[i:])) in self._official), None)
+
     def _under_official(self, name: str) -> bool:
         parts = name.split(".")
         return any(".".join(parts[i:]) in self._official for i in range(len(parts) - 1))

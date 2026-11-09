@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { call } from "@/lib/client";
+import { call, postConfirmed } from "@/lib/client";
 import KeyGate from "./KeyGate";
 
 type Sub = { id: number; type: string; domain: string; proposed_categories: string[]; score: number; comment: string | null;
@@ -15,7 +15,7 @@ function Queue({ api }: { api: string }) {
   }, [api]);
   useEffect(() => { void load(); }, [load]);
   async function act(id: number, action: string) {
-    const r = await call(api, `/api/v1/admin/submissions/${id}/moderate`, { method: "POST", body: JSON.stringify({ action }) });
+    const r = await postConfirmed(api, `/api/v1/admin/submissions/${id}/moderate`, { action });
     if (!r.ok) setError(`${r.message} (${r.code})`);
     void load();
   }
