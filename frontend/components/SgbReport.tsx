@@ -6,7 +6,7 @@ import VtBadge, { vtEngines, type Vt } from "./VtBadge";
 
 type Match = { id: number | string | null; value: string; type: string; category: string | null;
   category_name: string | null; criticality: number | null; date: string | null; scope: string; link: string | null };
-type Item = { domain: string; types: string[]; first_seen: string; status: "listed" | "missing" | "unchecked";
+type Item = { domain: string; types: string[]; first_seen: string; automatic?: boolean; status: "listed" | "missing" | "unchecked";
   sgb: { listed: boolean; checked_at: string; matches: Match[] } | null; vt?: Vt | null };
 type Report = { counts: Record<string, number>; items: Item[] };
 type Status = "missing" | "listed" | "unchecked" | "all";
@@ -67,7 +67,7 @@ function Report({ api }: { api: string }) {
             <tbody>{shown.map((i) => (
               <tr key={i.domain}>
                 <td className="mono">{i.domain}</td>
-                <td>{i.types.join(", ")}</td>
+                <td>{i.types.join(", ")}{i.automatic && <div className="muted" style={{ fontSize: 12 }}>automatic (Octryx)</div>}</td>
                 <td>{day(i.first_seen)}</td>
                 <td>
                   <span className={`badge ${i.status === "listed" ? "ok" : i.status === "missing" ? "danger" : "pending"}`}>{LABEL[i.status]}</span>

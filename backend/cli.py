@@ -335,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("virustotal-check", help="look threat domains up on VirusTotal now (run in the worker)")
     p.add_argument("--limit", type=int, default=20, help="domains to ask about (default 20, max 40; 16 s apart)")
 
+    sub.add_parser("octryx-sync", help="pull Octryx's findings now (run in the worker)")
+
     p = sub.add_parser("set-password", help="set or change a user's password (admin UI sign-in)")
     p.add_argument("--email", required=True)
 
@@ -353,6 +355,11 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         print(f"checked {counts['checked']} domains, {counts['listed']} on the SGB list"
               + (" (stopped after an API error; try again later)" if counts["errors"] else ""))
+        return 0
+    if args.command == "octryx-sync":  # network lookup: outside the CLI transaction
+        from backend.app.threat_tasks import run_octryx_sync
+
+        print(run_octryx_sync())
         return 0
     if args.command == "virustotal-check":  # network lookups: outside the CLI transaction, committed as it goes
         from backend.app.threat_tasks import run_virustotal_check

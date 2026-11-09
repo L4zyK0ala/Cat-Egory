@@ -117,6 +117,10 @@ class Settings(BaseSettings):
     sgb_check_max_age_hours: int = Field(default=24, ge=1)
     sgb_check_pause_seconds: float = Field(default=1.0, ge=0)
     # VirusTotal lookups for reviewers (threats/virustotal.py); off without a key. Worker only.
+    # Findings from the sister project Octryx (threats/octryx.py); off without both. Token: worker only.
+    octryx_url: str | None = None
+    octryx_token: SecretStr | None = None
+    octryx_auto_flag_max_per_run: int = Field(default=20, ge=0, description="the rest of a run goes to a person")
     virustotal_api_key: SecretStr | None = Field(default=None, description="VirusTotal API key; empty = off")
     virustotal_check_batch: int = Field(default=4, ge=1, le=40, description="domains asked per run (every 15 minutes)")
     virustotal_check_max_age_hours: int = Field(default=72, ge=1)

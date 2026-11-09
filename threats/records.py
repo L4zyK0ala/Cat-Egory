@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from sqlalchemy import ColumnElement, Select, select, update
 from sqlalchemy.orm import Session
 
-from classification.engine import REVIEW_SOURCE, source_id
+from classification.engine import OWN_THREAT_SOURCES, REVIEW_SOURCE, source_id
 from common.domains import normalize_url
 from database.models import DataSource, Domain, SourceLicense, ThreatIntelligence, ThreatType, Url
 
@@ -79,15 +79,15 @@ def record_url_threats(session: Session, raw_url: str, risk_ids: list[str], *, s
 
 
 def withdraw(session: Session, *, domain: Domain, threat: ThreatType | None = None, url: Url | None = None,
-             source_slug: str = REVIEW_SOURCE) -> int:
-    """Deactivate our own (reviewer) records: after a false-positive report is accepted, or when a reviewer
+             source_slugs: tuple[str, ...] = OWN_THREAT_SOURCES) -> int:
+    """Deactivate our own records (a reviewer's, or Octryx's): after a false-positive report is accepted, or when a reviewer
     takes a flag back. Records stay for the history (``is_active`` false). Third-party feed records are not
     touched: the feed decides, and the next sync would bring them back anyway. Returns the number withdrawn.
 
     ``url`` None withdraws only the domain-scoped records; pass a Url to withdraw that URL's records."""
-    src = source_id(session, source_slug)
+    own = select(DataSource.id).where(DataSource.slug.in_(source_slugs))
     stmt = update(ThreatIntelligence).where(
-        ThreatIntelligence.domain_id == domain.id, ThreatIntelligence.source_id == src, ThreatIntelligence.is_active,
+        ThreatIntelligence.domain_id == domain.id, ThreatIntelligence.source_id.in_(own), ThreatIntelligence.is_active,
         domain_scoped() if url is None else ThreatIntelligence.url_id == url.id)
     if threat is not None:
         stmt = stmt.where(ThreatIntelligence.threat_type == threat)

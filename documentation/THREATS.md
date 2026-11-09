@@ -10,8 +10,9 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
 
 ## Rules
 
-1. **Nothing is published on a model's word.** A threat record comes from a reviewer (with an evidence note) or
-   from a source whose licence we have checked and approved. AI suspicions only open review tasks.
+1. **Nothing is published on a model's word.** A threat record comes from a reviewer (with an evidence note), from
+   a source whose licence we have checked and approved, or from Octryx when it proved the imitation on the page (the
+   operator's decision; `threats/octryx.py`). AI suspicions only open review tasks.
 2. **Scope.** A record is *domain-scoped* (`url_id` NULL: the host itself is malicious, e.g. a look-alike
    domain) or *URL-scoped* (one page on an otherwise legitimate, usually hacked, site). Only domain-scoped
    records flag a domain, appear in category listings and DNS blocklists (RPZ / hosts) and count as threat
@@ -36,6 +37,7 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
 | Review decision (`POST /admin/reviews/{id}/decision`, `risk`) | domain | reviewer ticks threat categories |
 | Admin threats API (`POST /api/v1/admin/threats`) | domain or URL | evidence note required (10–2000 chars) |
 | Community report (`false_negative` + threat category) | domain | becomes a record only when a moderator accepts it |
+| Octryx sync (`threats/octryx.py`, hourly) | domain | proven on the page: listed at once as phishing + look-alike, without review. Public only through a third-party list, protected names, or over the per-run cap: threat-candidate queue |
 | Licensed threat feed (`integrations/sources.yaml`, `kind: threat_feed`) | domain | none approved yet; URLhaus internal-only at most |
 
 A threat flag on a popular site (Majestic top list), a watched brand's official domain or a restricted suffix

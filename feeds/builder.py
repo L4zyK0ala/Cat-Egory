@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.orm import Session
 
-from classification.engine import REVIEW_SOURCE
+from classification.engine import OWN_THREAT_SOURCES
 from classification.taxonomy import Taxonomy
 from database.models import DataSource, Domain, DomainCategory, FeedRelease, ThreatIntelligence
 from database.publication import OWN_DATA_LICENSE, publishable, published
@@ -42,7 +42,7 @@ FEED_NAME_RE = re.compile(r"^[a-z0-9-]+\.(txt|hosts|rpz|csv|json)$")
 MEDIA_TYPES = {"txt": "text/plain; charset=utf-8", "hosts": "text/plain; charset=utf-8",
                "rpz": "text/dns; charset=utf-8", "csv": "text/csv; charset=utf-8", "json": "application/json"}
 RPZ_ORIGIN = "rpz.cat-egory."
-THREAT_SOURCES = (REVIEW_SOURCE,)  # threat records we may redistribute under our own licence
+THREAT_SOURCES = OWN_THREAT_SOURCES  # threat records we may redistribute under our own licence
 
 
 @dataclass

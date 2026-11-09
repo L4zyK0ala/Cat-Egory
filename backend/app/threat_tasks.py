@@ -4,12 +4,14 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
+import httpx
 import redis
 
 from common.config import get_settings
 from database.session import session_factory
-from threats import sgb, virustotal
+from threats import octryx, sgb, virustotal
 
+from . import audit
 from .worker import celery_app
 
 log = logging.getLogger("category.threats")
@@ -68,6 +70,38 @@ def run_virustotal_check(limit: int | None = None,
     counts = _exclusive("virustotal-check", run)
     log.info("virustotal cross-check", extra=counts)
     return counts
+
+
+def run_octryx_sync() -> dict:
+    """Pull Octryx's findings: proven ones are listed at once, the rest wait for a person."""
+    settings = get_settings()
+    token = settings.octryx_token.get_secret_value().strip() if settings.octryx_token else ""
+    if not token or not settings.octryx_url:
+        return {"disabled": 1}
+
+    def run() -> dict:
+        with octryx.client(token) as http:
+            try:
+                items = octryx.fetch(http, settings.octryx_url)
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                log.warning("octryx sync failed", extra={"error": type(exc).__name__})
+                return {"errors": 1}
+        with session_factory()() as session, session.begin():
+            result = octryx.ingest(session, items, max_auto=settings.octryx_auto_flag_max_per_run)
+            for hit in result.flagged:
+                audit.record(session, action="threat.auto", target_type="domain", target_id=hit["domain"][:64],
+                             after={"source": "octryx", "brand": hit["brand"]})
+        return {"flagged": len(result.flagged), "candidates": result.candidates, "known": result.known,
+                "invalid": result.invalid}
+
+    counts = _exclusive("octryx-sync", run)
+    log.info("octryx sync", extra=counts)
+    return counts
+
+
+@celery_app.task(name="category.threats.octryx_sync", ignore_result=True, soft_time_limit=240, time_limit=300)
+def octryx_sync() -> dict:
+    return run_octryx_sync()
 
 
 @celery_app.task(name="category.threats.sgb_check", ignore_result=True, soft_time_limit=240, time_limit=300)

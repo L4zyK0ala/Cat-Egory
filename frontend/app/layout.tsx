@@ -45,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <span className="brand"><Brand size={22} /></span>
             <span>Code Apache-2.0 · Classification data CC BY 4.0 (Cat-Egory contributors)</span>
             <span>AI classifications are machine estimates; verified entries were confirmed by a person.</span>
+            {!adminUi && <span><Link href="/privacy">Privacy</Link> · <Link href="/contact">Contact</Link></span>}
           </div>
         </footer>
       </body>

@@ -21,6 +21,7 @@ class StorageError(RuntimeError):
 class ArtifactStore(Protocol):
     def put(self, key: str, data: bytes, content_type: str, *, content_encoding: str | None = None) -> None: ...
     def get(self, key: str) -> bytes: ...
+    def delete(self, key: str) -> None: ...
 
 
 class S3Store:
@@ -70,6 +71,16 @@ class S3Store:
     def get(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
+    def delete(self, key: str) -> None:
+        from botocore.exceptions import BotoCoreError, ClientError
+
+        try:
+            self.client.delete_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            raise StorageError("delete_object", exc.response.get("Error", {}).get("Code", "ClientError")) from exc
+        except BotoCoreError as exc:
+            raise StorageError("delete_object", type(exc).__name__) from exc
+
 
 class MemoryStore:
     """For tests and local development."""
@@ -82,6 +93,9 @@ class MemoryStore:
 
     def get(self, key: str) -> bytes:
         return self.objects[key][0]
+
+    def delete(self, key: str) -> None:
+        self.objects.pop(key, None)
 
 
 def save(store: ArtifactStore, key: str, data: bytes, mime_type: str, *, compress: bool = False,

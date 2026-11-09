@@ -168,6 +168,8 @@ services:
       CATEGORY_LOOKALIKE_TOP_N: ${CATEGORY_LOOKALIKE_TOP_N:-1000}
       CATEGORY_SGB_CHECK_ENABLED: ${CATEGORY_SGB_CHECK_ENABLED:-true}
       CATEGORY_VIRUSTOTAL_API_KEY: ${CATEGORY_VIRUSTOTAL_API_KEY:-}
+      CATEGORY_OCTRYX_URL: ${CATEGORY_OCTRYX_URL:-}
+      CATEGORY_OCTRYX_TOKEN: ${CATEGORY_OCTRYX_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
       interval: 60s
@@ -289,6 +291,9 @@ services:
       API_INTERNAL_URL: http://api:8000
       # address the visitor's browser uses for the API (feed links, admin console, reports)
       PUBLIC_API_URL: ${CATEGORY_PUBLIC_API_URL:-http://127.0.0.1:8110}
+      # shown on /privacy and /contact, and in /.well-known/security.txt
+      CONTACT_EMAIL: ${CATEGORY_CONTACT_EMAIL:-}
+      OPERATOR_NAME: ${CATEGORY_OPERATOR_NAME:-}
       CATEGORY_FRONTEND_API_KEY: ${CATEGORY_FRONTEND_API_KEY:-}
     read_only: true
     tmpfs: [/tmp, "/app/.next/cache"]

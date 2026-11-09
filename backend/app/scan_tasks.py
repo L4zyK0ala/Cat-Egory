@@ -295,6 +295,35 @@ def persist(result: dict, job_id: str) -> str:
     return outcome
 
 
+def purge_artifacts(session: Session, store, *, now: datetime | None = None, limit: int = 500) -> int:
+    """Delete screenshots and page content past ``retention_until``: objects first, then their rows (a failure
+    leaves the row, and deleting an object twice is harmless). Returns how many rows went."""
+    now = now or datetime.now(UTC)
+    purged = 0
+    for shot in session.scalars(select(Screenshot).where(Screenshot.retention_until < now).limit(limit)):
+        store.delete(shot.object_key)
+        session.delete(shot)
+        purged += 1
+    for content in session.scalars(select(ExtractedContent).where(ExtractedContent.retention_until < now).limit(limit)):
+        for key in (content.html_object_key, content.text_object_key):
+            if key:
+                store.delete(key)
+        session.delete(content)
+        purged += 1
+    return purged
+
+
+@celery_app.task(name="category.maintenance.purge_artifacts", ignore_result=True, soft_time_limit=600, time_limit=660)
+def purge_expired() -> int:
+    from crawler.storage import S3Store
+
+    settings = get_settings()
+    with session_factory()() as session, session.begin():
+        purged = purge_artifacts(session, S3Store(settings))
+    log.info("artifacts purged", extra={"rows": purged})
+    return purged
+
+
 @celery_app.task(name="category.scan.schedule", ignore_result=True)
 def schedule() -> int:
     with session_factory()() as session, session.begin():

@@ -89,6 +89,7 @@ $DC exec api python -m backend.cli retry-infra-failures --yes
 | `category.scan.schedule` | 5 min | queues re-scans for domains whose `next_scan` has passed (≤ 500 per run) |
 | `category.feeds.build` | 1 h | rebuilds feeds; only changed files get a new version |
 | `category.ingest.sync_due` | 1 h | syncs approved third-party sources whose interval elapsed |
+| `category.maintenance.purge_artifacts` | 1 h | deletes screenshots and page content past `artifact_retention_days` (180), as `/privacy` promises |
 | `category.discovery.queue` | 15 min | first scans of domains from discovery sources, under a daily budget (failed, blocked and cancelled scans do not use it up; pauses after 20 failures on our side in an hour) |
 | `category.threats.sgb_check` | 1 h | up to 30 threat domains checked against the national SGB/USOM list (internal; `THREATS.md`) |
 | `category.threats.virustotal_check` | 15 min | up to 4 threat domains looked up on VirusTotal; off without `CATEGORY_VIRUSTOTAL_API_KEY` (internal; `THREATS.md`) |

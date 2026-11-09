@@ -48,6 +48,8 @@ from .taxonomy import Taxonomy
 log = logging.getLogger("category.classify")
 AI_SOURCE = "cat-egory-ai"
 REVIEW_SOURCE = "cat-egory-review"
+OCTRYX_SOURCE = "octryx"  # the sister project's own findings (threats/octryx.py)
+OWN_THREAT_SOURCES = (REVIEW_SOURCE, OCTRYX_SOURCE)  # our own verdicts: we may publish, expire and withdraw them
 
 
 # ----------------------------------------------------------------------------- input

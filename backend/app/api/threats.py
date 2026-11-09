@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from classification.engine import REVIEW_SOURCE, record_threats, source_id
+from classification.engine import OWN_THREAT_SOURCES, REVIEW_SOURCE, record_threats, source_id
 from classification.taxonomy import default_taxonomy
 from common.domains import DomainError, normalize_domain
 from database.models import DataSource, Domain, ThreatIntelligence, ThreatType, Url
@@ -140,6 +140,7 @@ class SgbReportItem(BaseModel):
     types: list[str]
     first_seen: datetime
     status: Literal["listed", "missing", "unchecked"]
+    automatic: bool = False  # listed from Octryx's own findings, no person involved
     sgb: SgbOut | None
     vt: VtOut | None = None
 
@@ -156,14 +157,16 @@ def sgb_report(status: Literal["all", "listed", "missing", "unchecked"] = "missi
                session: Session = Depends(get_session)) -> SgbReport:
     """Domain-scoped threats a reviewer confirmed (active), grouped by domain, with the list's last answer."""
     rows = session.execute(
-        select(Domain.id, Domain.normalized_domain, ThreatIntelligence.threat_type, ThreatIntelligence.first_seen)
+        select(Domain.id, Domain.normalized_domain, ThreatIntelligence.threat_type, ThreatIntelligence.first_seen,
+               DataSource.slug)
         .join(ThreatIntelligence, ThreatIntelligence.domain_id == Domain.id)
-        .where(ThreatIntelligence.is_active, domain_scoped(),
-               ThreatIntelligence.source_id == source_id(session, REVIEW_SOURCE))
+        .join(DataSource, DataSource.id == ThreatIntelligence.source_id)
+        .where(ThreatIntelligence.is_active, domain_scoped(), DataSource.slug.in_(OWN_THREAT_SOURCES))
         .order_by(Domain.normalized_domain)).all()
     grouped: dict[int, dict] = {}
-    for did, name, threat, first in rows:
-        g = grouped.setdefault(did, {"domain": name, "types": [], "first_seen": first})
+    for did, name, threat, first, slug in rows:
+        g = grouped.setdefault(did, {"domain": name, "types": [], "first_seen": first, "reviewed": False})
+        g["reviewed"] = g["reviewed"] or slug == REVIEW_SOURCE
         g["types"].append(str(threat))
         g["first_seen"] = min(g["first_seen"], first)
     listings, vt = sgb_listings(session, set(grouped)), vt_listings(session, set(grouped))
@@ -174,7 +177,8 @@ def sgb_report(status: Literal["all", "listed", "missing", "unchecked"] = "missi
         counts[state] += 1
         if status in ("all", state):
             items.append(SgbReportItem(domain=g["domain"], types=sorted(set(g["types"])), first_seen=g["first_seen"],
-                                       status=state, sgb=sgb_out(row), vt=vt_out(vt.get(did), g["domain"])))
+                                       status=state, automatic=not g["reviewed"], sgb=sgb_out(row),
+                                       vt=vt_out(vt.get(did), g["domain"])))
     items.sort(key=lambda i: i.first_seen)
     return SgbReport(counts=counts, items=items[:limit])
 

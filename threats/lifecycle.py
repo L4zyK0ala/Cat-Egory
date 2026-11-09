@@ -1,6 +1,6 @@
 """Keeping confirmed threats honest over time, using the scans that already run for them.
 
-Applies to our own domain-scoped reviewer records. A third-party feed's records are the feed's business, and one
+Applies to our own domain-scoped records (a reviewer's or Octryx's). A third-party feed's records are the feed's business, and one
 page on a live site cannot be judged from a scan of its home page.
 
 * The site is up: ``last_seen`` moves on.
@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from classification.engine import REVIEW_SOURCE, THREAT_RETURNED, open_review
+from classification.engine import OCTRYX_SOURCE, OWN_THREAT_SOURCES, THREAT_RETURNED, open_review
 from crawler.result import CrawlResult
 from database.models import AIPrediction, DataSource, Domain, ThreatIntelligence
 
@@ -37,6 +37,12 @@ def ai_answer_needed(session: Session, domain_id: int, *, every_days: int, now: 
         ThreatIntelligence.domain_id == domain_id, ThreatIntelligence.is_active, domain_scoped()).limit(1))
     if flagged is None:
         return True
+    automatic = session.scalar(
+        select(ThreatIntelligence.id).join(DataSource, DataSource.id == ThreatIntelligence.source_id)
+        .where(ThreatIntelligence.domain_id == domain_id, ThreatIntelligence.is_active, domain_scoped(),
+               DataSource.slug == OCTRYX_SOURCE).limit(1))
+    if automatic is not None:
+        return False  # a copy of a bank's login page would come back as "banking"; the flag says what it is
     recent = session.scalar(select(AIPrediction.id).where(
         AIPrediction.domain_id == domain_id, AIPrediction.primary_category_id.is_not(None),
         AIPrediction.created_at >= now - timedelta(days=every_days)).limit(1))
@@ -68,7 +74,8 @@ def after_scan(session: Session, domain: Domain, result: CrawlResult, *, expire_
         return None
     rows = list(session.scalars(
         select(ThreatIntelligence).join(DataSource, DataSource.id == ThreatIntelligence.source_id)
-        .where(ThreatIntelligence.domain_id == domain.id, DataSource.slug == REVIEW_SOURCE, domain_scoped())))
+        .where(ThreatIntelligence.domain_id == domain.id, DataSource.slug.in_(OWN_THREAT_SOURCES),
+               domain_scoped())))
     active = [r for r in rows if r.is_active]
     if state == "alive":
         for row in active:
