@@ -37,8 +37,8 @@ export default function Mascot() {
           <clipPath id="cat-body-clip"><ellipse cx="180" cy="292" rx="88" ry="56" /></clipPath>
         </defs>
         <circle className="halo" cx="180" cy="190" r="165" />
-        <path className="tail-outline" d="M122 304c-66 2-90-56-66-88 14-18 36-8 27 8-16 26-3 62 39 62" />
-        <path className="tail-fill" d="M122 304c-66 2-90-56-66-88 14-18 36-8 27 8-16 26-3 62 39 62" />
+        <path className="tail-outline" d="M122 304c-24 0-44-8-54-28" />
+        <path className="tail-fill" d="M122 304c-24 0-44-8-54-28" />
         <ellipse className="fur" cx="180" cy="292" rx="88" ry="56" />
         <path className="white" clipPath="url(#cat-body-clip)" d="M126 262c14-24 94-24 108 0 4 40-20 74-54 82-34-8-58-42-54-82z" />
         <ellipse className="outline" cx="180" cy="292" rx="88" ry="56" />
