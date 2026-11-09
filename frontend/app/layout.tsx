@@ -30,7 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href={adminUi ? "/admin" : "/"} className="brand" aria-label="Cat-Egory home"><Brand />{adminUi && <span className="badge pending">admin</span>}</Link>
             {!adminUi && (
               <nav aria-label="Main">
-                <Link href="/">Dashboard</Link>
+                <Link href="/">Home</Link>
                 <Link href="/categories">Categories</Link>
                 <Link href="/feeds">Feeds</Link>
                 <Link href="/submit">Suggest a Site</Link>
