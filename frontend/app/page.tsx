@@ -68,7 +68,7 @@ export default async function Dashboard() {
             <Tile label="Threat candidates" value={stats.pending_threat_candidates ?? 0}
                   hint="Possible look-alikes of brands and popular sites, or pages the AI thinks are dangerous, waiting for a reviewer. Nothing is flagged until a person confirms it." />
             <Tile label="Scanned today" value={stats.domains_scanned_today}
-                  hint="Domains whose page was loaded and stored successfully today (UTC day; resets at 03:00 Türkiye time). Failed and refused scans are not counted." />
+                  hint="Domains whose page was loaded and stored successfully today (Türkiye time; resets at midnight). Failed and refused scans are not counted." />
             <Tile label="Screenshots" value={stats.total_screenshots}
                   hint="Page screenshots kept so reviewers can see what the AI saw. Private: never published." />
             <Tile label="AI valid answers (30d)" value={rate == null ? "–" : `${(rate * 100).toFixed(1)}%`}
@@ -112,7 +112,7 @@ export default async function Dashboard() {
               </div>
             </section>
           </div>
-          <h2>Daily Scanning (Last 14 Days) <Hint text="Finished scans per UTC day. Succeeded: the page was read. Blocked: robots.txt or our safety rules refused it. Failed: the site did not answer, or our scanner had a problem (retried within hours)." /></h2>
+          <h2>Daily Scanning (Last 14 Days) <Hint text="Finished scans per day, Türkiye time. Succeeded: the page was read. Blocked: robots.txt or our safety rules refused it. Failed: the site did not answer, or our scanner had a problem (retried within hours)." /></h2>
           <div className="panel">
             {days.length === 0 ? <p className="muted">No finished scans yet.</p> : (
               <table>
@@ -126,7 +126,7 @@ export default async function Dashboard() {
               </table>
             )}
           </div>
-          <p className="muted" style={{ fontSize: 13 }}>Updated {new Date(stats.generated_at).toLocaleString("en")}</p>
+          <p className="muted" style={{ fontSize: 13 }}>Updated {new Date(stats.generated_at).toLocaleString("en", { timeZone: "Europe/Istanbul" })} (GMT+3)</p>
         </>
       )}
     </>

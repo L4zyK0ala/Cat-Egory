@@ -220,7 +220,7 @@ $DC exec api python -m integrations.cli sync urlhaus
 Entries with `discover: true` in `integrations/sources.yaml` only bring domains in; syncing never scans. The
 `category.discovery.queue` task then queues their first scans slowly, most popular first, at priority 8 (after
 manual and scheduled work): at most `CATEGORY_DISCOVERY_BATCH_SIZE` (10) per run, `CATEGORY_DISCOVERY_DAILY_BUDGET`
-(200) per UTC day, and nothing while `CATEGORY_DISCOVERY_MAX_QUEUED` (20) scans are waiting. One classification
+(200) per day (Türkiye time), and nothing while `CATEGORY_DISCOVERY_MAX_QUEUED` (20) scans are waiting. One classification
 uses ~7k EVREN tokens, so 200/day is ~1.4M tokens (~10 % of the account's daily quota). Large CSV feeds are
 streamed (a 1M-row list needs ~15 MB), so run syncs in the `worker` container.
 

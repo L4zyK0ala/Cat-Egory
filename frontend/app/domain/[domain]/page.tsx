@@ -12,7 +12,7 @@ const RISK_LABELS: Record<string, string> = {
 };
 
 function when(value: string | null) {
-  return value ? new Date(value).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" }) : "–";
+  return value ? new Date(value).toLocaleString("en", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Istanbul" }) : "–";
 }
 
 function flagged(risk: Risk) {

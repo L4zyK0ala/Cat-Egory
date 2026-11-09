@@ -4,7 +4,7 @@ A synced source only adds domains; nothing scans them until this task queues the
 under a daily budget so that crawling and the AI provider's quota grow slowly and predictably:
 
 * at most ``discovery_batch_size`` per run (beat: every 15 minutes),
-* at most ``discovery_daily_budget`` per UTC day (EVREN's quota also resets at 00:00 UTC). Only scans that can
+* at most ``discovery_daily_budget`` per day, Türkiye time. Only scans that can
   reach the AI use it up: failed, blocked and cancelled ones give their place back,
 * nothing while the last hour has ``discovery_pause_after_infra_failures`` failures on our side, so an outage does
   not burn through the list,
@@ -23,6 +23,7 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from common.config import Settings, get_settings
+from common.timeutil import local_midnight
 from crawler.result import INFRA_ERRORS
 from database.models import DataSource, Domain, DomainSourceRecord, JobStatus, ScanJob, ScanReason
 from database.session import session_factory
@@ -62,7 +63,7 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
     if not source_ids:
         return 0
     now = now or datetime.now(UTC)
-    day_start = now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start = local_midnight(now, settings.app_utc_offset_hours)
     if infra_failures_last_hour(session, now) >= settings.discovery_pause_after_infra_failures:
         return 0
     used = session.scalar(select(func.count()).select_from(ScanJob).where(

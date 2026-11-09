@@ -17,6 +17,7 @@ x-backend: &backend
   image: cat-egory/backend:dev
   # Only the variables each service needs are passed in (no blanket env_file with every secret).
   environment: &backend-env
+    TZ: "<+03>-3"   # log times in GMT+3; a POSIX zone needs no tzdata in the image. Stored times stay UTC.
     CATEGORY_ENVIRONMENT: ${CATEGORY_ENVIRONMENT:-development}
     CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
     CATEGORY_AI_PROVIDER: ${CATEGORY_AI_PROVIDER:-mock}
@@ -238,6 +239,7 @@ services:
     # Reaps orphaned Chromium processes. Celery as PID 1 does not; zombies count against the pids limit below.
     init: true
     environment:
+      TZ: "<+03>-3"
       CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
       CATEGORY_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
       CATEGORY_S3_ENDPOINT_URL: http://storage:8333

@@ -7,11 +7,13 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, Date, cast, func, select
+from sqlalchemy import ColumnElement, Date, cast, func, literal_column, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from classification.engine import threat_candidate
+from common.config import get_settings
 from common.domains import DomainError, normalize_domain, normalize_url
+from common.timeutil import local_midnight
 from database.models import (
     AIPrediction,
     Category,
@@ -329,7 +331,8 @@ def history(domain: str, limit: int = Query(100, ge=1, le=500), cursor: int | No
 @router.get("/stats", summary="Database statistics for dashboards")
 def stats(response: Response, session: Session = Depends(get_session)) -> dict:
     now = datetime.now(UTC)
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    offset = get_settings().app_utc_offset_hours
+    today = local_midnight(now, offset)
     count = lambda stmt: session.scalar(stmt) or 0  # noqa: E731
     by_status = dict(session.execute(select(Domain.classification_status, func.count())
                                      .where(Domain.is_active).group_by(Domain.classification_status)).all())
@@ -341,7 +344,8 @@ def stats(response: Response, session: Session = Depends(get_session)) -> dict:
     valid = count(select(func.count()).select_from(AIPrediction).where(AIPrediction.created_at >= month_ago,
                                                                          AIPrediction.validation_status == "valid"))
     daily = session.execute(
-        select(cast(ScanJob.finished_at, Date).label("day"), ScanJob.status, func.count())
+        select(cast(func.timezone(literal_column(f"interval '{offset} hours'"), ScanJob.finished_at), Date).label("day"),
+               ScanJob.status, func.count())
         .where(ScanJob.finished_at >= today - timedelta(days=13)).group_by("day", ScanJob.status).order_by("day")).all()
     daily_out: dict[str, dict[str, int]] = {}
     for day, status, n in daily:

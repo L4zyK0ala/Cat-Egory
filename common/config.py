@@ -95,6 +95,7 @@ class Settings(BaseSettings):
     scan_interval_days: int = 30            # classified, nothing notable
     scan_interval_verified_days: int = 60   # human-verified and unchanged
     scan_interval_changed_days: int = 7     # title or final host changed since the previous scan
+    app_utc_offset_hours: int = Field(default=3, ge=-12, le=14, description="\"today\" and daily totals; Türkiye is GMT+3")
     scan_interval_risk_days: int = 1        # active threat record: re-check daily
     threat_reclassify_days: int = Field(default=30, ge=1, description="domains with a confirmed threat ask the AI "
                                                                       "again only after this many days")
@@ -121,7 +122,7 @@ class Settings(BaseSettings):
     virustotal_check_max_age_hours: int = Field(default=72, ge=1)
     virustotal_check_pause_seconds: float = Field(default=16.0, ge=0, description="the public API allows 4 a minute")
     # discovery (first scans of domains from discovery sources; backend/app/discovery.py)
-    discovery_daily_budget: int = Field(default=200, ge=0, description="new domains per UTC day that can reach the "
+    discovery_daily_budget: int = Field(default=200, ge=0, description="new domains per day that can reach the "
                                                                        "AI (failed scans do not count); 0 = off")
     discovery_batch_size: int = Field(default=10, ge=1, description="new domains queued per 15-minute run")
     discovery_max_queued: int = Field(default=20, ge=1, description="pause while this many scans are waiting")
