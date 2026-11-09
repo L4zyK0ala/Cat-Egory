@@ -260,3 +260,13 @@ details summary { cursor: pointer; font-size: 14px; }
 @keyframes breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.04); } }
 @keyframes stub-flick { 0%, 60%, 100% { transform: rotate(0); } 70% { transform: rotate(-22deg); } 80% { transform: rotate(10deg); } 90% { transform: rotate(-12deg); } }
 @keyframes head-tilt { 0%, 40%, 100% { transform: rotate(0); } 50%, 80% { transform: rotate(-12deg); } }
+
+/* ---------- admin navigation and sign-in */
+.admin-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 18px; padding: 6px; border-radius: 999px;
+  background: var(--beige); width: fit-content; max-width: 100%; }
+.admin-nav a { padding: 6px 14px; border-radius: 999px; color: var(--muted); font-weight: 600; font-size: .92rem; }
+.admin-nav a:hover { text-decoration: none; color: var(--red); }
+.admin-nav a[aria-current="page"] { background: var(--panel); color: var(--red-deep); box-shadow: var(--shadow); }
+.sign-in { max-width: 420px; display: flex; flex-direction: column; gap: 12px; }
+.sign-in input[type=email], .sign-in input[type=password] { width: 100%; }
+.sign-in label { display: flex; gap: 8px; align-items: center; }

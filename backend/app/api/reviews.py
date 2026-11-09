@@ -11,7 +11,14 @@ from sqlalchemy.orm import Session
 
 from ai_providers.registry import available
 from classification import calibration
-from classification.engine import REVIEW_SOURCE, apply_categories, open_review, record_threats, threat_candidate
+from classification.engine import (
+    BRAND_WATCH_SOURCE,
+    REVIEW_SOURCE,
+    apply_categories,
+    open_review,
+    record_threats,
+    threat_candidate,
+)
 from classification.taxonomy import default_taxonomy
 from common.config import get_settings
 from common.domains import DomainError, normalize_domain
@@ -19,8 +26,10 @@ from database.models import (
     AIPrediction,
     AssignmentOrigin,
     ClassificationStatus,
+    DataSource,
     Domain,
     DomainCategory,
+    DomainSourceRecord,
     Evidence,
     ReviewStatus,
     ReviewTask,
@@ -33,6 +42,7 @@ from threats.guard import protected_owner
 from .. import audit
 from ..deps import Principal, rate_limit, require
 from ..errors import ApiError
+from .sgb_view import SgbOut, sgb_listings, sgb_out
 
 router = APIRouter(prefix="/api/v1/admin", tags=["review"], dependencies=[Depends(rate_limit("write"))])
 
@@ -83,6 +93,8 @@ class ReviewOut(BaseModel):
     http_status: int | None
     has_screenshot: bool
     prediction: PredictionOut | None
+    lookalike_of: str | None = Field(default=None, description="what the CT watch thinks it imitates")
+    sgb: SgbOut | None = Field(default=None, description="national SGB/USOM list, last check (None = not checked)")
 
 
 class ReviewPage(BaseModel):
@@ -126,12 +138,17 @@ def _review_out(session: Session, task: ReviewTask) -> ReviewOut:
     domain = session.get(Domain, task.domain_id)
     scan = _latest_scan(session, domain.id)
     shot = session.scalar(select(ScreenshotRow.id).where(ScreenshotRow.scan_result_id == scan.id)) if scan else None
+    label = session.scalar(select(DomainSourceRecord.source_category)
+                           .join(DataSource, DataSource.id == DomainSourceRecord.source_id)
+                           .where(DomainSourceRecord.domain_id == domain.id, DataSource.slug == BRAND_WATCH_SOURCE))
     return ReviewOut(
         id=task.id, domain=domain.normalized_domain, reason=task.reason, status=str(task.status),
         created_at=task.created_at, current_primary=domain.primary_category_id,
         current_secondary=domain.secondary_categories, page_title=scan.page_title if scan else None,
         final_url=scan.final_url if scan else None, http_status=scan.http_status if scan else None,
-        has_screenshot=shot is not None, prediction=_prediction(session, task.ai_prediction_id))
+        has_screenshot=shot is not None, prediction=_prediction(session, task.ai_prediction_id),
+        lookalike_of=label.removeprefix("look-alike: ") if label else None,
+        sgb=sgb_out(sgb_listings(session, {domain.id}).get(domain.id)))
 
 
 @router.get("/reviews", response_model=ReviewPage, summary="Review queue (oldest first)")

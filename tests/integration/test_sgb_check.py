@@ -101,3 +101,18 @@ def test_each_answer_is_committed_at_once_and_reported(engine, client, admin):
         counts = sgb.check(s, fetch, limit=10, pause=0, sleep=lambda _: None, commit_each=True,
                            progress=lambda name, matches: seen.append((name, matches)))
     assert counts["checked"] == 2 and sorted(n for n, _ in seen) == ["evil.example.net", "scam.example.org"]
+
+
+def test_review_cards_show_the_lists_answer_and_the_lookalike_target(engine, client, admin):
+    from integrations.ct_watch import ingest
+    from tests.integration.test_classification import Scripted, make_scan, run
+
+    with Session(engine) as s, s.begin():
+        ingest(s, "gsoogle.com", "google.com (typo)")
+    run(engine, make_scan(engine, "gsoogle.com"), Scripted(confidence=0.95))
+    card = client.get("/api/v1/admin/reviews", headers=admin).json()["items"][0]
+    assert card["lookalike_of"] == "google.com (typo)" and card["sgb"] is None
+    run_check(engine, lambda d: [{"id": 5, "value": d, "type": "domain", "category": "PH", "criticality": 4,
+                                   "date": "2026-11-09", "scope": "exact"}])
+    card = client.get("/api/v1/admin/reviews", headers=admin).json()["items"][0]
+    assert card["sgb"]["listed"] and card["sgb"]["matches"][0]["category_name"] == "Oltalama"

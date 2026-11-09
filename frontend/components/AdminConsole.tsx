@@ -59,7 +59,7 @@ function Console({ api, scopes }: { api: string; scopes: string[] }) {
   const active = provider?.active as { provider?: string; model?: string; status?: string; detail?: string } | undefined;
   return (
     <div className="stack">
-      <div className="row"><Link href="/admin/reviews">Review Queue →</Link><Link href="/admin/moderation">Moderation →</Link><Link href="/admin/threats">Confirmed Threats →</Link>
+      <div className="row">
         {scopes.includes("reviews:write") && (
           <button className="secondary" onClick={async () => {
             const r = await call(api, "/api/v1/admin/feeds/build", { method: "POST" });

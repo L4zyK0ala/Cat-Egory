@@ -7,23 +7,35 @@ import { Screenshot } from "./ReviewQueue";
 type Prediction = { provider: string; model: string; primary_category: string | null; secondary_categories: string[];
   risk_categories: string[]; confidence: number | null; description: string | null;
   evidence: { type: string; observation: string }[] };
+type SgbMatch = { value: string; category: string | null; category_name: string | null; criticality: number | null;
+  date: string | null; scope: string; link: string | null };
 type Review = { id: number; domain: string; reason: string; page_title: string | null; final_url: string | null;
-  http_status: number | null; has_screenshot: boolean; prediction: Prediction | null };
+  http_status: number | null; has_screenshot: boolean; prediction: Prediction | null; lookalike_of?: string | null;
+  sgb?: { listed: boolean; checked_at: string; matches: SgbMatch[] } | null };
 type Cat = { id: string; name: string; kind: string; is_group: boolean };
 type Action = "approve" | "set" | "reject";
 
 const REASONS: Record<string, string> = {
   verification_sample: "published by the AI — verify",
-  brand_lookalike: "looks like a Turkish brand — check for phishing",
+  brand_lookalike: "look-alike from the certificate watch — check for phishing",
   low_confidence: "model unsure", model_requested_review: "model asked for a person",
   needs_extra_validation: "needs a second opinion", model_disagreement: "two models disagree",
   prompt_injection: "page tries to instruct the model", risk_claim: "model claims a threat",
   conflicts_with_human_decision: "conflicts with a human decision",
 };
 
-function reasonText(reason: string) {
+function reasonText(reason: string, lookalikeOf?: string | null) {
   if (reason.startsWith("lookalike_of:")) return `looks like ${reason.slice(13)} — check for phishing`;
+  if (reason === "brand_lookalike" && lookalikeOf) return `looks like ${lookalikeOf} — check for phishing`;
   return REASONS[reason] ?? reason.replaceAll("_", " ");
+}
+
+/** Is the domain on the national SGB/USOM list (checked hourly in batches; internal information)? */
+function UsomBadge({ sgb }: { sgb?: Review["sgb"] }) {
+  if (sgb === undefined) return null;
+  if (sgb === null) return <span className="badge" title="Checked within a few hours">USOM: not checked yet</span>;
+  return sgb.listed ? <span className="badge danger">USOM: on the list</span>
+    : <span className="badge" title={`checked ${new Date(sgb.checked_at).toLocaleString("en")}`}>USOM: not on the list</span>;
 }
 
 const isLookalike = (reason: string) => reason === "brand_lookalike" || reason.startsWith("lookalike_of:");
@@ -135,8 +147,17 @@ function Quick({ api }: { api: string }) {
         <div className="panel quick-card">
           <div className="row">
             <h2 className="quick-domain">{current.domain}</h2>
-            <span className="badge pending">{reasonText(current.reason)}</span>
+            <span className="badge pending">{reasonText(current.reason, current.lookalike_of)}</span>
+            <UsomBadge sgb={current.sgb} />
           </div>
+          {current.sgb?.listed && current.sgb.matches.map((m) => (
+            <div key={m.value} className="muted" style={{ fontSize: 13 }}>
+              National list: {m.link ? <a href={m.link} target="_blank" rel="noopener noreferrer">{m.category_name ?? m.category}</a>
+                : (m.category_name ?? m.category)}
+              {m.criticality != null && ` · criticality ${m.criticality}`}{m.date && ` · since ${m.date.slice(0, 10)}`}
+              {m.scope !== "exact" && <> · {m.scope}: <span className="mono">{m.value}</span></>}
+            </div>
+          ))}
           {current.page_title && <p className="muted quick-title">“{current.page_title}”</p>}
           <div className="grid2">
             <div>{current.has_screenshot ? <Screenshot key={current.domain} api={api} domain={current.domain} />

@@ -1,25 +1,28 @@
 "use client";
 // Browser-side API calls go straight to the public API, so rate limits apply to the real client address.
-// Admin keys are kept in sessionStorage (tab-scoped, never sent as cookies => no CSRF surface).
+// Admin keys (or the short-lived key a password sign-in returns) are kept in sessionStorage (this tab), or in
+// localStorage when "keep me signed in" was chosen; never in cookies => no CSRF surface.
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string; message: string };
 
 const KEY = "category.apiKey";
+const KEY_RE = /cat_[a-z0-9]{10}_[A-Za-z0-9_-]{43}/;
 
 export function getKey(): string {
   try {
-    return sessionStorage.getItem(KEY) ?? "";
+    return sessionStorage.getItem(KEY) ?? localStorage.getItem(KEY) ?? "";
   } catch {
     return "";
   }
 }
 
-export function setKey(value: string) {
+export function setKey(value: string, remember = false) {
   try {
+    sessionStorage.removeItem(KEY);
+    localStorage.removeItem(KEY);
     // Keep only the key itself: pasted text may carry invisible control characters.
-    const match = value.match(/cat_[a-z0-9]{10}_[A-Za-z0-9_-]{43}/);
-    if (match) sessionStorage.setItem(KEY, match[0]);
-    else sessionStorage.removeItem(KEY);
+    const match = value.match(KEY_RE);
+    if (match) (remember ? localStorage : sessionStorage).setItem(KEY, match[0]);
   } catch {
     /* storage unavailable */
   }

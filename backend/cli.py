@@ -325,6 +325,9 @@ def main(argv: list[str] | None = None) -> int:
                        help="check threat domains against the national SGB/USOM list now (run in the worker)")
     p.add_argument("--limit", type=int, default=30, help="domains to ask about (default 30, max 200)")
 
+    p = sub.add_parser("set-password", help="set or change a user's password (admin UI sign-in)")
+    p.add_argument("--email", required=True)
+
     args = parser.parse_args(argv)
     if args.command == "sgb-check":  # network lookups: outside the CLI transaction, committed as it goes
         from backend.app.threat_tasks import run_sgb_check
@@ -365,6 +368,11 @@ def main(argv: list[str] | None = None) -> int:
                     state = "revoked" if key.revoked_at else "active"
                     print(f"{key.prefix}  {state:7}  {email:30}  {key.name:20}  {','.join(key.scopes)}  "
                           f"last_used={key.last_used_at or '-'}")
+            elif args.command == "set-password":
+                user = _user(session, args.email)
+                user.password_hash = hash_password(_password(argparse.Namespace(password=True)) or "")
+                audit.record(session, action="user.set_password", target_type="user", target_id=user.id)
+                print(f"password set for {user.email}; sign in at the admin UI")
             elif args.command == "revoke-key":
                 key = revoke_key(session, args.prefix)
                 print(f"revoked {key.prefix}")

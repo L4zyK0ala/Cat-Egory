@@ -17,7 +17,7 @@ from common.logging import configure_logging
 from database.session import get_engine
 
 from . import errors
-from .api import admin, community, feeds, reviews, threats, v1
+from .api import admin, community, feeds, reviews, session, threats, v1
 
 log = logging.getLogger("category.api")
 
@@ -117,6 +117,7 @@ def create_app() -> FastAPI:
         app.include_router(reviews.router)
         app.include_router(community.moderation)
         app.include_router(threats.router)
+        app.include_router(session.router)
     return app
 
 

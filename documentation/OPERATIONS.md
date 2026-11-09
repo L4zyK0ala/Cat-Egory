@@ -16,6 +16,15 @@ $DC exec api python -m backend.cli create-admin --email you@example.org --name "
 $DC exec crawler python -m crawler.selftest    # sandbox, isolation, proxy (install the AppArmor profile first, see below)
 ```
 
+**Admin UI sign-in.** Give an admin or moderator a password once, then sign in at the admin UI with email and
+password (`POST /api/v1/admin/session`): it returns a short-lived key (12 h, or 7 days with "keep me signed in"),
+revoked on sign-out. At most 5 wrong passwords per email per 15 minutes. Long-lived `cat_` keys still work for
+scripts ("Use an API key").
+
+```bash
+$DC exec api python -m backend.cli set-password --email you@example.org    # prompts twice, min. 12 characters
+```
+
 Addresses (set `CATEGORY_PUBLIC_BIND` / `CATEGORY_ADMIN_BIND` in `.env`):
 
 | Service | Default | Notes |
