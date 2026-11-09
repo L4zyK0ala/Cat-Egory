@@ -684,6 +684,24 @@ class CommunityVote(Base):
     )
 
 
+class ExternalListing(Base):
+    """Whether an outside list (e.g. the national SGB/USOM malicious-address list) contains a domain, as last
+    checked. Internal only: lookups for reviewers and for reporting what the list is missing; never published
+    (the list's terms forbid republishing without written permission)."""
+
+    __tablename__ = "external_listings"
+
+    id: Mapped[int] = _pk()
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)  # e.g. "sgb"
+    listed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # matching entries as the list gave them: [{"id", "value", "type", "category", "criticality", "date"}]
+    matches: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    checked_at: Mapped[datetime] = _now()
+
+    __table_args__ = (UniqueConstraint("domain_id", "source"), Index("ix_external_listings_checked", "source", "checked_at"))
+
+
 class FalsePositiveReport(Base):
     """Structured report that a category (or threat flag) on a domain is wrong or missing."""
 

@@ -17,8 +17,9 @@ from sqlalchemy.orm import Session
 from classification.engine import REVIEW_SOURCE, record_threats, source_id
 from classification.taxonomy import default_taxonomy
 from common.domains import DomainError, normalize_domain
-from database.models import DataSource, Domain, ThreatIntelligence, ThreatType, Url
+from database.models import DataSource, Domain, ExternalListing, ThreatIntelligence, ThreatType, Url
 from database.session import get_session
+from threats import sgb
 from threats.records import UnknownDomain, domain_scoped, record_url_threats, url_row, url_scoped, withdraw
 
 from .. import audit
@@ -49,6 +50,43 @@ class WithdrawIn(Target):
     reason: str = Field(min_length=10, max_length=2000)
 
 
+class SgbMatchOut(BaseModel):
+    id: int | str | None
+    value: str
+    type: str
+    category: str | None
+    category_name: str | None
+    criticality: int | None = Field(description="1 = most critical, 10 = least")
+    date: str | None
+    scope: str = Field(description="exact domain, a subdomain, or a URL on the domain")
+    link: str | None
+
+
+class SgbOut(BaseModel):
+    """National malicious-address list (SGB/USOM), last check. Internal: never published."""
+    listed: bool
+    checked_at: datetime
+    matches: list[SgbMatchOut]
+
+
+def _sgb(row: ExternalListing | None) -> SgbOut | None:
+    if row is None:
+        return None
+    return SgbOut(listed=row.listed, checked_at=row.checked_at, matches=[
+        SgbMatchOut(id=m.get("id"), value=m.get("value", ""), type=m.get("type", ""), category=m.get("category"),
+                    category_name=sgb.CATEGORIES.get(m.get("category") or ""), criticality=m.get("criticality"),
+                    date=m.get("date"), scope=m.get("scope", "exact"),
+                    link=sgb.DETAIL.format(id=m["id"]) if m.get("id") else None)
+        for m in row.matches or []])
+
+
+def _listings(session: Session, domain_ids: set[int]) -> dict[int, ExternalListing]:
+    if not domain_ids:
+        return {}
+    return {r.domain_id: r for r in session.scalars(select(ExternalListing).where(
+        ExternalListing.source == sgb.SOURCE, ExternalListing.domain_id.in_(domain_ids)))}
+
+
 class ThreatOut(BaseModel):
     id: int
     domain: str
@@ -61,6 +99,7 @@ class ThreatOut(BaseModel):
     last_seen: datetime
     reference: str | None
     evidence: str | None
+    sgb: SgbOut | None = None  # None = not checked yet
 
 
 class ThreatPage(BaseModel):
@@ -118,11 +157,56 @@ def list_threats(scope: Literal["all", "domain", "url"] = "all", active: bool | 
     if cursor:
         stmt = stmt.where(ThreatIntelligence.id < cursor)
     rows = session.execute(stmt.order_by(ThreatIntelligence.id.desc()).limit(limit + 1)).all()
+    listings = _listings(session, {t.domain_id for t, _, _, _ in rows[:limit]})
     items = [ThreatOut(id=t.id, domain=d, url=u, type=str(t.threat_type), source=s,
                        scope="domain" if t.url_id is None else "url", active=t.is_active, first_seen=t.first_seen,
-                       last_seen=t.last_seen, reference=t.source_reference, evidence=(t.raw or {}).get("evidence"))
+                       last_seen=t.last_seen, reference=t.source_reference, evidence=(t.raw or {}).get("evidence"),
+                       sgb=_sgb(listings.get(t.domain_id)))
              for t, d, u, s in rows[:limit]]
     return ThreatPage(items=items, next_cursor=rows[limit - 1][0].id if len(rows) > limit else None)
+
+
+class SgbReportItem(BaseModel):
+    domain: str
+    types: list[str]
+    first_seen: datetime
+    status: Literal["listed", "missing", "unchecked"]
+    sgb: SgbOut | None
+
+
+class SgbReport(BaseModel):
+    counts: dict[str, int]
+    items: list[SgbReportItem]
+
+
+@router.get("/sgb-report", response_model=SgbReport,
+            summary="Our confirmed threats vs the national SGB/USOM list (missing = candidates to report)")
+def sgb_report(status: Literal["all", "listed", "missing", "unchecked"] = "missing",
+               limit: int = Query(200, ge=1, le=1000), _: Principal = Depends(require("reviews:write")),
+               session: Session = Depends(get_session)) -> SgbReport:
+    """Domain-scoped threats a reviewer confirmed (active), grouped by domain, with the list's last answer."""
+    rows = session.execute(
+        select(Domain.id, Domain.normalized_domain, ThreatIntelligence.threat_type, ThreatIntelligence.first_seen)
+        .join(ThreatIntelligence, ThreatIntelligence.domain_id == Domain.id)
+        .where(ThreatIntelligence.is_active, domain_scoped(),
+               ThreatIntelligence.source_id == source_id(session, REVIEW_SOURCE))
+        .order_by(Domain.normalized_domain)).all()
+    grouped: dict[int, dict] = {}
+    for did, name, threat, first in rows:
+        g = grouped.setdefault(did, {"domain": name, "types": [], "first_seen": first})
+        g["types"].append(str(threat))
+        g["first_seen"] = min(g["first_seen"], first)
+    listings = _listings(session, set(grouped))
+    items, counts = [], {"listed": 0, "missing": 0, "unchecked": 0}
+    for did, g in grouped.items():
+        row = listings.get(did)
+        state = "unchecked" if row is None else ("listed" if row.listed else "missing")
+        counts[state] += 1
+        if status in ("all", state):
+            items.append(SgbReportItem(domain=g["domain"], types=sorted(set(g["types"])), first_seen=g["first_seen"],
+                                       status=state, sgb=_sgb(row)))
+    items.sort(key=lambda i: i.first_seen)
+    return SgbReport(counts=counts, items=items[:limit])
 
 
 @router.post("", response_model=ChangeOut, status_code=201, summary="Confirm threats on a domain or one URL")

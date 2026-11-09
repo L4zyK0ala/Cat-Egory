@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     # One reviewer can look at a handful of threat candidates an hour; more only grows the queue.
     ct_watch_max_per_hour: int = Field(default=5, ge=1, description="look-alike domains queued per hour at most")
     lookalike_recheck_days: int = Field(default=7, ge=1, description="re-check interval for parked look-alikes")
+    # cross-check with the national malicious-address list (threats/sgb.py); internal use only
+    sgb_check_enabled: bool = True
+    sgb_check_batch: int = Field(default=30, ge=1, le=200, description="domains asked per hourly run")
+    sgb_check_max_age_hours: int = Field(default=24, ge=1)
+    sgb_check_pause_seconds: float = Field(default=1.0, ge=0)
     # discovery (first scans of domains from discovery sources; backend/app/discovery.py)
     discovery_daily_budget: int = Field(default=200, ge=0, description="new domains queued per UTC day; 0 = off")
     discovery_batch_size: int = Field(default=10, ge=1, description="new domains queued per 15-minute run")

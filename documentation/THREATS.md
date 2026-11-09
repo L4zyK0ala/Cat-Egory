@@ -42,6 +42,25 @@ Withdraw: `POST /api/v1/admin/threats/withdraw` (reason required) or an accepted
 List (all sources, incl. internal, with URLs and evidence): `GET /api/v1/admin/threats?scope=&active=`.
 All writes are audit-logged (`threat.record`, `threat.withdraw`, `community.moderate`).
 
+## National list cross-check (SGB / USOM)
+
+T.C. Siber Güvenlik Başkanlığı (formerly USOM) publishes its malicious-address list through a public API
+(`https://siberguvenlik.gov.tr/api/openapi.yaml`, no key; the old `url-list.txt` ended on 2026-06-01). Every hour
+`category.threats.sgb_check` asks it about up to 30 domains that have an active domain-scoped threat record or
+an open threat-candidate review, each at most once a day, one second apart (`threats/sgb.py`). The answer — on
+the list (exact domain, a subdomain, or a URL on it; with the list's category, criticality and date) or not —
+is stored in `external_listings`.
+
+**Internal only.** The site's terms (`/yasal-uyarilar`) forbid copying, republishing or distributing its content
+without prior written permission and attribution. So nothing from the list appears on the public site, in the
+public API, stats or feeds. Reviewers see it in the admin threat list and on `/admin/threats`
+(`GET /api/v1/admin/threats/sgb-report`): our confirmed threats **not on the national list** are candidates to
+report through the İhbar Formu on siberguvenlik.gov.tr. Showing "also on the national list" publicly would need
+the Başkanlık's written permission (contact: iletisim@siberguvenlik.gov.tr).
+
+Run now (in the worker, which has internet access): `$DC exec worker python -m backend.cli sgb-check --limit 50`.
+Switch off: `CATEGORY_SGB_CHECK_ENABLED=false`.
+
 ## Roadmap
 
 **Step 1 (done, 2026-11-09):** URL-scoped records; public visibility rule in one place; admin API; disputes

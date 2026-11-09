@@ -321,7 +321,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--hours", type=int, default=48, help="look back this many hours (default 48)")
     p.add_argument("--yes", action="store_true", help="really queue them (default is a dry run)")
 
+    p = sub.add_parser("sgb-check",
+                       help="check threat domains against the national SGB/USOM list now (run in the worker)")
+    p.add_argument("--limit", type=int, default=30, help="domains to ask about (default 30, max 200)")
+
     args = parser.parse_args(argv)
+    if args.command == "sgb-check":  # network lookups: outside the CLI transaction, committed as it goes
+        from backend.app.threat_tasks import run_sgb_check
+
+        counts = run_sgb_check(limit=max(1, min(args.limit, 200)))
+        print(f"checked {counts['checked']} domains, {counts['listed']} on the SGB list"
+              + (" (stopped after an API error; try again later)" if counts["errors"] else ""))
+        return 0
     try:
         with session_factory()() as session, session.begin():
             if args.command == "create-admin":
