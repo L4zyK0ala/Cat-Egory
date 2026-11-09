@@ -164,6 +164,7 @@ services:
       CATEGORY_DISCOVERY_MAX_QUEUED: ${CATEGORY_DISCOVERY_MAX_QUEUED:-20}
       CATEGORY_LOOKALIKE_TOP_N: ${CATEGORY_LOOKALIKE_TOP_N:-1000}
       CATEGORY_SGB_CHECK_ENABLED: ${CATEGORY_SGB_CHECK_ENABLED:-true}
+      CATEGORY_VIRUSTOTAL_API_KEY: ${CATEGORY_VIRUSTOTAL_API_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
       interval: 60s

@@ -26,6 +26,7 @@ from ..deps import Principal, rate_limit, require
 from ..errors import ApiError
 from .reviews import guard_protected
 from .sgb_view import SgbOut, sgb_listings, sgb_out
+from .vt_view import VtOut, vt_listings, vt_out
 
 router = APIRouter(prefix="/api/v1/admin/threats", tags=["threats"], dependencies=[Depends(rate_limit("write"))])
 
@@ -66,6 +67,7 @@ class ThreatOut(BaseModel):
     reference: str | None
     evidence: str | None
     sgb: SgbOut | None = None  # None = not checked yet
+    vt: VtOut | None = None    # None = not checked yet, or no VirusTotal key
 
 
 class ThreatPage(BaseModel):
@@ -123,11 +125,12 @@ def list_threats(scope: Literal["all", "domain", "url"] = "all", active: bool | 
     if cursor:
         stmt = stmt.where(ThreatIntelligence.id < cursor)
     rows = session.execute(stmt.order_by(ThreatIntelligence.id.desc()).limit(limit + 1)).all()
-    listings = sgb_listings(session, {t.domain_id for t, _, _, _ in rows[:limit]})
+    ids = {t.domain_id for t, _, _, _ in rows[:limit]}
+    listings, vt = sgb_listings(session, ids), vt_listings(session, ids)
     items = [ThreatOut(id=t.id, domain=d, url=u, type=str(t.threat_type), source=s,
                        scope="domain" if t.url_id is None else "url", active=t.is_active, first_seen=t.first_seen,
                        last_seen=t.last_seen, reference=t.source_reference, evidence=(t.raw or {}).get("evidence"),
-                       sgb=sgb_out(listings.get(t.domain_id)))
+                       sgb=sgb_out(listings.get(t.domain_id)), vt=vt_out(vt.get(t.domain_id), d))
              for t, d, u, s in rows[:limit]]
     return ThreatPage(items=items, next_cursor=rows[limit - 1][0].id if len(rows) > limit else None)
 
@@ -138,6 +141,7 @@ class SgbReportItem(BaseModel):
     first_seen: datetime
     status: Literal["listed", "missing", "unchecked"]
     sgb: SgbOut | None
+    vt: VtOut | None = None
 
 
 class SgbReport(BaseModel):
@@ -162,7 +166,7 @@ def sgb_report(status: Literal["all", "listed", "missing", "unchecked"] = "missi
         g = grouped.setdefault(did, {"domain": name, "types": [], "first_seen": first})
         g["types"].append(str(threat))
         g["first_seen"] = min(g["first_seen"], first)
-    listings = sgb_listings(session, set(grouped))
+    listings, vt = sgb_listings(session, set(grouped)), vt_listings(session, set(grouped))
     items, counts = [], {"listed": 0, "missing": 0, "unchecked": 0}
     for did, g in grouped.items():
         row = listings.get(did)
@@ -170,7 +174,7 @@ def sgb_report(status: Literal["all", "listed", "missing", "unchecked"] = "missi
         counts[state] += 1
         if status in ("all", state):
             items.append(SgbReportItem(domain=g["domain"], types=sorted(set(g["types"])), first_seen=g["first_seen"],
-                                       status=state, sgb=sgb_out(row)))
+                                       status=state, sgb=sgb_out(row), vt=vt_out(vt.get(did), g["domain"])))
     items.sort(key=lambda i: i.first_seen)
     return SgbReport(counts=counts, items=items[:limit])
 

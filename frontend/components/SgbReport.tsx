@@ -2,11 +2,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { call } from "@/lib/client";
 import KeyGate from "./KeyGate";
+import VtBadge, { vtEngines, type Vt } from "./VtBadge";
 
 type Match = { id: number | string | null; value: string; type: string; category: string | null;
   category_name: string | null; criticality: number | null; date: string | null; scope: string; link: string | null };
 type Item = { domain: string; types: string[]; first_seen: string; status: "listed" | "missing" | "unchecked";
-  sgb: { listed: boolean; checked_at: string; matches: Match[] } | null };
+  sgb: { listed: boolean; checked_at: string; matches: Match[] } | null; vt?: Vt | null };
 type Report = { counts: Record<string, number>; items: Item[] };
 type Status = "missing" | "listed" | "unchecked" | "all";
 
@@ -62,7 +63,7 @@ function Report({ api }: { api: string }) {
       {shown.length === 0 ? <div className="notice">Nothing here.</div> : (
         <div className="panel">
           <table>
-            <thead><tr><th>Domain</th><th>Our finding</th><th>Confirmed</th><th>National list (SGB/USOM)</th><th></th></tr></thead>
+            <thead><tr><th>Domain</th><th>Our finding</th><th>Confirmed</th><th>National list (SGB/USOM)</th><th>VirusTotal</th><th></th></tr></thead>
             <tbody>{shown.map((i) => (
               <tr key={i.domain}>
                 <td className="mono">{i.domain}</td>
@@ -79,6 +80,10 @@ function Report({ api }: { api: string }) {
                       {m.scope !== "exact" && <span className="muted"> · {m.scope}: <span className="mono">{m.value}</span></span>}
                     </div>
                   ))}
+                </td>
+                <td>
+                  <VtBadge vt={i.vt} />
+                  {i.vt?.flagged && <div className="muted" style={{ fontSize: 12 }}>{vtEngines(i.vt)}</div>}
                 </td>
                 <td><button className="secondary" onClick={() => withdraw(i)}>Withdraw</button></td>
               </tr>

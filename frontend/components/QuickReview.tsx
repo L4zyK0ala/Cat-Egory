@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { call, postConfirmed } from "@/lib/client";
 import KeyGate from "./KeyGate";
 import { Screenshot } from "./ReviewQueue";
+import VtBadge, { vtEngines, type Vt } from "./VtBadge";
 
 type Prediction = { provider: string; model: string; primary_category: string | null; secondary_categories: string[];
   risk_categories: string[]; confidence: number | null; description: string | null;
@@ -11,7 +12,7 @@ type SgbMatch = { value: string; category: string | null; category_name: string 
   date: string | null; scope: string; link: string | null };
 type Review = { id: number; domain: string; reason: string; page_title: string | null; final_url: string | null;
   http_status: number | null; has_screenshot: boolean; prediction: Prediction | null; lookalike_of?: string | null;
-  sgb?: { listed: boolean; checked_at: string; matches: SgbMatch[] } | null };
+  sgb?: { listed: boolean; checked_at: string; matches: SgbMatch[] } | null; vt?: Vt | null };
 type Cat = { id: string; name: string; kind: string; is_group: boolean };
 type Action = "approve" | "set" | "reject";
 
@@ -149,6 +150,7 @@ function Quick({ api }: { api: string }) {
             <h2 className="quick-domain">{current.domain}</h2>
             <span className="badge pending">{reasonText(current.reason, current.lookalike_of)}</span>
             <UsomBadge sgb={current.sgb} />
+            <VtBadge vt={current.vt} />
           </div>
           {current.sgb?.listed && current.sgb.matches.map((m) => (
             <div key={m.value} className="muted" style={{ fontSize: 13 }}>
@@ -158,6 +160,7 @@ function Quick({ api }: { api: string }) {
               {m.scope !== "exact" && <> · {m.scope}: <span className="mono">{m.value}</span></>}
             </div>
           ))}
+          {current.vt?.flagged && <div className="muted" style={{ fontSize: 13 }}>VirusTotal: {vtEngines(current.vt)}</div>}
           {current.page_title && <p className="muted quick-title">“{current.page_title}”</p>}
           <div className="grid2">
             <div>{current.has_screenshot ? <Screenshot key={current.domain} api={api} domain={current.domain} />

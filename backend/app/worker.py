@@ -50,6 +50,8 @@ celery_app.conf.update(
         "sources-sync": {"task": "category.ingest.sync_due", "schedule": 3600.0},
         "discovery-queue": {"task": "category.discovery.queue", "schedule": 900.0, "options": {"expires": 800}},
         "sgb-check": {"task": "category.threats.sgb_check", "schedule": 3600.0, "options": {"expires": 3000}},
+        "virustotal-check": {"task": "category.threats.virustotal_check", "schedule": 900.0,
+                             "options": {"expires": 800}},
     },
     timezone="UTC",
 )

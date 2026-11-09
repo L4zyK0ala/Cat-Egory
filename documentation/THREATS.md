@@ -66,6 +66,24 @@ the Başkanlık's written permission (contact: iletisim@siberguvenlik.gov.tr).
 Run now (in the worker, which has internet access): `$DC exec worker python -m backend.cli sgb-check --limit 50`.
 Switch off: `CATEGORY_SGB_CHECK_ENABLED=false`.
 
+## VirusTotal lookups (reviewers only)
+
+With `CATEGORY_VIRUSTOTAL_API_KEY` set (worker only; empty = off), `category.threats.virustotal_check` looks up
+4 domains every 15 minutes, 16 seconds apart: the same domains as the SGB check, each at most every 72 hours
+(`threats/virustotal.py`). Reviewers see "VT: flagging vendors / total" on review cards and on `/admin/threats`.
+
+- **Lookups only** (`GET /api/v3/domains/{domain}`). Nothing is submitted for scanning and no URL is sent:
+  submissions are shared with VirusTotal's community, and phishing URLs can carry a victim's e-mail address.
+- **Internal only.** Nothing appears on the public site, in the public API, stats or feeds, and an answer never
+  creates a threat flag. Whether results may be republished was not established; the API overview also rules out
+  integration in projects that may harm the antivirus industry, so do not feed results into published block lists.
+- **Terms are the operator's call.** The public API allows 500 requests a day and 4 a minute and must not be used
+  in commercial products or services. If Cat-egory becomes commercial, this needs a premium licence.
+- **Reading it.** 0 detections does not mean safe: most look-alikes are new and vendors have often not seen them.
+  One vendor alone can be a false alarm.
+
+Run now (in the worker): `$DC exec worker python -m backend.cli virustotal-check --limit 20`.
+
 ## Roadmap
 
 **Step 1 (done, 2026-11-09):** URL-scoped records; public visibility rule in one place; admin API; disputes

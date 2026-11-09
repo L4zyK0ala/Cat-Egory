@@ -332,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
                        help="check threat domains against the national SGB/USOM list now (run in the worker)")
     p.add_argument("--limit", type=int, default=30, help="domains to ask about (default 30, max 200)")
 
+    p = sub.add_parser("virustotal-check", help="look threat domains up on VirusTotal now (run in the worker)")
+    p.add_argument("--limit", type=int, default=20, help="domains to ask about (default 20, max 40; 16 s apart)")
+
     p = sub.add_parser("set-password", help="set or change a user's password (admin UI sign-in)")
     p.add_argument("--email", required=True)
 
@@ -350,6 +353,27 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         print(f"checked {counts['checked']} domains, {counts['listed']} on the SGB list"
               + (" (stopped after an API error; try again later)" if counts["errors"] else ""))
+        return 0
+    if args.command == "virustotal-check":  # network lookups: outside the CLI transaction, committed as it goes
+        from backend.app.threat_tasks import run_virustotal_check
+
+        def report(name: str, matches: list[dict]) -> None:
+            if not matches:
+                print(f"  {name}: no record on VirusTotal", flush=True)
+                return
+            m = matches[0]
+            print(f"  {name}: {m['malicious'] + m['suspicious']}/{m['total']} vendors flag it", flush=True)
+
+        print("asking VirusTotal (one domain every 16 seconds) ...", flush=True)
+        counts = run_virustotal_check(limit=max(1, min(args.limit, 40)), progress=report)
+        if counts.get("disabled"):
+            print("CATEGORY_VIRUSTOTAL_API_KEY is not set in this container (use the worker)")
+            return 1
+        if counts.get("busy"):
+            print("another check is running (the scheduled task); try again in a few minutes")
+            return 0
+        print(f"checked {counts['checked']} domains, {counts['listed']} flagged by at least one vendor"
+              + (" (stopped after an API error or a used-up quota; try again later)" if counts["errors"] else ""))
         return 0
     try:
         with session_factory()() as session, session.begin():

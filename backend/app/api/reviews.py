@@ -43,6 +43,7 @@ from .. import audit
 from ..deps import Principal, rate_limit, require
 from ..errors import ApiError
 from .sgb_view import SgbOut, sgb_listings, sgb_out
+from .vt_view import VtOut, vt_listings, vt_out
 
 router = APIRouter(prefix="/api/v1/admin", tags=["review"], dependencies=[Depends(rate_limit("write"))])
 
@@ -95,6 +96,7 @@ class ReviewOut(BaseModel):
     prediction: PredictionOut | None
     lookalike_of: str | None = Field(default=None, description="what the CT watch thinks it imitates")
     sgb: SgbOut | None = Field(default=None, description="national SGB/USOM list, last check (None = not checked)")
+    vt: VtOut | None = Field(default=None, description="VirusTotal, last check (None = not checked or no key)")
 
 
 class ReviewPage(BaseModel):
@@ -148,7 +150,8 @@ def _review_out(session: Session, task: ReviewTask) -> ReviewOut:
         final_url=scan.final_url if scan else None, http_status=scan.http_status if scan else None,
         has_screenshot=shot is not None, prediction=_prediction(session, task.ai_prediction_id),
         lookalike_of=label.removeprefix("look-alike: ") if label else None,
-        sgb=sgb_out(sgb_listings(session, {domain.id}).get(domain.id)))
+        sgb=sgb_out(sgb_listings(session, {domain.id}).get(domain.id)),
+        vt=vt_out(vt_listings(session, {domain.id}).get(domain.id), domain.normalized_domain))
 
 
 @router.get("/reviews", response_model=ReviewPage, summary="Review queue (oldest first)")

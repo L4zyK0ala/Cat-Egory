@@ -90,6 +90,7 @@ $DC exec api python -m backend.cli retry-infra-failures --yes
 | `category.ingest.sync_due` | 1 h | syncs approved third-party sources whose interval elapsed |
 | `category.discovery.queue` | 15 min | first scans of domains from discovery sources, under a daily budget |
 | `category.threats.sgb_check` | 1 h | up to 30 threat domains checked against the national SGB/USOM list (internal; `THREATS.md`) |
+| `category.threats.virustotal_check` | 15 min | up to 4 threat domains looked up on VirusTotal; off without `CATEGORY_VIRUSTOTAL_API_KEY` (internal; `THREATS.md`) |
 | `ct-watch` (service, not Celery) | continuous | certificate names → brand look-alikes → priority-3 scans |
 | `category.maintenance.provider_health` | 5 min | configuration-level AI provider check (no paid call) |
 

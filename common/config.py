@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     sgb_check_batch: int = Field(default=30, ge=1, le=200, description="domains asked per hourly run")
     sgb_check_max_age_hours: int = Field(default=24, ge=1)
     sgb_check_pause_seconds: float = Field(default=1.0, ge=0)
+    # VirusTotal lookups for reviewers (threats/virustotal.py); off without a key. Worker only.
+    virustotal_api_key: SecretStr | None = Field(default=None, description="VirusTotal API key; empty = off")
+    virustotal_check_batch: int = Field(default=4, ge=1, le=40, description="domains asked per run (every 15 minutes)")
+    virustotal_check_max_age_hours: int = Field(default=72, ge=1)
+    virustotal_check_pause_seconds: float = Field(default=16.0, ge=0, description="the public API allows 4 a minute")
     # discovery (first scans of domains from discovery sources; backend/app/discovery.py)
     discovery_daily_budget: int = Field(default=200, ge=0, description="new domains queued per UTC day; 0 = off")
     discovery_batch_size: int = Field(default=10, ge=1, description="new domains queued per 15-minute run")

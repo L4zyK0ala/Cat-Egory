@@ -4,11 +4,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from database.models import ExternalListing
-from threats import sgb
+from threats import listings, sgb
 
 
 class SgbMatchOut(BaseModel):
@@ -42,7 +41,4 @@ def sgb_out(row: ExternalListing | None) -> SgbOut | None:
 
 
 def sgb_listings(session: Session, domain_ids: set[int]) -> dict[int, ExternalListing]:
-    if not domain_ids:
-        return {}
-    return {r.domain_id: r for r in session.scalars(select(ExternalListing).where(
-        ExternalListing.source == sgb.SOURCE, ExternalListing.domain_id.in_(domain_ids)))}
+    return listings.latest(session, sgb.SOURCE, domain_ids)
