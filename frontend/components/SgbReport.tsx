@@ -14,18 +14,33 @@ const LABEL: Record<Item["status"], string> = { listed: "On the list", missing: 
 const day = (v: string) => new Date(v).toLocaleDateString("en", { dateStyle: "medium" });
 
 function Report({ api }: { api: string }) {
-  const [status, setStatus] = useState<Status>("missing");
+  const [status, setStatus] = useState<Status>("all");
   const [data, setData] = useState<Report | null>(null);
   const [msg, setMsg] = useState("");
+  const [find, setFind] = useState("");
   const load = useCallback(async () => {
-    const r = await call<Report>(api, `/api/v1/admin/threats/sgb-report?status=${status}`);
+    const r = await call<Report>(api, `/api/v1/admin/threats/sgb-report?status=${status}&limit=1000`);
     if (r.ok) setData(r.data); else setMsg(`${r.message} (${r.code})`);
   }, [api, status]);
   useEffect(() => { void load(); }, [load]);
 
+  /** Take back our own flags on a domain (a reviewer's mistake, or the site was cleaned). Kept as history. */
+  async function withdraw(item: Item) {
+    const reason = window.prompt(`Withdraw ${item.types.join(", ")} on ${item.domain}?\nReason (at least 10 characters):`,
+                                 "reviewer mistake: legitimate site");
+    if (reason === null) return;
+    if (reason.trim().length < 10) { setMsg("The reason needs at least 10 characters."); return; }
+    const r = await call<{ changed: number }>(api, "/api/v1/admin/threats/withdraw",
+      { method: "POST", body: JSON.stringify({ domain: item.domain, reason: reason.trim() }) });
+    setMsg(r.ok ? `${item.domain}: ${r.data.changed} flag(s) withdrawn.` : `${r.message} (${r.code})`);
+    void load();
+  }
+
+  const shown = (data?.items ?? []).filter((i) => i.domain.includes(find.trim().toLowerCase()));
+
   async function copy() {
-    const text = (data?.items ?? []).map((i) => i.domain).join("\n");
-    try { await navigator.clipboard.writeText(text); setMsg(`${data?.items.length ?? 0} domains copied.`); }
+    const text = shown.map((i) => i.domain).join("\n");
+    try { await navigator.clipboard.writeText(text); setMsg(`${shown.length} domains copied.`); }
     catch { setMsg("Copying is not allowed in this browser; select the table instead."); }
   }
 
@@ -33,20 +48,22 @@ function Report({ api }: { api: string }) {
   return (
     <div className="stack">
       <div className="row">
+        <input type="search" placeholder="Find a domain" aria-label="Find a domain" value={find}
+               onChange={(e) => setFind(e.target.value)} />
         <select value={status} aria-label="Show" onChange={(e) => setStatus(e.target.value as Status)}>
+          <option value="all">All confirmed threats</option>
           <option value="missing">Not on the list ({data.counts.missing})</option>
           <option value="listed">On the list ({data.counts.listed})</option>
           <option value="unchecked">Not checked yet ({data.counts.unchecked})</option>
-          <option value="all">All</option>
         </select>
-        {status === "missing" && data.items.length > 0 && <button className="secondary" onClick={copy}>Copy Domains</button>}
+        {status === "missing" && shown.length > 0 && <button className="secondary" onClick={copy}>Copy Domains</button>}
         {msg && <span className="muted">{msg}</span>}
       </div>
-      {data.items.length === 0 ? <div className="notice">Nothing here.</div> : (
+      {shown.length === 0 ? <div className="notice">Nothing here.</div> : (
         <div className="panel">
           <table>
-            <thead><tr><th>Domain</th><th>Our finding</th><th>Confirmed</th><th>National list (SGB/USOM)</th></tr></thead>
-            <tbody>{data.items.map((i) => (
+            <thead><tr><th>Domain</th><th>Our finding</th><th>Confirmed</th><th>National list (SGB/USOM)</th><th></th></tr></thead>
+            <tbody>{shown.map((i) => (
               <tr key={i.domain}>
                 <td className="mono">{i.domain}</td>
                 <td>{i.types.join(", ")}</td>
@@ -63,6 +80,7 @@ function Report({ api }: { api: string }) {
                     </div>
                   ))}
                 </td>
+                <td><button className="secondary" onClick={() => withdraw(i)}>Withdraw</button></td>
               </tr>
             ))}</tbody>
           </table>
