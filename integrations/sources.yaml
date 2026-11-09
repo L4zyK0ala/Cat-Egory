@@ -65,8 +65,28 @@ sources:
     kind: threat_feed
     threat_type: malware
     format: hosts
-    believed_license: check abuse.ch terms of use (historically CC0; some APIs now require an Auth-Key)
+    believed_license: abuse.ch Terms of Use (not an open licence; CC0 covers only Feodo Tracker, SSL Blacklist, YARAify)
     license_status: unverified
+    notes: >-
+      Checked 2026-11-08. Downloads now need an abuse.ch Auth-Key (the old URL above answers 410). Terms: free for
+      not-for-profit authenticated users (3.1); commercial use may need a paid Spamhaus subscription (4.1); no
+      derivative works or AI training without written consent (7.3). So at most internal-only use
+      (redistribution_allowed false: never on the public site, stats or feeds) until abuse.ch/Spamhaus agree in
+      writing. Download code does not send an Auth-Key header yet.
+
+  - slug: phishing-database
+    name: Phishing.Database active phishing domains
+    homepage: https://github.com/Phishing-Database/Phishing.Database
+    feed_url: https://phish.co.za/latest/phishing-domains-ACTIVE.txt
+    kind: threat_feed
+    threat_type: phishing
+    format: domains
+    believed_license: MIT (repository licence, copyright Mitchell Krog, Nissar Chababy and contributors)
+    license_status: unverified
+    notes: >-
+      Candidate checked 2026-11-08. MIT allows redistribution with the copyright notice, but the list aggregates
+      community reports and other feeds; confirm with the maintainers that MIT covers the data itself before
+      publishing flags. Entries should still go to human review (false positives are reported there as issues).
 
   - slug: openphish
     name: OpenPhish community feed
