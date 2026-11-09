@@ -173,10 +173,13 @@ priority-3 scan. Each name at most once per 30 days, at most `CATEGORY_CT_WATCH_
 pace) per hour. **These domains go to the threat-candidate queue (reason `brand_lookalike`)**, however confident
 the model is: a phishing copy of a bank would otherwise be published as "banking". The one exception: the model is
 ≥ 0.90 sure the page is parked / for sale / a placeholder and claims no risk beyond the name itself (a lone
-`lookalike-domain`, which our own detector already established) — then nothing is published, no review
+`lookalike-domain`, which our own detector already established; the model's own `requires_human_review` is not
+used here, only our injection detector) — then nothing is published, no review
 is opened, and the domain is re-checked every 7 days (`lookalike_recheck_days`); once the page changes it comes
-back to a person. (About 80 % of look-alike names are parked.) Older open reviews of that kind:
-`$DC exec api python -m backend.cli triage-lookalikes [--yes]`. Liveness: heartbeat `ct-watch.stream`, alert
+back to a person. (About 80 % of look-alike names are parked.) When the model is only 0.70–0.89 sure the page is
+parked, the second model (`CATEGORY_EVREN_SECOND_MODEL`) is asked; if it agrees, the same happens. Older open
+reviews: `$DC exec api python -m backend.cli triage-lookalikes [--yes]` (the dry run says why the rest stay open),
+then `$DC exec worker python -m backend.cli second-opinion --yes` for the 0.70–0.89 ones. Liveness: heartbeat `ct-watch.stream`, alert
 `CtWatchStopped`. To pause it: `$DC stop certstream ct-watch`.
 
 ct-watch reads into a bounded queue (50k messages), matches in a separate task and writes hits in a third, so a

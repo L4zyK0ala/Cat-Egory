@@ -246,14 +246,38 @@ def is_lookalike_reason(reason: str) -> bool:
 NAME_ONLY_RISKS = frozenset({"lookalike-domain"})
 
 
-def parked_answer(*, primary: str | None, confidence: float | None, risk: list[str] | tuple, injection: bool,
-                  wants_human: bool, policy: ConfidencePolicy) -> bool:
-    """A look-alike whose page is plainly a parked / for-sale / placeholder page: the model is sure (auto-approve
-    band) and claims nothing risky beyond the name itself. Such a name is watched (re-checked weekly), not shown
-    to a person yet, and nothing is published; a threat flag still needs a person once the page turns into
-    something. The model's own "please ask a person" and injection signals still send it to review."""
-    return (primary == PARKED and confidence is not None and confidence >= policy.auto_approve
-            and set(risk) <= NAME_ONLY_RISKS and not injection and not wants_human)
+def parked_check(*, primary: str | None, confidence: float | None, risk: list[str] | tuple, injection: bool,
+                 policy: ConfidencePolicy) -> str:
+    """Is a look-alike's page plainly parked / for sale / a placeholder, so that nothing needs deciding yet?
+
+    * ``parked``: the model is sure (auto-approve band) and claims no risk beyond the name itself. The name is
+      watched (re-checked weekly), no review is opened, nothing is published.
+    * ``second_opinion``: the same but 0.70-0.89 sure: parked only if a second model agrees.
+    * otherwise why not: ``not_parked``, ``injection`` (our detector found text aimed at classifiers),
+      ``other_risk`` (a claim beyond the name), ``low_confidence``.
+
+    The model's own "requires_human_review" is not used here: on look-alikes it is set for the name alone, and a
+    watched parked name publishes nothing. A threat flag still needs a person once the page turns into
+    something."""
+    if primary != PARKED:
+        return "not_parked"
+    if injection:
+        return "injection"
+    if not set(risk) <= NAME_ONLY_RISKS:
+        return "other_risk"
+    if confidence is None or confidence < policy.extra_validation:
+        return "low_confidence"
+    return "parked" if confidence >= policy.auto_approve else "second_opinion"
+
+
+def watch_parked_lookalike(session: Session, domain: Domain, note: str, recheck_days: int) -> None:
+    close_lookalike_reviews(session, domain, note)
+    _mark_reanalyze(domain, recheck_days)
+
+
+def prediction_has_injection(session: Session, prediction_id: int) -> bool:
+    return session.scalar(select(Evidence.id).where(Evidence.ai_prediction_id == prediction_id,
+                                                    Evidence.type == EvidenceType.SYSTEM).limit(1)) is not None
 
 
 def close_lookalike_reviews(session: Session, domain: Domain, note: str) -> int:
@@ -329,12 +353,21 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
     human_primary = next((r.category_id for r in human_rows if r.is_primary), None)
 
     if human_primary is None and (lookalike := lookalike_reason(session, domain)):
-        if parked_answer(primary=out.primary_category, confidence=out.confidence, risk=out.risk_categories,
-                         injection=bool(result.injection_signals), wants_human=out.requires_human_review,
-                         policy=policy):
+        verdict = parked_check(primary=out.primary_category, confidence=out.confidence, risk=out.risk_categories,
+                               injection=bool(result.injection_signals), policy=policy)
+        if verdict == "second_opinion" and second_provider is not None and data is not None:
+            second = second_provider.classify(data)
+            outcome.prediction_ids.append(record_prediction(session, domain, scan, second).id)
+            if second.ok and parked_check(primary=second.output.primary_category,
+                                          confidence=second.output.confidence,
+                                          risk=second.output.risk_categories,
+                                          injection=bool(second.injection_signals), policy=policy) in (
+                                              "parked", "second_opinion"):
+                verdict = "parked"  # two models agree the page is parked
+        if verdict == "parked":
             # Most look-alike names from certificate logs are parked. Nothing to decide yet: keep watching.
-            close_lookalike_reviews(session, domain, f"parked look-alike (prediction {first.id}); watched")
-            _mark_reanalyze(domain, lookalike_recheck_days)
+            watch_parked_lookalike(session, domain, f"parked look-alike (prediction {first.id}); watched",
+                                   lookalike_recheck_days)
             outcome.action, outcome.reason = "watch", "parked_lookalike"
             return outcome
         # A possible copy of a known brand or popular site: a convincing phishing page would otherwise be published
@@ -416,6 +449,31 @@ def settle_with_second_opinion(session: Session, task: ReviewTask, scan: ScanRes
         supersede_reviews(session, domain, f"settled by second opinion (prediction {second.id}): models agree")
         return "applied"
     task.reason = "model_disagreement"
+    return "disagree"
+
+
+def settle_parked_lookalike(session: Session, task: ReviewTask, scan: ScanResult | None, result: ProviderResult,
+                            *, policy: ConfidencePolicy, recheck_days: int) -> str:
+    """An open look-alike review whose page the first model called parked with 0.70-0.89 confidence: if the
+    second model also calls it parked (no risk beyond the name), close it and watch the domain. Returns
+    "applied", "disagree" (task left as it is), "error" or "skipped"."""
+    first = session.get(AIPrediction, task.ai_prediction_id) if task.ai_prediction_id else None
+    if task.status != ReviewStatus.OPEN or not is_lookalike_reason(task.reason) or first is None or \
+            parked_check(primary=first.primary_category_id,
+                         confidence=float(first.confidence) if first.confidence is not None else None,
+                         risk=first.risk_flags, injection=prediction_has_injection(session, first.id),
+                         policy=policy) != "second_opinion":
+        return "skipped"
+    domain = session.get(Domain, task.domain_id, with_for_update=True)
+    second = record_prediction(session, domain, scan, result)
+    if not result.ok:
+        return "error"
+    if parked_check(primary=result.output.primary_category, confidence=result.output.confidence,
+                    risk=result.output.risk_categories, injection=bool(result.injection_signals),
+                    policy=policy) in ("parked", "second_opinion"):
+        watch_parked_lookalike(session, domain, f"parked look-alike: two models agree (predictions {first.id}, "
+                                                f"{second.id}); watched", recheck_days)
+        return "applied"
     return "disagree"
 
 

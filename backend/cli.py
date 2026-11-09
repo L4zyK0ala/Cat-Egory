@@ -177,46 +177,60 @@ def apply_registry_rules(session: Session, *, dry_run: bool = False) -> list[str
 
 
 def second_opinion_tasks(session: Session) -> list[int]:
-    """Open reviews that only wait because the first model was 0.70-0.89 sure (oldest first)."""
+    """Open reviews a second model can settle (oldest first): the first model was 0.70-0.89 sure of a category,
+    or 0.70-0.89 sure that a look-alike's page is parked."""
     from database.models import ReviewStatus, ReviewTask
 
-    return list(session.scalars(select(ReviewTask.id).where(ReviewTask.status == ReviewStatus.OPEN,
-                                                            ReviewTask.reason == "needs_extra_validation")
-                                .order_by(ReviewTask.id)))
+    ids = set(session.scalars(select(ReviewTask.id).where(ReviewTask.status == ReviewStatus.OPEN,
+                                                          ReviewTask.reason == "needs_extra_validation")))
+    ids |= {task.id for task, _, verdict in _lookalike_verdicts(session) if verdict == "second_opinion"}
+    return sorted(ids)
 
 
-def triage_lookalikes(session: Session, *, dry_run: bool = False) -> list[str]:
-    """Close open look-alike reviews whose page the model calls parked with auto-approve confidence and no risk
-    (the rule new classifications follow, classification.engine.parked_answer). The domains stay watched:
-    re-checked every ``lookalike_recheck_days``; a changed page comes back to a person. Returns the domains."""
+def _lookalike_verdicts(session: Session):
+    """(task, prediction, verdict) for every open look-alike review (classification.engine.parked_check)."""
     from backend.app.classify_tasks import policy_from
-    from classification.engine import close_lookalike_reviews, is_lookalike_reason, parked_answer
-    from database.models import AIPrediction, Domain, Evidence, EvidenceType, ReviewStatus, ReviewTask
+    from classification.engine import is_lookalike_reason, parked_check, prediction_has_injection
+    from database.models import AIPrediction, ReviewStatus, ReviewTask
 
-    settings = get_settings()
-    policy = policy_from(settings)
-    names = []
+    policy = policy_from(get_settings())
     rows = session.execute(select(ReviewTask, AIPrediction).join(AIPrediction, AIPrediction.id == ReviewTask.ai_prediction_id)
                            .where(ReviewTask.status == ReviewStatus.OPEN).order_by(ReviewTask.id)).all()
     for task, pred in rows:
-        if not is_lookalike_reason(task.reason):
-            continue
-        injection = session.scalar(select(Evidence.id).where(Evidence.ai_prediction_id == pred.id,
-                                                             Evidence.type == EvidenceType.SYSTEM).limit(1)) is not None
-        if not parked_answer(primary=pred.primary_category_id,
-                             confidence=float(pred.confidence) if pred.confidence is not None else None,
-                             risk=pred.risk_flags, injection=injection, wants_human=pred.requires_human_review,
-                             policy=policy):
+        if is_lookalike_reason(task.reason):
+            verdict = parked_check(primary=pred.primary_category_id,
+                                   confidence=float(pred.confidence) if pred.confidence is not None else None,
+                                   risk=pred.risk_flags, injection=prediction_has_injection(session, pred.id),
+                                   policy=policy)
+            if verdict == "second_opinion" and session.scalar(select(AIPrediction.id).where(
+                    AIPrediction.domain_id == task.domain_id, AIPrediction.id > pred.id).limit(1)):
+                verdict = "models_disagree"  # a second model already answered and did not agree
+            yield task, pred, verdict
+
+
+def triage_lookalikes(session: Session, *, dry_run: bool = False) -> tuple[list[str], dict[str, int]]:
+    """Close open look-alike reviews whose page the model calls parked with auto-approve confidence and no risk
+    beyond the name (the rule new classifications follow, classification.engine.parked_check). The domains stay
+    watched: re-checked every ``lookalike_recheck_days``; a changed page comes back to a person. Returns the
+    closed domains and how many of the rest were left, by reason."""
+    from classification.engine import watch_parked_lookalike
+    from database.models import Domain
+
+    settings = get_settings()
+    names, left = [], {}
+    for task, pred, verdict in list(_lookalike_verdicts(session)):
+        if verdict != "parked":
+            left[verdict] = left.get(verdict, 0) + 1
             continue
         domain = session.get(Domain, task.domain_id)
         names.append(domain.normalized_domain)
         if not dry_run:
-            close_lookalike_reviews(session, domain, f"parked look-alike (prediction {pred.id}); watched")
-            _watch(domain, settings.lookalike_recheck_days)
+            watch_parked_lookalike(session, domain, f"parked look-alike (prediction {pred.id}); watched",
+                                   settings.lookalike_recheck_days)
     if names and not dry_run:
         audit.record(session, action="reviews.triage_lookalikes", target_type="review",
-                     after={"closed": len(names), "recheck_days": settings.lookalike_recheck_days})
-    return names
+                     after={"closed": len(names), "left": left, "recheck_days": settings.lookalike_recheck_days})
+    return names, left
 
 
 def _watch(domain, days: int) -> None:
@@ -400,12 +414,20 @@ def main(argv: list[str] | None = None) -> int:
 
                     for task_id in ids:
                         celery_app.send_task("category.classify.second_opinion", args=[task_id])
-                    print(f"queued {len(ids)} reviews for a second opinion; agreeing answers are published, "
-                          "the rest stay in the review queue as model_disagreement")
+                    print(f"queued {len(ids)} reviews for a second opinion: when both models agree, a category is "
+                          "published or a parked look-alike is watched; the rest stay for a person")
             elif args.command == "triage-lookalikes":
-                names = triage_lookalikes(session, dry_run=not args.yes)
+                names, left = triage_lookalikes(session, dry_run=not args.yes)
                 verb = "closed" if args.yes else "dry run: would close"
                 print(f"{verb} {len(names)} parked look-alike reviews" + (f": {', '.join(names[:10])} ..." if names else ""))
+                hints = {"second_opinion": "parked, 0.70-0.89 sure: run second-opinion",
+                         "low_confidence": "parked, under 0.70: a person decides",
+                         "models_disagree": "the second model disagreed: a person decides",
+                         "other_risk": "parked, but a claim beyond the name: a person decides",
+                         "injection": "page aims text at classifiers: a person decides",
+                         "not_parked": "a real page: a person decides"}
+                for verdict, n in sorted(left.items(), key=lambda kv: -kv[1]):
+                    print(f"  left open: {n:4}  {hints.get(verdict, verdict)}")
             elif args.command == "retry-infra-failures":
                 names = retry_infra_failures(session, hours=args.hours, dry_run=not args.yes)
                 verb = "queued" if args.yes else "dry run: would queue"

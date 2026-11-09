@@ -138,4 +138,47 @@ def test_parked_lookalike_whose_only_claim_is_the_name_is_watched(engine, top_so
     assert out.action == "review"  # any claim beyond the name: a person decides
     out = run(engine, make_scan(engine, "goog1e.com"),
               Scripted(risk_categories=["lookalike-domain"], requires_human_review=True, **parked))
-    assert out.action == "review"  # the model asked for a person
+    assert out.action == "watch"  # on a look-alike the model asks for a person because of the name alone
+
+
+def test_unsure_parked_lookalikes_are_settled_by_a_second_model(engine, top_source, capsys):
+    from sqlalchemy import select
+
+    from backend import cli
+    from backend.app.classify_tasks import second_opinion_for_task
+    from database.models import ReviewStatus, ReviewTask
+    from tests.integration.test_classification import S
+
+    parked = dict(primary_category="parked-domains", secondary_categories=[], risk_categories=["lookalike-domain"])
+    # new classifications: the second model is asked at once
+    out = run(engine, make_scan(engine, "gooogle.com"), Scripted(confidence=0.8, **parked),
+              second=Scripted(model="second", confidence=0.75, **parked))
+    assert (out.action, len(out.prediction_ids)) == ("watch", 2)
+    out = run(engine, make_scan(engine, "googie.com"), Scripted(confidence=0.8, **parked),
+              second=Scripted(model="second", primary_category="business"))
+    assert out.action == "review"  # the second model sees a real page: a person decides
+
+    # reviews opened before a second model was set
+    for name in ("goog1e.com", "gogle.com"):
+        run(engine, make_scan(engine, name), Scripted(confidence=0.8, **parked))
+    run(engine, make_scan(engine, "googel.com"), Scripted(confidence=0.5, **parked))  # too unsure
+    with Session(engine) as s:
+        ids = cli.second_opinion_tasks(s)
+        names, left = cli.triage_lookalikes(s, dry_run=True)
+    assert len(ids) == 2 and names == []
+    assert left == {"second_opinion": 2, "models_disagree": 1, "low_confidence": 1}  # googie.com: asked already
+
+    settle = {}
+    for task_id, second in zip(ids, (Scripted(model="second", confidence=0.9, **parked),
+                                     Scripted(model="second", primary_category="banking")), strict=True):
+        with Session(engine) as s, s.begin():
+            settle[task_id] = second_opinion_for_task(s, task_id, S, second=second)
+    assert sorted(settle.values()) == ["applied", "disagree"]
+    with Session(engine) as s:
+        open_ = {t.id for t in s.scalars(select(ReviewTask).where(ReviewTask.status == ReviewStatus.OPEN))}
+    assert [i for i, r in settle.items() if r == "applied"][0] not in open_
+    assert [i for i, r in settle.items() if r == "disagree"][0] in open_
+
+    assert cli.main(["triage-lookalikes"]) == 0
+    printed = capsys.readouterr().out
+    assert "left open:" in printed and "the second model disagreed" in printed

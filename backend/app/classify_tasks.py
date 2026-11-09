@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 from ai_providers.base import AIProvider
 from ai_providers.registry import get_provider, get_second_opinion
 from classification.confidence import ConfidencePolicy
-from classification.engine import Outcome, build_input, decide, settle_with_second_opinion
+from classification.engine import (
+    Outcome,
+    build_input,
+    decide,
+    is_lookalike_reason,
+    settle_parked_lookalike,
+    settle_with_second_opinion,
+)
 from classification.taxonomy import default_taxonomy, load_taxonomy
 from common.config import Settings, get_settings
 from database.models import AIPrediction, Domain, ReviewStatus, ReviewTask, ScanResult
@@ -61,7 +68,8 @@ def second_opinion_for_task(session: Session, task_id: int, settings: Settings, 
                             store=None) -> str:
     """Ask the second model about one open ``needs_extra_validation`` review (see settle_with_second_opinion)."""
     task = session.get(ReviewTask, task_id, with_for_update=True)
-    if task is None or task.status != ReviewStatus.OPEN or task.reason != "needs_extra_validation":
+    if task is None or task.status != ReviewStatus.OPEN or not (
+            task.reason == "needs_extra_validation" or is_lookalike_reason(task.reason)):
         return "skipped"
     first = session.get(AIPrediction, task.ai_prediction_id) if task.ai_prediction_id else None
     scan = session.get(ScanResult, first.scan_result_id) if first and first.scan_result_id else None
@@ -69,6 +77,9 @@ def second_opinion_for_task(session: Session, task_id: int, settings: Settings, 
         return "skipped"  # nothing to show the second model; a person decides
     taxonomy = load_taxonomy(settings.taxonomy_path) if settings.taxonomy_path else default_taxonomy()
     result = second.classify(build_input(session, scan, store, use_screenshot=settings.classify_use_screenshot))
+    if is_lookalike_reason(task.reason):  # a parked look-alike the first model was 0.70-0.89 sure about
+        return settle_parked_lookalike(session, task, scan, result, policy=policy_from(settings),
+                                       recheck_days=settings.lookalike_recheck_days)
     return settle_with_second_opinion(session, task, scan, result, taxonomy=taxonomy)
 
 
