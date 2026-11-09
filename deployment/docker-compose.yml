@@ -233,6 +233,8 @@ services:
       context: ..
       dockerfile: deployment/docker/Dockerfile.crawler
     image: cat-egory/crawler:dev
+    # Reaps orphaned Chromium processes. Celery as PID 1 does not; zombies count against the pids limit below.
+    init: true
     environment:
       CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
       CATEGORY_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0

@@ -70,8 +70,9 @@ into the weaker mode with `-f deployment/docker-compose.nosandbox.yml`; do not c
 
 **After a reboot or host maintenance.** Scans that fail on our side (`sandbox_unavailable`, `internal_error`,
 `storage_error`, `proxy_unavailable`) never mark a site unreachable and are retried after
-`scan_retry_infra_hours` (6). Seen on 2026-11-09 after the RAM upgrade: ~200 failures in 6 hours until the stack
-was restarted. Check `sudo aa-status | grep cat-egory` and `$DC exec crawler python -m crawler.selftest`, then
+`scan_retry_infra_hours` (6). Seen on 2026-11-09: ~180 failures until the stack was restarted, after the crawler hit
+its `pids` limit (`fork rejected by pids controller` in the kernel log), most likely from unreaped Chromium
+processes; the crawler now runs with `init: true`. Check `sudo aa-status | grep cat-egory` and `$DC exec crawler python -m crawler.selftest`, then
 re-queue what failed instead of waiting:
 
 ```bash
