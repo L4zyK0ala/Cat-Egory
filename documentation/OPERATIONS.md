@@ -38,7 +38,8 @@ Addresses (set `CATEGORY_PUBLIC_BIND` / `CATEGORY_ADMIN_BIND` in `.env`):
 
 **Public and admin are separate.** The admin pages and endpoints are not hidden behind a link: they do not
 exist on the public containers (`CATEGORY_ADMIN_ROUTES=false` on `api`, no `UI_ADMIN` on `frontend`), so even a
-leaked admin key cannot be used through the public address. Keep `CATEGORY_ADMIN_BIND` private (`127.0.0.1` with an
+leaked admin key cannot be used through the public address. The admin UI is the panel only: public pages redirect to `/admin`
+(`frontend/proxy.ts`), except `/domain/*`, which the admin console links to. Keep `CATEGORY_ADMIN_BIND` private (`127.0.0.1` with an
 SSH tunnel, a LAN address, or the VPN address); when the site goes public only `CATEGORY_PUBLIC_BIND` (behind the
 TLS proxy) faces the internet. Admin CLI commands are unaffected (`$DC exec api python -m backend.cli ...`).
 

@@ -27,15 +27,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="top">
           <div className="inner">
-            <Link href="/" className="brand" aria-label="Cat-Egory home"><Brand />{adminUi && <span className="badge pending">admin</span>}</Link>
-            <nav aria-label="Main">
-              <Link href="/">Dashboard</Link>
-              <Link href="/categories">Categories</Link>
-              <Link href="/feeds">Feeds</Link>
-              <Link href="/submit">Suggest a Site</Link>
-              <Link href="/about">About</Link>
-              {adminUi && <Link href="/admin" className="admin">Admin</Link>}
-            </nav>
+            <Link href={adminUi ? "/admin" : "/"} className="brand" aria-label="Cat-Egory home"><Brand />{adminUi && <span className="badge pending">admin</span>}</Link>
+            {!adminUi && (
+              <nav aria-label="Main">
+                <Link href="/">Dashboard</Link>
+                <Link href="/categories">Categories</Link>
+                <Link href="/feeds">Feeds</Link>
+                <Link href="/submit">Suggest a Site</Link>
+                <Link href="/about">About</Link>
+              </nav>
+            )}
           </div>
         </header>
         <main>{children}</main>
