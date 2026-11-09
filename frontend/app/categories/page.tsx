@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Category } from "@/lib/types";
+import { CatNap } from "@/components/CatScene";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +16,13 @@ export default async function Categories() {
   const groups = data.items.filter((c) => c.is_group);
   return (
     <>
-      <h1>Categories</h1>
-      <p className="muted">Taxonomy {data.taxonomy_version}. Security threats are a separate risk classification.</p>
+      <div className="page-head">
+        <div>
+          <h1>Categories</h1>
+          <p className="muted">Taxonomy {data.taxonomy_version}. Security threats are a separate risk classification.</p>
+        </div>
+        <CatNap />
+      </div>
       {groups.map((g) => (
         <section key={g.id}>
           <h2>{g.name} {g.kind === "risk" && <span className="badge danger">risk</span>}</h2>

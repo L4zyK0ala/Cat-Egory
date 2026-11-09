@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Mascot from "@/components/Mascot";
+import { CatRoll } from "@/components/CatScene";
 
 export const metadata: Metadata = {
   title: "About",
@@ -27,7 +27,10 @@ export default function About() {
           <p className="lead">An independent, open project that sorts the world&apos;s websites into an open, versioned set of
             categories — and shows its work.</p>
         </div>
-        <Mascot />
+        <figure className="kostum">
+          <CatRoll />
+          <figcaption className="cat-name">Mr Kostüm</figcaption>
+        </figure>
       </section>
 
       <h2>Our Mission</h2>

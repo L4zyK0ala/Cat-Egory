@@ -1,5 +1,6 @@
 import { api, publicApiUrl } from "@/lib/api";
 import type { Feed } from "@/lib/types";
+import { CatChase } from "@/components/CatScene";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function Feeds() {
         Zone (BIND, Unbound, PowerDNS). <span className="mono">{base}/api/v1/feeds/rpz</span> blocks all security threats.
         Each file states its version, date and licence (CC BY 4.0 — please credit &quot;Cat-egory contributors&quot;).
       </p>
+      <CatChase />
       {feeds === null ? <div className="notice error">The API is not reachable right now.</div> : shown.length === 0 ?
         <div className="notice">No feeds have been built yet.</div> : (
         <div className="panel">

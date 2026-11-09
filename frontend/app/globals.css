@@ -186,3 +186,77 @@ details summary { cursor: pointer; font-size: 14px; }
 @media (min-width: 760px) { .principles { grid-template-columns: repeat(2, 1fr); } }
 .about .panel p { margin: 0; }
 .about .panel.stack > p + p { margin-top: 10px; }
+
+/* ---------- cat scenes (components/CatScene.tsx): Kostüm, grey and white, chubby, half a tail */
+.cat-scene { pointer-events: none; user-select: none; }
+.cat-scene svg { display: block; overflow: visible; height: auto; }
+.kitty { --fur: #858C97; --fur-far: #6E7480; --white: #FBFAF7; --pink: #EFAFB0; --ink: #2A1E1A; --mouse: #CDBFAE; }
+.kitty .fur { fill: var(--fur); stroke: var(--ink); stroke-width: 5; stroke-linejoin: round; }
+.kitty .white { fill: var(--white); }
+.kitty .outline { fill: none; stroke: var(--ink); stroke-width: 5; }
+.kitty .ear-in, .kitty .mouse-ear { fill: var(--pink); }
+.kitty .cheek { fill: var(--pink); opacity: .55; }
+.kitty .eye { fill: #B9C96B; stroke: var(--ink); stroke-width: 3.5; }
+.kitty .iris { fill: var(--ink); }
+.kitty .glint { fill: #fff; }
+.kitty .nose { fill: #E8949A; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; }
+.kitty .line, .kitty .whisker { stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; fill: none; }
+.kitty .whisker { stroke-width: 2.2; }
+.kitty .whisker.thin { stroke-width: 1.4; }
+.kitty .limb-o, .kitty .tail-o { stroke: var(--ink); stroke-width: 26; stroke-linecap: round; fill: none; }
+.kitty .limb, .kitty .tail { stroke: var(--fur); stroke-width: 16; stroke-linecap: round; fill: none; }
+.kitty .limb.far { stroke: var(--fur-far); }
+.kitty .paw { fill: var(--white); stroke: var(--ink); stroke-width: 4; }
+.kitty .mouse-body { fill: var(--mouse); stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.kitty .mouse-ear { stroke: var(--ink); stroke-width: 3; }
+.kitty .mouse-tail { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.kitty .limb-thin { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.kitty .heart { fill: var(--red); font: 700 22px var(--sans); }
+.kitty .zzz { fill: var(--muted); font: 700 20px var(--serif); }
+.kitty .roller, .kitty .breathe, .kitty .tilt-inner, .kitty .heart, .kitty .zzz,
+.kitty .mouse-run { transform-box: fill-box; }
+
+.cat-scene.chase { position: relative; height: 96px; margin: 8px 0 20px; overflow: hidden;
+  border-bottom: 2px dashed var(--line); }
+.chase-runner { position: absolute; bottom: -2px; left: 8%; display: flex; align-items: flex-end; gap: 26px; }
+.chase .runner-cat { width: 132px; }
+.chase .mouse { width: 60px; margin-bottom: 2px; }
+.cat-scene.roll svg { width: min(240px, 70vw); margin: 0 auto; }
+.kostum { margin: 0; justify-self: center; text-align: center; }
+.cat-name { margin-top: 2px; font: italic 600 1.05rem var(--serif); color: var(--muted); }
+.cat-scene.nap svg { width: min(220px, 60vw); }
+.cat-scene.sit svg { width: 120px; }
+.page-cat { display: flex; justify-content: flex-end; margin: -8px 0 4px; }
+.page-head { display: flex; gap: 24px; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; }
+.page-head > :first-child { flex: 1 1 320px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .chase-runner { animation: chase-across 9s linear infinite; }
+  .chase .runner-cat { animation: gallop-bob .36s ease-in-out infinite alternate; }
+  .chase .leg-a { animation: stride .36s ease-in-out infinite alternate; }
+  .chase .leg-b { animation: stride .36s ease-in-out infinite alternate-reverse; }
+  .chase .mouse-run { animation: gallop-bob .2s ease-in-out infinite alternate; }
+  .kitty .stub.wag { animation: stub-wag .5s ease-in-out infinite alternate; }
+  .kitty .roller { transform-origin: 50% 100%; animation: roll 2.6s ease-in-out infinite alternate; }
+  .kitty .paw-wiggle { animation: wiggle .7s ease-in-out infinite alternate; }
+  .kitty .paw-wiggle.late { animation-delay: -.35s; }
+  .kitty .heart { transform-origin: center; opacity: 0; animation: float-up 3.2s ease-out infinite; }
+  .kitty .heart.h2 { animation-delay: 1.6s; }
+  .kitty .breathe { transform-origin: 50% 100%; animation: breathe 3.6s ease-in-out infinite; }
+  .kitty .zzz { opacity: 0; animation: float-up 3.6s ease-out infinite; }
+  .kitty .zzz.z2 { animation-delay: 1.2s; }
+  .kitty .zzz.z3 { animation-delay: 2.4s; }
+  .kitty .stub.flick { animation: stub-flick 1.8s ease-in-out infinite; }
+  .kitty .tilt-inner { transform-origin: 50% 100%; animation: head-tilt 5s ease-in-out infinite; }
+}
+@keyframes chase-across { from { left: -240px; } to { left: 100%; } }
+@keyframes gallop-bob { from { transform: translateY(0); } to { transform: translateY(-5px); } }
+@keyframes stride { from { transform: rotate(-28deg); } to { transform: rotate(28deg); } }
+@keyframes stub-wag { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+@keyframes roll { from { transform: rotate(-9deg); } to { transform: rotate(9deg); } }
+@keyframes wiggle { from { transform: rotate(-10deg); } to { transform: rotate(10deg); } }
+@keyframes float-up { 0% { opacity: 0; transform: translateY(8px) scale(.8); } 20% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-26px) scale(1.1); } }
+@keyframes breathe { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.04); } }
+@keyframes stub-flick { 0%, 60%, 100% { transform: rotate(0); } 70% { transform: rotate(-22deg); } 80% { transform: rotate(10deg); } 90% { transform: rotate(-12deg); } }
+@keyframes head-tilt { 0%, 40%, 100% { transform: rotate(0); } 50%, 80% { transform: rotate(-12deg); } }
