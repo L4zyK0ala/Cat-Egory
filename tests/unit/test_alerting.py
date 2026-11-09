@@ -19,7 +19,7 @@ def test_every_alert_has_a_severity_and_a_summary():
 def test_only_outages_are_critical():
     critical = {r["alert"] for r in rules() if r["labels"]["severity"] == "critical"}
     assert critical == {"ApiDown", "DatabaseMetricsDown", "ApiErrors", "SchedulerStopped", "SchedulerNeverRan",
-                        "CrawlerOutage", "BackupStale"}
+                        "CrawlerOutage", "BackupStale", "FeedsStale"}
 
 
 def test_only_critical_alerts_reach_telegram():

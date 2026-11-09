@@ -17,11 +17,12 @@ groups:
         for: 1h
         labels: {severity: warning}
         annotations: {summary: "More than 5000 scans waiting for an hour"}
+      # The task, not the newest release: an unchanged list rightly produces no release.
       - alert: FeedsStale
-        expr: category_feed_age_seconds > 3 * 3600
+        expr: time() - category_task_last_success_timestamp_seconds{task="category.feeds.build"} > 3 * 3600
         for: 30m
-        labels: {severity: warning}
-        annotations: {summary: "No feed has been rebuilt for 3 hours"}
+        labels: {severity: critical}
+        annotations: {summary: "The feed build has not succeeded for 3 hours"}
       - alert: AiInvalidAnswers
         expr: sum(category_ai_predictions_24h{status!="valid"}) / clamp_min(sum(category_ai_predictions_24h), 1) > 0.2
         for: 1h

@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.orm import Session
 
 from classification.engine import REVIEW_SOURCE
@@ -157,9 +157,10 @@ def json_all(meta: Meta, rows) -> bytes:
 
 def next_version(session: Session, now: datetime) -> str:
     prefix = now.strftime("%Y.%m.%d")
-    latest = session.scalar(select(func.max(FeedRelease.version)).where(FeedRelease.version.like(f"{prefix}.%")))
-    n = int(latest.rsplit(".", 1)[-1]) + 1 if latest else 1
-    return f"{prefix}.{n}"
+    # as numbers: compared as text, ".9" sorts after ".10" and the eleventh release of a day collides with the tenth
+    latest = session.scalar(select(func.max(cast(func.split_part(FeedRelease.version, ".", 4), Integer)))
+                            .where(FeedRelease.version.like(f"{prefix}.%")))
+    return f"{prefix}.{(latest or 0) + 1}"
 
 
 def render(session: Session, taxonomy: Taxonomy, meta: Meta) -> list[FeedFile]:

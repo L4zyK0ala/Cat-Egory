@@ -114,3 +114,18 @@ def test_feed_api(engine, client, admin, store, feed_client):
         assert feed_client.get(f"/api/v1/feeds/{bad}").status_code == 404
     index = feed_client.get("/api/v1/feeds").json()
     assert {"name", "url", "version", "records", "sha256", "license"} <= set(index[0])
+
+
+def test_release_numbers_keep_counting_past_nine(engine):
+    from feeds.builder import next_version
+
+    when = datetime(2031, 3, 9, 12, tzinfo=UTC)
+    with Session(engine) as s, s.begin():
+        for n in (1, 2, 9, 10):
+            s.add(FeedRelease(feed="all.csv", version=f"2031.03.09.{n}", license="CC-BY-4.0", taxonomy_version="1",
+                              record_count=0, sha256="a" * 64, object_key=f"feeds/{n}", generated_at=when))
+        s.add(FeedRelease(feed="all.csv", version="2031.03.08.99", license="CC-BY-4.0", taxonomy_version="1",
+                          record_count=0, sha256="a" * 64, object_key="feeds/old", generated_at=when))
+    with Session(engine) as s:
+        assert next_version(s, when) == "2031.03.09.11"
+        assert next_version(s, datetime(2031, 3, 10, tzinfo=UTC)) == "2031.03.10.1"
