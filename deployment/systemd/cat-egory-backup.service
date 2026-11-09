@@ -1,0 +1,12 @@
+# Installed by `make backup-timer`, which fills in the repository path.
+[Unit]
+Description=Cat-egory backup (PostgreSQL dump and object store)
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+ExecStart=@ROOT@/deployment/scripts/backup.sh
+Nice=10
+IOSchedulingClass=idle

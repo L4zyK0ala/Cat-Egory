@@ -23,6 +23,7 @@ const REASONS: Record<string, string> = {
   needs_extra_validation: "needs a second opinion", model_disagreement: "two models disagree",
   prompt_injection: "page tries to instruct the model", risk_claim: "model claims a threat",
   conflicts_with_human_decision: "conflicts with a human decision",
+  threat_returned: "was flagged, went offline and is back — check again",
 };
 
 function reasonText(reason: string, lookalikeOf?: string | null) {
@@ -188,7 +189,7 @@ function Quick({ api }: { api: string }) {
                        onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLInputElement).blur(); }} />
                 <datalist id="quick-cats">{content.map((c) => <option key={c.id} value={c.name}>{c.id}</option>)}</datalist>
               </form>
-              <details key={current.id} open={isLookalike(current.reason)}>
+              <details key={current.id} open={isLookalike(current.reason) || current.reason === "threat_returned"}>
                 <summary className="muted">Confirm a Security Threat (Only with Evidence)</summary>
                 <div className="row">{risks.map((c) => (
                   <label key={c.id} className="muted"><input type="checkbox" checked={risk.includes(c.id)}

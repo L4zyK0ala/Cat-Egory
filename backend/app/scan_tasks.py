@@ -34,7 +34,9 @@ from database.models import (
     ThreatIntelligence,
 )
 from database.session import session_factory
+from threats.lifecycle import after_scan, ai_answer_needed
 
+from . import audit
 from .worker import celery_app
 
 log = logging.getLogger("category.scan")
@@ -203,6 +205,11 @@ def store_result(session: Session, result: CrawlResult, job_id: str, settings: S
     job.error_code = result.blocked_reason or result.error_code
     job.error_detail = result.error_detail
 
+    # before the rescan interval below, which depends on whether active threats remain
+    if change := after_scan(session, domain, result, expire_days=settings.threat_expire_days, now=now):
+        audit.record(session, action=f"threat.{change.action}", target_type="domain",
+                     target_id=domain.normalized_domain, after={"types": change.types, "last_seen": change.last_seen})
+        log.info("threat lifecycle", extra={"domain": domain.normalized_domain, "action": change.action})
     domain.last_scanned = now
     if job.status == JobStatus.FAILED and result.error_code in INFRA_ERRORS:
         domain.next_scan = now + timedelta(hours=settings.scan_retry_infra_hours)  # our fault, not the site's
@@ -278,6 +285,10 @@ def persist(result: dict, job_id: str) -> str:
             from .classify_tasks import scan_result_for_job
 
             scan_result_id = scan_result_for_job(session, job_id)
+            if scan_result_id is not None and not ai_answer_needed(
+                    session, session.get(ScanResult, scan_result_id).domain_id,
+                    every_days=settings.threat_reclassify_days, now=datetime.now(UTC)):
+                scan_result_id = None
     log.info("scan persisted", extra={"job_id": job_id, "outcome": outcome})
     if scan_result_id is not None:
         celery_app.send_task("category.classify.scan", args=[scan_result_id], queue="classify")

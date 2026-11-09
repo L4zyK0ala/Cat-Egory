@@ -1,48 +1,71 @@
+# severity: critical alerts reach Telegram through Alertmanager; warning alerts stay in Prometheus.
 groups:
   - name: cat-egory
     rules:
       - alert: ApiDown
         expr: up{job="cat-egory-api"} == 0
         for: 5m
+        labels: {severity: critical}
         annotations: {summary: "Cat-egory API is not being scraped"}
       - alert: DatabaseMetricsDown
         expr: category_db_metrics_up == 0
         for: 10m
+        labels: {severity: critical}
         annotations: {summary: "API cannot read the database for metrics"}
       - alert: ScanBacklog
         expr: category_scan_jobs{status="queued"} > 5000
         for: 1h
+        labels: {severity: warning}
         annotations: {summary: "More than 5000 scans waiting for an hour"}
       - alert: FeedsStale
         expr: category_feed_age_seconds > 3 * 3600
         for: 30m
+        labels: {severity: warning}
         annotations: {summary: "No feed has been rebuilt for 3 hours"}
       - alert: AiInvalidAnswers
         expr: sum(category_ai_predictions_24h{status!="valid"}) / clamp_min(sum(category_ai_predictions_24h), 1) > 0.2
         for: 1h
+        labels: {severity: warning}
         annotations: {summary: "More than 20% of AI answers in 24 h were invalid or failed"}
       - alert: ApiErrors
         expr: sum(rate(category_http_requests_total{status=~"5.."}[10m])) > 0.1
         for: 10m
+        labels: {severity: critical}
         annotations: {summary: "API is returning 5xx responses"}
       # Celery heartbeats: the dispatcher runs every 10 s, so a quiet 5 minutes means beat or the worker stopped.
       - alert: SchedulerStopped
         expr: time() - category_task_last_success_timestamp_seconds{task="category.scan.dispatch"} > 300
         for: 2m
+        labels: {severity: critical}
         annotations: {summary: "No scan dispatch for 5 minutes: Celery beat or the worker is not running"}
       - alert: SchedulerNeverRan
         expr: absent(category_task_last_success_timestamp_seconds{task="category.scan.dispatch"}) and on() up{job="cat-egory-api"} == 1
         for: 15m
+        labels: {severity: critical}
         annotations: {summary: "No task heartbeat recorded yet: Celery beat or the worker has not run"}
       - alert: DiscoveryStopped
         expr: time() - category_task_last_success_timestamp_seconds{task="category.discovery.queue"} > 3600
         for: 15m
+        labels: {severity: warning}
         annotations: {summary: "The discovery task has not succeeded for an hour"}
       - alert: HeartbeatsUnreadable
         expr: category_heartbeats_up == 0
         for: 10m
+        labels: {severity: warning}
         annotations: {summary: "API cannot read task heartbeats from Redis"}
       - alert: CtWatchStopped
         expr: time() - category_task_last_success_timestamp_seconds{task="ct-watch.stream"} > 600
         for: 5m
+        labels: {severity: warning}
         annotations: {summary: "The certificate-transparency watch has not received names for 10 minutes"}
+      # A crawler that cannot start browsers fails every scan until someone restarts it (2026-11-09).
+      - alert: CrawlerOutage
+        expr: category_infra_failures_1h >= 20
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "20+ scans failed on our side in the last hour (sandbox, storage or proxy); discovery has paused"}
+      - alert: BackupStale
+        expr: time() - category_task_last_success_timestamp_seconds{task="backup.nightly"} > 30 * 3600
+        for: 1h
+        labels: {severity: critical}
+        annotations: {summary: "No successful backup for more than 30 hours"}

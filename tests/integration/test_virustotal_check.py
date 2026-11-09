@@ -85,9 +85,9 @@ def test_a_used_up_quota_stops_the_run(engine, client, admin):
 
 def test_no_key_means_off(monkeypatch):
     from backend.app import threat_tasks
-    from common.config import get_settings
+    from common.config import Settings
 
     monkeypatch.delenv("CATEGORY_VIRUSTOTAL_API_KEY", raising=False)
-    get_settings.cache_clear()
+    monkeypatch.setattr(threat_tasks, "get_settings", lambda: Settings(_env_file=None))  # not the operator's .env
     assert threat_tasks.virustotal_key() == ""
     assert threat_tasks.run_virustotal_check()["disabled"] == 1

@@ -34,7 +34,7 @@ Addresses (set `CATEGORY_PUBLIC_BIND` / `CATEGORY_ADMIN_BIND` in `.env`):
 | **Admin UI** | `:3012` on `CATEGORY_ADMIN_BIND` | admin console, review and moderation; talks to the admin API (`CATEGORY_ADMIN_API_URL`, `CATEGORY_ADMIN_CORS_ORIGINS`) |
 | **Admin API** | `:8111` on `CATEGORY_ADMIN_BIND` | everything incl. `/api/v1/admin/*` and `/metrics` (Prometheus scrapes this one) |
 | Grafana | `:3011` on `CATEGORY_ADMIN_BIND` | dashboard "Cat-egory overview" is provisioned |
-| Prometheus | `:9091` | alert rules in `deployment/prometheus/alerts.yml` (no Alertmanager yet) |
+| Prometheus | `:9091` | alert rules in `deployment/prometheus/alerts.yml`; `severity: critical` ones go to Telegram through Alertmanager |
 
 **Public and admin are separate.** The admin pages and endpoints are not hidden behind a link: they do not
 exist on the public containers (`CATEGORY_ADMIN_ROUTES=false` on `api`, no `UI_ADMIN` on `frontend`), so even a
@@ -89,7 +89,7 @@ $DC exec api python -m backend.cli retry-infra-failures --yes
 | `category.scan.schedule` | 5 min | queues re-scans for domains whose `next_scan` has passed (≤ 500 per run) |
 | `category.feeds.build` | 1 h | rebuilds feeds; only changed files get a new version |
 | `category.ingest.sync_due` | 1 h | syncs approved third-party sources whose interval elapsed |
-| `category.discovery.queue` | 15 min | first scans of domains from discovery sources, under a daily budget |
+| `category.discovery.queue` | 15 min | first scans of domains from discovery sources, under a daily budget (failed, blocked and cancelled scans do not use it up; pauses after 20 failures on our side in an hour) |
 | `category.threats.sgb_check` | 1 h | up to 30 threat domains checked against the national SGB/USOM list (internal; `THREATS.md`) |
 | `category.threats.virustotal_check` | 15 min | up to 4 threat domains looked up on VirusTotal; off without `CATEGORY_VIRUSTOTAL_API_KEY` (internal; `THREATS.md`) |
 | `ct-watch` (service, not Celery) | continuous | certificate names → brand look-alikes → priority-3 scans |
@@ -249,11 +249,20 @@ sudo ./deployment/scripts/backup.sh            # ./backups: postgres-*.dump, obj
 sudo ./deployment/scripts/restore.sh backups/postgres-<stamp>.dump   # destructive, asks for confirmation
 ```
 
-Schedule `backup.sh` with a systemd timer or cron and copy `./backups` off the host. The dump/restore
-round trip was tested against PostgreSQL 18; the object-store archive is a plain tarball of the SeaweedFS
+Nightly at 02:30 with a systemd timer (`make backup-timer`; check with `systemctl list-timers cat-egory-backup.timer`
+and `journalctl -u cat-egory-backup.service`). A run that was missed while the host was off starts at the next boot.
+`make restore-test` verifies the checksums and restores the newest dump into a throwaway container with no network;
+the live stack is not touched. Copy `./backups` off the host: a backup on the same disk does not survive that disk.
+The dumps hold e-mail addresses and password hashes, so encrypt them unless the destination is your own machine.
+The dump/restore round trip was tested against PostgreSQL 18; the object-store archive is a plain tarball of the SeaweedFS
 volume (restore by extracting into an empty `cat-egory_objectdata` volume while `storage` is stopped).
 
 ## 5. Monitoring
+
+**Telegram alerts.** Set `CATEGORY_ALERT_TELEGRAM_TOKEN` (from @BotFather) and `CATEGORY_ALERT_TELEGRAM_CHAT_ID` in
+`.env`, then `$DC up -d alertmanager prometheus`. Only critical alerts are sent, grouped, at most once a day per alert
+while it lasts, plus a message when it ends. Send a test:
+`$DC exec alertmanager amtool alert add alertname=Test severity=critical --annotation=summary="test" --alertmanager.url=http://127.0.0.1:9093`.
 
 `/metrics` on the API exports HTTP metrics and database-derived gauges (cached 30 s):
 `category_domains{status}`, `category_scan_jobs{status}`, `category_open_reviews`,
@@ -278,15 +287,29 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 
 ## 7. Production checklist
 
-- [ ] Put a TLS reverse proxy (Caddy, nginx, Traefik) in front of `:3010` and `:8110`; bind the containers to
-      `127.0.0.1`; set `CATEGORY_PUBLIC_API_URL` and `CATEGORY_CORS_ORIGINS` to the HTTPS origins.
-- [ ] Tighten the UI CSP `connect-src` (`frontend/next.config.mjs`) to the API origin.
+- [ ] Publish through Cloudflare Tunnel and move the admin side to the VPN (see "Going public" below).
+- [x] UI CSP `connect-src` allows only this container's API origin (`frontend/proxy.ts`).
 - [x] **Chromium sandbox**: crawler AppArmor profile installed in `/etc/apparmor.d`, `crawler.selftest` reports OK.
 - [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth).
 - [ ] Off-host backups; restore drill once.
 - [ ] Alertmanager (or Grafana alerting) wired to a channel you read.
 - [ ] EVREN: terms questions answered (`EVREN_INTEGRATION.md`), live checklist done. (Project-specific key: done 2026-11-08.)
 - [ ] Legal review of the data licence (CC BY 4.0 for own data) and of each enabled source.
+
+### Going public
+
+The Cloudflare Tunnel dials out, so no port is opened at home. `cloudflared` sits on the `tunnel` network with only
+`frontend` and `api`, and has a fixed address, the only one whose `CF-Connecting-IP` header the public API believes.
+Admin containers never join that network.
+
+1. In Cloudflare Zero Trust create a tunnel and copy its token to `CATEGORY_TUNNEL_TOKEN` in `.env`. Public hostnames:
+   the site to `http://frontend:3000`, the API to `http://api:8000`.
+2. In `.env`: `CATEGORY_PUBLIC_API_URL` and `CATEGORY_CORS_ORIGINS` to the HTTPS origins, `CATEGORY_PUBLIC_BIND=127.0.0.1`.
+3. Admin side on the VPN: `make docker-after-vpn`, then `CATEGORY_ADMIN_BIND=<VPN address>`,
+   `CATEGORY_ADMIN_API_URL=http://<VPN address>:8111`, `CATEGORY_ADMIN_CORS_ORIGINS=["http://<VPN address>:3012"]`.
+4. `$DC --profile public up -d --build`. The admin UI is then at `http://<VPN address>:3012` from a VPN client only.
+
+Check from outside the VPN that `:3012` and `:8111` do not answer, and that `/admin` on the public site is a 404.
 
 ## 8. Performance (measured 2026-11-07)
 

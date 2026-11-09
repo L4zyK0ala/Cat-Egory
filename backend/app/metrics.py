@@ -48,6 +48,10 @@ class DatabaseCollector(Collector):
             for status, n in s.execute(select(ScanJob.status, func.count()).group_by(ScanJob.status)):
                 g.add_metric([str(status)], n)
             families.append(g)
+            from .discovery import infra_failures_last_hour
+
+            families.append(GaugeMetricFamily("category_infra_failures_1h", "Scans failed on our side in the last hour",
+                                              value=infra_failures_last_hour(s)))
             families.append(GaugeMetricFamily("category_open_reviews", "Open human-review tasks", value=s.scalar(
                 select(func.count()).select_from(ReviewTask).where(ReviewTask.status == ReviewStatus.OPEN)) or 0))
             families.append(GaugeMetricFamily("category_pending_submissions", "Community items awaiting moderation",

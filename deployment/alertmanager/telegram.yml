@@ -1,0 +1,21 @@
+# Only alerts labelled severity=critical reach Telegram, grouped, and repeated once a day at most while they last.
+# Everything else stays visible in Prometheus. __CHAT_ID__ is filled in by start.sh.
+route:
+  receiver: nobody
+  group_by: [alertname]
+  group_wait: 1m
+  group_interval: 10m
+  repeat_interval: 24h
+  routes:
+    - matchers: ['severity="critical"']
+      receiver: telegram
+
+receivers:
+  - name: nobody
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /tmp/telegram-token
+        chat_id: __CHAT_ID__
+        parse_mode: ""   # plain text: alert summaries are not escaped for HTML
+        send_resolved: true
+        message: '{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} Cat-egory{{ range .Alerts }} · {{ .Annotations.summary }}{{ end }}'

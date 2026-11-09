@@ -121,7 +121,9 @@ services:
     environment:
       <<: *backend-env
       CATEGORY_ADMIN_ROUTES: "false"
-    networks: [core, edge]
+      # only the tunnel's fixed address may state the visitor's IP
+      CATEGORY_TRUSTED_PROXIES: '["10.250.61.250/32"]'
+    networks: [core, edge, tunnel]
     ports:
       - "${CATEGORY_PUBLIC_BIND:-127.0.0.1}:${CATEGORY_API_PORT:-8110}:8000"
     depends_on:
@@ -290,12 +292,33 @@ services:
     tmpfs: [/tmp, "/app/.next/cache"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    networks: [core, edge]
+    networks: [core, edge, tunnel]
     ports:
       - "${CATEGORY_PUBLIC_BIND:-127.0.0.1}:${CATEGORY_WEB_PORT:-3010}:3000"
     depends_on:
       api: {condition: service_started}
     deploy: {resources: {limits: {cpus: "1", memory: 512m}}}
+    restart: unless-stopped
+    logging: *logging
+
+  # Going public (documentation/OPERATIONS.md): dials out to Cloudflare, so no port is opened at home. On the `tunnel`
+  # network it can reach the public site and the public API and nothing else: not the admin containers or the database.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.7
+    profiles: ["public"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CATEGORY_TUNNEL_TOKEN:-}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      egress: {}
+      tunnel: {ipv4_address: 10.250.61.250}   # the address CATEGORY_TRUSTED_PROXIES names; high, so nothing else gets it
+    depends_on:
+      frontend: {condition: service_started}
+      api: {condition: service_started}
+    deploy: {resources: {limits: {cpus: "1", memory: 256m}}}
     restart: unless-stopped
     logging: *logging
 
@@ -328,9 +351,27 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - promdata:/prometheus
-    networks: [core, edge]
+    networks: [core, edge, alerts]
     ports: ["${CATEGORY_ADMIN_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9091}:9090"]
     security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    logging: *logging
+
+  # Sends critical alerts to Telegram (silent until the token and chat id are set). Reaches only Prometheus and the
+  # internet: no access to the database, Redis or the application.
+  alertmanager:
+    image: prom/alertmanager:v0.34.2
+    entrypoint: ["/bin/sh", "/etc/alertmanager/start.sh"]
+    environment:
+      ALERT_TELEGRAM_TOKEN: ${CATEGORY_ALERT_TELEGRAM_TOKEN:-}
+      ALERT_TELEGRAM_CHAT_ID: ${CATEGORY_ALERT_TELEGRAM_CHAT_ID:-}
+    volumes: ["./alertmanager:/etc/alertmanager:ro"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [alerts, egress]
+    deploy: {resources: {limits: {cpus: "0.25", memory: 128m}}}
     restart: unless-stopped
     logging: *logging
 
@@ -360,6 +401,11 @@ networks:
   ct:
     internal: true   # certstream <-> ct-watch only
   egress: {}
+  alerts:
+    internal: true   # prometheus <-> alertmanager only
+  tunnel:
+    internal: true   # cloudflared <-> the public site and API only
+    ipam: {config: [{subnet: 10.250.61.0/24}]}
   edge: {}
 
 volumes:

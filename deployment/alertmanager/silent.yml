@@ -1,0 +1,5 @@
+# Used until CATEGORY_ALERT_TELEGRAM_TOKEN and CATEGORY_ALERT_TELEGRAM_CHAT_ID are set: nothing is sent anywhere.
+route:
+  receiver: nobody
+receivers:
+  - name: nobody

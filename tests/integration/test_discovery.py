@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from backend.app.discovery import PRIORITY, queue_discovery
@@ -97,3 +97,66 @@ def test_discovery_waits_for_other_work_and_needs_approval(engine, clean, client
         s.execute(DataSource.__table__.update().where(DataSource.slug == "test-top").values(enabled=False))
         assert queue_discovery(s, S, entries=entries) == 0  # disabled source
         assert queue_discovery(s, Settings(_env_file=None, discovery_daily_budget=0), entries=entries) == 0
+
+
+def spend(engine, statuses, code=None, when=None):
+    """Give the queued discovery jobs these outcomes, oldest first."""
+    with Session(engine) as s, s.begin():
+        jobs = s.scalars(select(ScanJob).where(ScanJob.status == JobStatus.QUEUED).order_by(ScanJob.id)).all()
+        for job, status in zip(jobs, statuses, strict=False):
+            job.status, job.error_code, job.finished_at = status, code, when or datetime.now(UTC)
+
+
+def setup_list(engine):
+    entries = {"test-top": TOP | {"max_entries": None}}
+    with Session(engine) as s, s.begin():
+        approved(s, "test-top", entries["test-top"])
+        sync(s, "test-top", data=CSV, entry=entries["test-top"])
+    return entries
+
+
+def test_only_scans_that_can_reach_the_ai_use_up_the_budget(engine, clean):
+    entries = setup_list(engine)
+    budget = Settings(_env_file=None, discovery_daily_budget=2, discovery_batch_size=2, discovery_max_queued=10)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, budget, entries=entries) == 2
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, budget, entries=entries) == 0  # both still count while they may succeed
+    spend(engine, [JobStatus.FAILED, JobStatus.BLOCKED], "dns_nxdomain")
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, budget, entries=entries) == 2  # their places came back
+    spend(engine, [JobStatus.SUCCEEDED, JobStatus.SUCCEEDED])
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, budget, entries=entries) == 0  # successes use it up
+
+
+def test_an_outage_pauses_discovery_but_dead_sites_do_not(engine, clean):
+    entries = setup_list(engine)
+    cfg = Settings(_env_file=None, discovery_daily_budget=9, discovery_batch_size=1, discovery_max_queued=10,
+                   discovery_pause_after_infra_failures=2)
+    now = datetime.now(UTC)
+    for _ in range(2):
+        with Session(engine) as s, s.begin():
+            assert queue_discovery(s, cfg, entries=entries, now=now) == 1
+    spend(engine, [JobStatus.FAILED, JobStatus.FAILED], "dns_nxdomain", now)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, cfg, entries=entries, now=now) == 1  # the sites' fault: carry on
+    with Session(engine) as s, s.begin():
+        s.execute(update(ScanJob).where(ScanJob.status == JobStatus.FAILED).values(error_code="sandbox_unavailable"))
+        assert queue_discovery(s, cfg, entries=entries, now=now) == 0  # our fault: stop
+        assert queue_discovery(s, cfg, entries=entries, now=now + timedelta(hours=2)) == 1  # the hour has passed
+
+
+def test_infra_failures_are_counted_for_the_alert(engine, clean):
+    from backend.app.discovery import infra_failures_last_hour
+
+    entries = setup_list(engine)
+    cfg = Settings(_env_file=None, discovery_daily_budget=9, discovery_batch_size=3, discovery_max_queued=10)
+    now = datetime.now(UTC)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, cfg, entries=entries, now=now) == 3
+    spend(engine, [JobStatus.FAILED], "internal_error", now)
+    spend(engine, [JobStatus.FAILED], "dns_nxdomain", now)
+    spend(engine, [JobStatus.FAILED], "storage_error", now - timedelta(hours=2))
+    with Session(engine) as s:
+        assert infra_failures_last_hour(s, now) == 1

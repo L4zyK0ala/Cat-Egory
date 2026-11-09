@@ -84,6 +84,16 @@ With `CATEGORY_VIRUSTOTAL_API_KEY` set (worker only; empty = off), `category.thr
 
 Run now (in the worker): `$DC exec worker python -m backend.cli virustotal-check --limit 20`.
 
+## Keeping records honest
+
+Flagged domains are re-scanned daily, and `threats/lifecycle.py` reads those scans for our own domain-scoped records:
+a live site moves `last_seen` on; a site gone (no DNS, no connection, 404/410) and unseen for `threat_expire_days` (14)
+is deactivated and leaves the public pages and feeds, kept with `raw.expired_at`. If it comes back, a `threat_returned`
+review opens in the threat-candidate queue: nothing is flagged again automatically, the name may have a new owner.
+Scans that say nothing about the site (timeouts, robots.txt, our own failures, 403 and 5xx) change nothing. Audit
+actions: `threat.expire`, `threat.return`. These daily scans only ask whether the site is still there, so a domain with
+an active confirmed threat and a valid AI answer newer than `threat_reclassify_days` (30) is not sent to the model.
+
 ## Roadmap
 
 **Step 1 (done, 2026-11-09):** URL-scoped records; public visibility rule in one place; admin API; disputes
@@ -93,8 +103,7 @@ and reports through the community form; exact-link lookup in the UI.
 - A separate Celery queue/worker (`threats`) so threat scans neither wait for nor block categorisation.
 - Rule-based pre-checks before any AI call: login/card form, form target on another host, brand logo/favicon
   hash vs the official site, HTML similarity, known kit paths.
-- Re-check active records on a schedule (DNS, HTTP status, page still a phishing page) and deactivate dead
-  ones; keep `last_seen` honest.
+- Detect that a flagged page was cleaned while the site stays online (today a reviewer withdraws it).
 
 **Step 3: more of our own observations.**
 - Typo/homograph generation for watched brands (dnstwist-style) + DNS resolution.

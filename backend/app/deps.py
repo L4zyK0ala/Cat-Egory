@@ -1,6 +1,7 @@
 """Request dependencies: database session, Redis, caller identity (principal), scopes and rate limits."""
 from __future__ import annotations
 
+import ipaddress
 import logging
 import time
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from common.config import get_settings
+from common.config import Settings, get_settings
 from database.models import ApiKey, Role, User
 from database.session import get_session
 
@@ -50,13 +51,28 @@ class Principal:
         return self.api_key_id is not None
 
 
+def client_ip(request: Request, settings: Settings) -> str | None:
+    """The address to rate-limit: the connection's, or the visitor's as stated by a trusted proxy (the Cloudflare
+    tunnel). The header is ignored from anyone else, otherwise any client could pick its own rate-limit identity.
+    IPv6 is reduced to its /64, the unit a single customer usually controls."""
+    peer = request.client.host if request.client else None
+    try:
+        trusted = peer is not None and any(ipaddress.ip_address(peer) in net for net in settings.trusted_proxies)
+        if not trusted:
+            return peer
+        real = ipaddress.ip_address(request.headers.get("cf-connecting-ip", "").strip())
+    except ValueError:
+        return peer
+    return str(ipaddress.ip_network(f"{real}/64", strict=False).network_address) if real.version == 6 else str(real)
+
+
 def get_principal(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     session: Session = Depends(get_session),
 ) -> Principal:
     settings = get_settings()
-    ip = request.client.host if request.client else None
+    ip = client_ip(request, settings)
     secret = settings.fingerprint_secret.get_secret_value() if settings.fingerprint_secret else None
     principal = Principal(client_ip=ip, fingerprint=fingerprint(secret, ip))
     if credentials is None:

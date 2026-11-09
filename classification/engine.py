@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import ColumnElement, or_, select
+from sqlalchemy import ColumnElement, or_, select, update
 from sqlalchemy.orm import Session
 
 from ai_providers.base import AIProvider
@@ -187,6 +187,8 @@ def record_threats(session: Session, domain: Domain, risk_ids: list[str], *, sou
             added += 1
         else:
             row.is_active, row.last_seen = True, datetime.now(UTC)
+            if row.raw and "expired_at" in row.raw:  # a person flagged it again: no longer an expired record
+                row.raw = {k: v for k, v in row.raw.items() if k != "expired_at"}
     return added
 
 
@@ -197,7 +199,8 @@ def open_review(session: Session, domain: Domain, prediction: AIPrediction | Non
         task = ReviewTask(domain_id=domain.id, reason=reason)
         session.add(task)
     task.ai_prediction_id = prediction.id if prediction else task.ai_prediction_id
-    task.reason = reason
+    if task.reason != THREAT_RETURNED:  # that question stays in the threat queue whatever the model says next
+        task.reason = reason
     session.flush()
     return task
 
@@ -224,7 +227,8 @@ BRAND_WATCH_SOURCE = "ct-brand-watch"  # integrations/ct_watch.py
 
 # Review reasons that ask "is this a threat?" rather than "which category?". They form their own queue, so a
 # flood of look-alike candidates does not bury category reviews (and vice versa).
-THREAT_CANDIDATE_REASONS = ("brand_lookalike", "risk_claim")
+THREAT_RETURNED = "threat_returned"  # a flag expired with its dead site, and the site is back (threats/lifecycle.py)
+THREAT_CANDIDATE_REASONS = ("brand_lookalike", "risk_claim", THREAT_RETURNED)
 PARKED = "parked-domains"
 
 
@@ -344,6 +348,8 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
         _mark_reanalyze(domain, reanalyze_days)
         return outcome
 
+    session.execute(update(ReviewTask).where(ReviewTask.domain_id == domain.id, ReviewTask.status == ReviewStatus.OPEN,
+                                             ReviewTask.reason == THREAT_RETURNED).values(ai_prediction_id=first.id))
     out = result.output
     decision = policy.decide(out.confidence, requires_human_review=out.requires_human_review,
                              has_risk=bool(out.risk_categories), injection_suspected=bool(result.injection_signals))
