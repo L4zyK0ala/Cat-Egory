@@ -31,11 +31,35 @@ gzip -t "$OBJECTS_TMP"
 mv "$DUMP_TMP" "$DIR/postgres-$STAMP.dump"
 mv "$OBJECTS_TMP" "$DIR/objects-$STAMP.tar.gz"
 
-sha256sum "$DIR/postgres-$STAMP.dump" "$DIR/objects-$STAMP.tar.gz" > "$DIR/SHA256SUMS-$STAMP"
+(cd "$DIR" && sha256sum "postgres-$STAMP.dump" "objects-$STAMP.tar.gz" > "SHA256SUMS-$STAMP")
 
-for prefix in postgres- objects- SHA256SUMS-; do
-  ls -1t "$DIR"/"$prefix"* 2>/dev/null | tail -n +$((KEEP + 1)) | xargs -r rm --
+prune() {  # newest $2 of each kind stay in $1
+  for prefix in postgres- objects- SHA256SUMS-; do
+    ls -1t "$1"/"$prefix"* 2>/dev/null | tail -n +$(($2 + 1)) | xargs -r rm --
+  done
+}
+prune "$DIR" "$KEEP"
+
+copy_to() {  # copy this backup to $1 (on a mounted disk), verify it there, keep the newest $2
+  local dest="$1" keep="$2"
+  # An unmounted disk leaves an empty directory on the system disk: never fill that by mistake.
+  mountpoint -q "$(dirname "$dest")" || { echo "not mounted: $(dirname "$dest")" >&2; return 1; }
+  mkdir -p "$dest"
+  rsync -t "$DIR/postgres-$STAMP.dump" "$DIR/objects-$STAMP.tar.gz" "$DIR/SHA256SUMS-$STAMP" "$dest/" || return 1
+  (cd "$dest" && sha256sum --check --quiet "SHA256SUMS-$STAMP") || return 1
+  prune "$dest" "$keep"
+  echo "-> copied to $dest"
+}
+
+# BACKUP_COPY_TO must work: a failure ends the run without the heartbeat, so BackupStale fires.
+# BACKUP_COPY_OPTIONAL is a spare (a removed USB stick is only a warning) and keeps fewer sets.
+for dest in ${BACKUP_COPY_TO:-}; do
+  copy_to "$dest" "$KEEP" || { echo "error: copy to $dest failed" >&2; exit 1; }
 done
+for dest in ${BACKUP_COPY_OPTIONAL:-}; do
+  copy_to "$dest" "${KEEP_OPTIONAL:-3}" || echo "warning: optional copy to $dest failed" >&2
+done
+
 # Seen by the BackupStale alert. A backup that succeeded stays a success if this one line fails.
 "${DC[@]}" exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli hset category:task-heartbeat backup.nightly "$(date +%s)"' \
   > /dev/null || echo "warning: could not record the backup heartbeat" >&2

@@ -11,7 +11,7 @@ DUMP="$(ls -1t "$DIR"/postgres-*.dump | head -n 1)"
 STAMP="$(basename "$DUMP" .dump)"; STAMP="${STAMP#postgres-}"
 
 echo "-> checksums of $STAMP"
-sha256sum --check --quiet "$DIR/SHA256SUMS-$STAMP"
+(cd "$DIR" && sha256sum --check --quiet "SHA256SUMS-$STAMP")
 
 echo "-> restoring into a throwaway database"
 trap 'docker rm -f "$NAME" > /dev/null 2>&1 || true' EXIT

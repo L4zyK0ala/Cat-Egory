@@ -252,7 +252,9 @@ sudo ./deployment/scripts/restore.sh backups/postgres-<stamp>.dump   # destructi
 Nightly at 02:30 with a systemd timer (`make backup-timer`; check with `systemctl list-timers cat-egory-backup.timer`
 and `journalctl -u cat-egory-backup.service`). A run that was missed while the host was off starts at the next boot.
 `make restore-test` verifies the checksums and restores the newest dump into a throwaway container with no network;
-the live stack is not touched. Copy `./backups` off the host: a backup on the same disk does not survive that disk.
+the live stack is not touched; pass a directory to test a copy (`sudo ./deployment/scripts/restore-test.sh /mnt/yedek/cat-egory`).
+Each run is also copied and checksummed to the second disk (`BACKUP_COPY_TO`, required) and a USB stick
+(`BACKUP_COPY_OPTIONAL`, newest 3). Both are on this machine: copy `./backups` off the host too, a fire or theft takes them all.
 The dumps hold e-mail addresses and password hashes, so encrypt them unless the destination is your own machine.
 The dump/restore round trip was tested against PostgreSQL 18; the object-store archive is a plain tarball of the SeaweedFS
 volume (restore by extracting into an empty `cat-egory_objectdata` volume while `storage` is stopped).
