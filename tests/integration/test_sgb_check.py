@@ -84,3 +84,20 @@ def test_http_fetch_pages_and_filters(engine):
 def test_report_needs_the_review_scope(client, make_key):
     assert client.get("/api/v1/admin/threats/sgb-report",
                       headers=make_key("contributor")[0]).status_code == 403
+
+
+def test_each_answer_is_committed_at_once_and_reported(engine, client, admin):
+    """The CLI path: no transaction is held open while waiting for the API, and progress is shown."""
+    setup(engine, client, admin)
+    seen = []
+
+    def fetch(domain):
+        if seen:  # by the second lookup the first answer must already be visible to others
+            with Session(engine) as other:
+                assert other.scalar(select(ExternalListing.domain_id)) is not None
+        return []
+
+    with Session(engine) as s:
+        counts = sgb.check(s, fetch, limit=10, pause=0, sleep=lambda _: None, commit_each=True,
+                           progress=lambda name, matches: seen.append((name, matches)))
+    assert counts["checked"] == 2 and sorted(n for n, _ in seen) == ["evil.example.net", "scam.example.org"]

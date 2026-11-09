@@ -112,8 +112,8 @@ def due(session: Session, *, max_age_hours: int, limit: int) -> list[Domain]:
         .order_by(checked.c.checked_at.asc().nulls_first(), Domain.id).limit(limit)))
 
 
-def record(session: Session, domain: Domain, matches: list[dict]) -> None:
-    stmt = insert(ExternalListing).values(domain_id=domain.id, source=SOURCE, listed=bool(matches), matches=matches,
+def record(session: Session, domain_id: int, matches: list[dict]) -> None:
+    stmt = insert(ExternalListing).values(domain_id=domain_id, source=SOURCE, listed=bool(matches), matches=matches,
                                           checked_at=datetime.now(UTC))
     session.execute(stmt.on_conflict_do_update(
         index_elements=["domain_id", "source"],
@@ -121,19 +121,29 @@ def record(session: Session, domain: Domain, matches: list[dict]) -> None:
 
 
 def check(session: Session, fetch: Fetch, *, limit: int, max_age_hours: int = 24,
-          pause: float = 1.0, sleep: Callable[[float], None] = time.sleep) -> dict:
-    """Ask the list about due domains. Stops at the first network/API error (the rest waits for the next run)."""
+          pause: float = 1.0, sleep: Callable[[float], None] = time.sleep, commit_each: bool = False,
+          progress: Callable[[str, list[dict]], None] | None = None) -> dict:
+    """Ask the list about due domains. Stops at the first network/API error (the rest waits for the next run).
+    ``commit_each``: write every answer at once (short transactions; nothing is held while waiting for the
+    API)."""
     counts = {"checked": 0, "listed": 0, "errors": 0}
-    for i, domain in enumerate(due(session, max_age_hours=max_age_hours, limit=limit)):
+    domains = [(d.id, d.normalized_domain) for d in due(session, max_age_hours=max_age_hours, limit=limit)]
+    if commit_each:
+        session.commit()
+    for i, (domain_id, name) in enumerate(domains):
         if i:
             sleep(pause)
         try:
-            matches = fetch(domain.normalized_domain)
+            matches = fetch(name)
         except (httpx.HTTPError, ValueError) as exc:
-            log.warning("sgb lookup failed", extra={"domain": domain.normalized_domain, "error": type(exc).__name__})
+            log.warning("sgb lookup failed", extra={"domain": name, "error": type(exc).__name__})
             counts["errors"] += 1
             break
-        record(session, domain, matches)
+        record(session, domain_id, matches)
+        if commit_each:
+            session.commit()
         counts["checked"] += 1
         counts["listed"] += bool(matches)
+        if progress:
+            progress(name, matches)
     return counts

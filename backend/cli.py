@@ -329,7 +329,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "sgb-check":  # network lookups: outside the CLI transaction, committed as it goes
         from backend.app.threat_tasks import run_sgb_check
 
-        counts = run_sgb_check(limit=max(1, min(args.limit, 200)))
+        def show(name: str, matches: list[dict]) -> None:
+            cats = ", ".join(sorted({str(m.get("category")) for m in matches}))
+            print(f"  {name}: {'on the list (' + cats + ')' if matches else 'not on the list'}", flush=True)
+
+        print("asking the SGB list (one domain per second) ...", flush=True)
+        counts = run_sgb_check(limit=max(1, min(args.limit, 200)), progress=show)
+        if counts.get("busy"):
+            print("another check is running (the hourly task); try again in a few minutes")
+            return 0
         print(f"checked {counts['checked']} domains, {counts['listed']} on the SGB list"
               + (" (stopped after an API error; try again later)" if counts["errors"] else ""))
         return 0
