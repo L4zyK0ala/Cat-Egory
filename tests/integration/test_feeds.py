@@ -129,3 +129,28 @@ def test_release_numbers_keep_counting_past_nine(engine):
     with Session(engine) as s:
         assert next_version(s, when) == "2031.03.09.11"
         assert next_version(s, datetime(2031, 3, 10, tzinfo=UTC)) == "2031.03.10.1"
+
+
+def test_a_flagged_domain_leaves_the_content_lists(engine, client, admin, store):
+    """devkiantart.com was confirmed as a look-alike yet stayed in Social Networking: lists are used as allow lists."""
+    from threats.records import record_url_threats
+
+    setup_data(engine, client, admin)
+    client.post("/api/v1/admin/domains", headers=admin, json={"domains": ["forum.example.org"], "scan": "none"})
+    with Session(engine) as s, s.begin():
+        get = lambda n: s.scalar(select(Domain).where(Domain.normalized_domain == n))  # noqa: E731
+        for name in ("bad.example.com", "forum.example.org"):
+            apply_categories(s, get(name), primary="social-networking", secondary=[], confidence=0.95,
+                             origin=AssignmentOrigin.HUMAN, taxonomy=TAX, status=ClassificationStatus.VERIFIED)
+        record_url_threats(s, "https://forum.example.org/hacked/login", ["phishing"])  # one page, not the site
+    run_build(engine, store)
+    assert body(store, engine, "social-networking.txt").count("bad.example.com") == 0
+    assert "forum.example.org" in body(store, engine, "social-networking.txt")
+    assert "bad.example.com" not in body(store, engine, "all.csv")
+    assert "bad.example.com" in body(store, engine, "security.rpz")
+    listed = client.get("/api/v1/categories/social-networking/domains").json()["items"]
+    assert [d["domain"] for d in listed] == ["forum.example.org"]
+    distribution = {d["category"]: d["domains"] for d in client.get("/api/v1/stats").json()["category_distribution"]}
+    assert distribution["social-networking"] == 1
+    page = client.get("/api/v1/domain/bad.example.com").json()  # the domain page still shows everything
+    assert page["risk"]["sources"]

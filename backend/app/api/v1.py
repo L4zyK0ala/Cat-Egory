@@ -30,9 +30,9 @@ from database.models import (
     ThreatType,
     Url,
 )
-from database.publication import publishable, published
+from database.publication import publishable
 from database.session import get_session
-from threats.records import domain_scoped, public, url_scoped
+from threats.records import domain_scoped, listed, public, url_scoped
 
 from ..deps import Principal, get_principal, rate_limit
 from ..errors import ApiError
@@ -257,7 +257,7 @@ def category_domains(category_id: str, response: Response, primary_only: bool = 
     else:
         stmt = (select(Domain.id, Domain.normalized_domain, DomainCategory.is_primary)
                 .join(DomainCategory, DomainCategory.domain_id == Domain.id)
-                .where(DomainCategory.category_id == category_id, DomainCategory.valid_to.is_(None), published()))
+                .where(DomainCategory.category_id == category_id, DomainCategory.valid_to.is_(None), listed()))
         if primary_only:
             stmt = stmt.where(DomainCategory.is_primary)
     if cursor is not None:
@@ -337,7 +337,7 @@ def stats(response: Response, session: Session = Depends(get_session)) -> dict:
     by_status = dict(session.execute(select(Domain.classification_status, func.count())
                                      .where(Domain.is_active).group_by(Domain.classification_status)).all())
     distribution = session.execute(
-        select(Domain.primary_category_id, func.count()).where(published(), Domain.primary_category_id.is_not(None))
+        select(Domain.primary_category_id, func.count()).where(listed(), Domain.primary_category_id.is_not(None))
         .group_by(Domain.primary_category_id).order_by(func.count().desc())).all()
     month_ago = now - timedelta(days=30)
     predictions = count(select(func.count()).select_from(AIPrediction).where(AIPrediction.created_at >= month_ago))

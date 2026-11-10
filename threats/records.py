@@ -11,12 +11,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import ColumnElement, Select, select, update
+from sqlalchemy import ColumnElement, Select, and_, exists, select, update
 from sqlalchemy.orm import Session
 
 from classification.engine import OWN_THREAT_SOURCES, REVIEW_SOURCE, source_id
 from common.domains import normalize_url
 from database.models import DataSource, Domain, SourceLicense, ThreatIntelligence, ThreatType, Url
+from database.publication import published
 
 
 def public(stmt: Select) -> Select:
@@ -33,6 +34,19 @@ def domain_scoped() -> ColumnElement[bool]:
 
 def url_scoped() -> ColumnElement[bool]:
     return ThreatIntelligence.url_id.is_not(None)
+
+
+def flagged_domain() -> ColumnElement[bool]:
+    """The domain itself carries a public threat record (correlated with ``Domain``)."""
+    return exists(public(select(ThreatIntelligence.id))
+                  .where(ThreatIntelligence.domain_id == Domain.id, domain_scoped()))
+
+
+def listed() -> ColumnElement[bool]:
+    """May appear in content-category lists: published, and not a threat. A phishing copy of a forum is no
+    "Online Communities" site, and these lists are used as allow lists too. One bad page on an otherwise
+    legitimate site (URL-scoped) does not remove the site."""
+    return and_(published(), ~flagged_domain())
 
 
 class UnknownDomain(LookupError):

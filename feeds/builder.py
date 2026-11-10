@@ -32,8 +32,8 @@ from sqlalchemy.orm import Session
 from classification.engine import OWN_THREAT_SOURCES
 from classification.taxonomy import Taxonomy
 from database.models import DataSource, Domain, DomainCategory, FeedRelease, ThreatIntelligence
-from database.publication import OWN_DATA_LICENSE, publishable, published
-from threats.records import domain_scoped
+from database.publication import OWN_DATA_LICENSE, publishable
+from threats.records import domain_scoped, listed
 
 log = logging.getLogger("category.feeds")
 LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
@@ -78,7 +78,7 @@ def published_rows(session: Session) -> list[tuple[str, str, list[str], float | 
     rows = session.execute(
         select(Domain.normalized_domain, Domain.primary_category_id, Domain.secondary_categories, Domain.confidence,
                Domain.classification_status, Domain.updated_at)
-        .where(published(), Domain.primary_category_id.is_not(None)).order_by(Domain.normalized_domain)
+        .where(listed(), Domain.primary_category_id.is_not(None)).order_by(Domain.normalized_domain)
     ).all()
     return [(d, p, list(s or []), float(c) if c is not None else None, str(st), u) for d, p, s, c, st, u in rows]
 
@@ -88,7 +88,7 @@ def category_members(session: Session) -> dict[str, list[str]]:
     for category_id, domain in session.execute(
         select(DomainCategory.category_id, Domain.normalized_domain)
         .join(Domain, Domain.id == DomainCategory.domain_id)
-        .where(DomainCategory.valid_to.is_(None), published()).order_by(Domain.normalized_domain)
+        .where(DomainCategory.valid_to.is_(None), listed()).order_by(Domain.normalized_domain)
     ):
         members.setdefault(category_id, []).append(domain)
     return members

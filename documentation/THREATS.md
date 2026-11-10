@@ -17,14 +17,17 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
    domain) or *URL-scoped* (one page on an otherwise legitimate, usually hacked, site). Only domain-scoped
    records flag a domain, appear in category listings and DNS blocklists (RPZ / hosts) and count as threat
    domains in `/api/v1/stats`. URL-scoped records are counted apart (`threat_urls`, `risk.reported_urls`).
-3. **Visibility.** Public output (domain page, URL lookup, stats, risk listing) shows only active records from
+3. **A threat outranks its content category.** A domain with a public domain-scoped record leaves every
+   content-category list (feeds, `all.csv`/`all.json`, category pages, the distribution chart) and appears only
+   under Security Threats: those lists are also used as allow lists. Its own domain page still shows both.
+4. **Visibility.** Public output (domain page, URL lookup, stats, risk listing) shows only active records from
    sources whose licence allows redistribution (`threats.records.public`). Feeds are stricter: only our own
    reviewer records (`feeds.builder.THREAT_SOURCES`).
-4. **Privacy.** URL texts are never published: phishing links often carry the victim's e-mail address or a
+5. **Privacy.** URL texts are never published: phishing links often carry the victim's e-mail address or a
    token. The public API answers "is this exact link reported?" (`GET /api/v1/url` → `url_risk`) and "how many
    pages on this host are reported?" (`risk.reported_urls`). Evidence notes stay internal (admin API only).
    Screenshots and page HTML of third-party sites are never published.
-5. **Mistakes are cheap to fix.** Anyone can dispute a flag (`POST /api/v1/community/report`, `false_positive`
+6. **Mistakes are cheap to fix.** Anyone can dispute a flag (`POST /api/v1/community/report`, `false_positive`
    with the threat category). Accepting it withdraws our record (kept as history, `is_active` false). A
    third-party feed's record is not touched; the moderation result says how many remain, and the moderator
    reports the mistake to that feed. Threat disputes never mark the content classification `disputed`.
