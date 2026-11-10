@@ -44,6 +44,12 @@ groups:
         for: 15m
         labels: {severity: critical}
         annotations: {summary: "No task heartbeat recorded yet: Celery beat or the worker has not run"}
+      # A suspected threat normally finishes crawling in minutes. Stuck: worker-fast or the crawler is down.
+      - alert: FastLaneStuck
+        expr: category_fast_lane_oldest_seconds > 1200
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "A suspected threat has waited over 20 minutes in the fast lane: check worker-fast and the crawler"}
       - alert: DiscoveryStopped
         expr: time() - category_task_last_success_timestamp_seconds{task="category.discovery.queue"} > 3600
         for: 15m
@@ -70,3 +76,9 @@ groups:
         for: 1h
         labels: {severity: critical}
         annotations: {summary: "No successful backup for more than 30 hours"}
+      # Only once the off-site copy was set up (the heartbeat exists from its first run on).
+      - alert: OffsiteBackupStale
+        expr: time() - category_task_last_success_timestamp_seconds{task="backup.offsite"} > 36 * 3600
+        for: 1h
+        labels: {severity: warning}
+        annotations: {summary: "No successful off-site backup for more than 36 hours (sudo ./deployment/scripts/offsite-backup.sh snapshots)"}

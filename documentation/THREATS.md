@@ -95,9 +95,52 @@ Flagged domains are re-scanned daily, and `threats/lifecycle.py` reads those sca
 a live site moves `last_seen` on; a site gone (no DNS, no connection, 404/410) and unseen for `threat_expire_days` (14)
 is deactivated and leaves the public pages and feeds, kept with `raw.expired_at`. If it comes back, a `threat_returned`
 review opens in the threat-candidate queue: nothing is flagged again automatically, the name may have a new owner.
-Scans that say nothing about the site (timeouts, robots.txt, our own failures, 403 and 5xx) change nothing. Audit
-actions: `threat.expire`, `threat.return`. These daily scans only ask whether the site is still there, so a domain with
+Scans that say nothing about the site (timeouts, robots.txt, our own failures, 403 and 5xx) change nothing.
+
+**Cleaned pages.** A takedown notice counts as gone, the same as a dead site:
+- a host's "account suspended" page
+- an expired or for-sale domain
+- a parking page or a redirect to a parking service
+- a bare nginx/Apache/IIS default page
+- Cloudflare's phishing warning
+
+These records expire with `raw.expired_reason = taken_down`; dead sites get `unreachable` instead. Notices are
+matched on the providers' own wording, and only on pages of at most 400 words. A lure such as "your account has
+been suspended" never counts.
+
+A flagged site that stays up but now shows a clearly different page opens a `threat_page_changed` review. "Clearly
+different" means a word overlap with the previous scan below 0.4, or a landing on another host. The model looks at
+the new page once, and the reviewer then either withdraws the flag (action `withdraw`, key W) or keeps it. This
+happens at most once per `threat_change_cooldown_days` (7), because kits show harmless pages to some visitors.
+
+Audit actions: `threat.expire` (with its reason), `threat.return`, `threat.changed`. These daily scans only ask whether the site is still there, so a domain with
 an active confirmed threat and a valid AI answer newer than `threat_reclassify_days` (30) is not sent to the model.
+
+## Abuse reports
+
+`threats/abuse.py` prepares abuse-report drafts every hour (`category.threats.abuse_drafts`). Nothing is ever
+sent by Cat-Egory: a person reads the draft on `/admin/abuse`, opens it in their own mail program (a `mailto:`
+link), sends it, and marks it **I Sent It**. Each change is audited (`abuse.sent`, `abuse.dismissed`).
+
+- **Which domains:** an active domain-scoped threat of our own, either a reviewer's or one Octryx proved on the
+  page. The type must be phishing, scam, fraud, malware, malicious downloads or command-and-control. A
+  look-alike name alone is not enough, and third-party list hits are never the basis of a report. Each domain
+  gets one round of drafts per `abuse_report_repeat_days` (30).
+- **Recipients:** abuse addresses come from public RDAP records. The servers are taken from IANA's bootstrap files
+  and queried over HTTPS only.
+  - The **registrar** contact is the registrar entity's `abuse` contact in the domain's record.
+  - The **hosting network** contact comes from the record of the IP the site was last served from.
+  - Some TLDs, `.tr` among them, publish no RDAP. Private IPs are skipped. When no address is found, a
+    `no_contact` row reminds the reviewer to use the provider's web form.
+  - Cloudflare, Google and AWS prefer their own forms; the panel links the form next to the draft.
+- **Content:** only what we saw ourselves: the domain and address (defanged), IP, threat types, when it was
+  confirmed, how (a person, or Octryx's page evidence), and the public domain page. USOM/SGB and VirusTotal
+  results never go into a report.
+- **Follow-up:** each row shows whether the site is still flagged. When a reported site is taken down, the
+  lifecycle above expires the flag after 14 days.
+
+Settings: `CATEGORY_ABUSE_DRAFTS_ENABLED`, `CATEGORY_ABUSE_DRAFTS_BATCH` (10 domains per run),
+`CATEGORY_PUBLIC_SITE_URL`.
 
 ## Roadmap
 
@@ -122,7 +165,7 @@ and reports through the community form; exact-link lookup in the UI.
 - Published false-positive rate and time-to-withdraw.
 
 **Step 5: wider distribution.**
-- Separate threat dataset under CC0 (blocklist tools adopt CC0 more easily), URL feed for reviewers/partners,
+- Done: threat lists and the `threats.csv`/`threats.json` dataset under CC0 (see DATA_LICENSE.md). Still open: URL feed for reviewers/partners,
   MISP feed, API.
 
 ## Isolation and safety

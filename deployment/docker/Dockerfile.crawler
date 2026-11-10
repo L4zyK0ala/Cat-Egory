@@ -25,5 +25,5 @@ RUN playwright install --with-deps --only-shell chromium \
     && groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --home /tmp --shell /usr/sbin/nologin app
 WORKDIR /tmp
 USER 10001:10001
-CMD ["celery", "-A", "crawler.tasks:celery_app", "worker", "-Q", "crawl", "--concurrency", "2", \
+CMD ["celery", "-A", "crawler.tasks:celery_app", "worker", "-Q", "crawl-fast,crawl", "--concurrency", "2", \
      "--max-tasks-per-child", "50", "--loglevel", "INFO"]

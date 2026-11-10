@@ -16,7 +16,7 @@ type Review = { id: number; domain: string; reason: string; page_title: string |
   http_status: number | null; has_screenshot: boolean; prediction: Prediction | null; lookalike_of?: string | null;
   sgb?: { listed: boolean; checked_at: string; matches: SgbMatch[] } | null; vt?: Vt | null };
 type Cat = { id: string; name: string; kind: string; is_group: boolean };
-type Action = "approve" | "set" | "reject";
+type Action = "approve" | "set" | "reject" | "withdraw";
 
 function reasonText(t: T, reason: string, lookalikeOf?: string | null) {
   const reasons: Record<string, string> = {
@@ -27,6 +27,7 @@ function reasonText(t: T, reason: string, lookalikeOf?: string | null) {
     prompt_injection: t("page tries to instruct the model", "sayfa modeli yönlendirmeye çalışıyor"), risk_claim: t("model claims a threat", "model tehdit iddia ediyor"),
     conflicts_with_human_decision: t("conflicts with a human decision", "bir insan kararıyla çelişiyor"),
     threat_returned: t("was flagged, went offline and is back — check again", "işaretlenmişti, kapanıp geri geldi — yeniden bakın"),
+    threat_page_changed: t("flagged, and the page changed — cleaned?", "işaretli, sayfası değişti — temizlendi mi?"),
   };
   const target = reason.startsWith("lookalike_of:") ? reason.slice(13) : reason === "brand_lookalike" ? lookalikeOf : null;
   if (target) return t(`looks like ${target} — check for phishing`, `${target} taklidi gibi — oltalama mı bakın`);
@@ -72,6 +73,7 @@ function Quick({ api }: { api: string }) {
   const name = useCallback((id: string) => categoryName(locale, id, cats.find((c) => c.id === id)?.name), [cats, locale]);
   const current = items[0];
   const next = items[1];
+  const changed = current?.reason === "threat_page_changed";  // flagged site, other page: withdraw or keep the flag
 
   const load = useCallback(async () => {
     const [r, c] = await Promise.all([call<{ items: Review[] }>(api, `/api/v1/admin/reviews?limit=50&queue=${queue}`),
@@ -101,13 +103,15 @@ function Quick({ api }: { api: string }) {
     const res = await postConfirmed(api, `/api/v1/admin/reviews/${current.id}/decision`, body);
     setBusy(false);
     if (res.ok || res.code === "already_decided") {
-      const verb = action === "approve" ? t("approved", "onaylandı") : action === "set" ? t(`set to ${name(primary!)}`, `${name(primary!)} olarak atandı`) : t("rejected", "reddedildi");
+      const verb = action === "approve" ? t("approved", "onaylandı") : action === "set" ? t(`set to ${name(primary!)}`, `${name(primary!)} olarak atandı`)
+        : action === "withdraw" ? t("threat flag withdrawn", "tehdit işareti kaldırıldı")
+        : changed ? t("flag kept", "işaret bırakıldı") : t("rejected", "reddedildi");
       setMsg({ ok: true, text: `${current.domain}: ${verb}` });
       setDone((d) => d + 1);
       picker.current?.blur();  // keyboard shortcuts work again on the next item
       advance();
     } else setMsg({ ok: false, text: `${res.message} (${res.code})` });
-  }, [advance, api, busy, choice, content, current, locale, name, risk, t]);
+  }, [advance, api, busy, changed, choice, content, current, locale, name, risk, t]);
 
   const sample = useCallback(async () => {
     const r = await call<{ created: number }>(api, "/api/v1/admin/reviews/sample", { method: "POST", body: JSON.stringify({ n: 20 }) });
@@ -123,12 +127,13 @@ function Quick({ api }: { api: string }) {
       // No Enter shortcut: Enter on a focused button would also approve.
       if (k === "a") { e.preventDefault(); void decide("approve"); }
       else if (k === "r") { e.preventDefault(); void decide("reject"); }
+      else if (k === "w" && changed) { e.preventDefault(); void decide("withdraw"); }
       else if (k === "n") { e.preventDefault(); advance(); setMsg(null); }
       else if (k === "s") { e.preventDefault(); picker.current?.focus(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [advance, current, decide]);
+  }, [advance, changed, current, decide]);
 
   if (!loaded) return <p className="muted">{t("Loading the queue…", "Kuyruk yükleniyor…")}</p>;
   const p = current?.prediction;
@@ -194,6 +199,8 @@ function Quick({ api }: { api: string }) {
                        onKeyDown={(e) => { if (e.key === "Escape") (e.target as HTMLInputElement).blur(); }} />
                 <datalist id="quick-cats">{content.map((c) => <option key={c.id} value={name(c.id)}>{c.id}</option>)}</datalist>
               </form>
+              {changed && <div className="notice">{t("This site is flagged as a threat, and its page is clearly different from the previous scan. If the dangerous content is gone, withdraw the flag; phishing kits also show harmless pages to some visitors, so keep it when in doubt.",
+                                                     "Bu site tehdit olarak işaretli ve sayfası önceki taramadan belirgin biçimde farklı. Tehlikeli içerik kalktıysa işareti kaldırın; oltalama kitleri bazı ziyaretçilere zararsız sayfa da gösterir, emin değilseniz işaret kalsın.")}</div>}
               <details key={current.id} open={isLookalike(current.reason) || current.reason === "threat_returned"}>
                 <summary className="muted">{t("Confirm a Security Threat (Only with Evidence)", "Güvenlik Tehdidini Onayla (Yalnızca Kanıtla)")}</summary>
                 <div className="row">{risks.map((c) => (
@@ -204,7 +211,8 @@ function Quick({ api }: { api: string }) {
               <div className="row">
                 <button disabled={busy || !p?.primary_category} onClick={() => decide("approve")}>{t("Approve", "Onayla")} <kbd>A</kbd></button>
                 <button className="secondary" disabled={busy} onClick={() => decide("set")}>{t("Set Category", "Kategori Ata")} <kbd>S</kbd></button>
-                <button className="secondary" disabled={busy} onClick={() => decide("reject")}>{t("Reject", "Reddet")} <kbd>R</kbd></button>
+                {changed && <button className="danger" disabled={busy} onClick={() => decide("withdraw")}>{t("Withdraw Flag", "İşareti Kaldır")} <kbd>W</kbd></button>}
+                <button className="secondary" disabled={busy} onClick={() => decide("reject")}>{changed ? t("Keep Flag", "İşaret Kalsın") : t("Reject", "Reddet")} <kbd>R</kbd></button>
                 <button className="secondary" disabled={busy} onClick={() => { advance(); setMsg(null); }}>{t("Skip", "Atla")} <kbd>N</kbd></button>
               </div>
             </div>

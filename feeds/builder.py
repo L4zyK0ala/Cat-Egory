@@ -9,9 +9,14 @@ Outputs (per content category and per security-threat category, plus combined fi
 * ``rpz``               (served name) = ``security.rpz``: every domain with an active domain-scoped threat
   record (single reported URLs are not in domain feeds: blocking them would block the whole host)
 
+* ``threats.csv`` / ``threats.json``  the threat dataset: every domain-scoped threat we confirmed, active or
+  expired, with dates and how it was confirmed (withdrawn false positives are left out)
+
 Every file carries title, version, last-modified, taxonomy version, licence and attribution. Only published
-domains (see ``backend.app.publication``) are included. Content categories and our own threat confirmations
-are CC BY 4.0; third-party threat data is not mixed in.
+domains (see ``backend.app.publication``) are included. Content categories (and the family profile, which mixes
+them in) are CC BY 4.0. Our own threat confirmations (a reviewer's, or Octryx's page evidence) are dedicated to
+the public domain under CC0 1.0, so block-list tools can take them without attribution terms: the threat lists,
+``security.rpz``, ``profile-security`` and the threat dataset. Third-party threat data is never mixed in.
 
 A build writes a new release only for files whose content changed (SHA-256 compared with the latest release).
 """
@@ -29,7 +34,7 @@ from datetime import UTC, datetime
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.orm import Session
 
-from classification.engine import OWN_THREAT_SOURCES
+from classification.engine import OWN_THREAT_SOURCES, REVIEW_SOURCE
 from classification.taxonomy import Taxonomy
 from database.models import DataSource, Domain, DomainCategory, FeedRelease, ThreatIntelligence
 from database.publication import OWN_DATA_LICENSE, publishable
@@ -38,9 +43,16 @@ from threats.records import domain_scoped, listed
 log = logging.getLogger("category.feeds")
 LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
 ATTRIBUTION = "Cat-egory contributors"
-FEED_NAME_RE = re.compile(r"^[a-z0-9-]+\.(txt|hosts|rpz|csv|json)$")
+THREAT_LICENSE = "CC0-1.0"
+LICENSE_URLS = {OWN_DATA_LICENSE: LICENSE_URL, THREAT_LICENSE: "https://creativecommons.org/publicdomain/zero/1.0/"}
+FEED_NAME_RE = re.compile(r"^[a-z0-9-]+\.(txt|hosts|rpz|adblock|csv|json)$")
 MEDIA_TYPES = {"txt": "text/plain; charset=utf-8", "hosts": "text/plain; charset=utf-8",
-               "rpz": "text/dns; charset=utf-8", "csv": "text/csv; charset=utf-8", "json": "application/json"}
+               "rpz": "text/dns; charset=utf-8", "adblock": "text/plain; charset=utf-8",
+               "csv": "text/csv; charset=utf-8", "json": "application/json"}
+# Ready-made lists for routers and DNS filters (the /integrations page). Every profile also blocks all threats.
+FAMILY_CATEGORIES = ("adult-content", "gambling", "illegal-drugs", "violence", "weapons", "hate-and-discrimination",
+                     "proxy-services")
+PROFILES = {"profile-security": ("security threats", ()), "profile-family": ("family filter", FAMILY_CATEGORIES)}
 RPZ_ORIGIN = "rpz.cat-egory."
 THREAT_SOURCES = OWN_THREAT_SOURCES  # threat records we may redistribute under our own licence
 
@@ -50,6 +62,7 @@ class FeedFile:
     name: str
     body: bytes
     records: int
+    license: str = OWN_DATA_LICENSE
 
     @property
     def sha256(self) -> str:
@@ -62,12 +75,14 @@ class Meta:
     generated_at: datetime
     taxonomy_version: str
 
-    def comments(self, title: str, records: int, prefix: str = "#") -> str:
+    def comments(self, title: str, records: int, prefix: str = "#", license: str = OWN_DATA_LICENSE) -> str:
+        credit = (f"Attribution: {ATTRIBUTION}" if license == OWN_DATA_LICENSE
+                  else "Attribution: not required (public domain); a mention of Cat-egory is appreciated")
         return "\n".join(f"{prefix} {line}" for line in (
             f"Title: Cat-egory - {title}", f"Version: {self.version}",
             f"Last-Modified: {self.generated_at.isoformat(timespec='seconds')}",
-            f"Taxonomy: {self.taxonomy_version}", f"License: {OWN_DATA_LICENSE} ({LICENSE_URL})",
-            f"Attribution: {ATTRIBUTION}", f"Entries: {records}",
+            f"Taxonomy: {self.taxonomy_version}", f"License: {license} ({LICENSE_URLS[license]})",
+            credit, f"Entries: {records}",
         )) + "\n"
 
 
@@ -108,25 +123,66 @@ def threat_members(session: Session) -> dict[str, list[str]]:
     return members
 
 
+DATASET_COLUMNS = ["domain", "threat_type", "status", "first_seen", "last_seen", "ended_at", "ended_reason",
+                   "confirmed_by"]
+
+
+def threat_dataset_rows(session: Session) -> list[dict]:
+    """Every domain-scoped threat we confirmed that is still active or expired with its site. Withdrawn records
+    (a reviewer's mistake, a cleaned site a person cleared) are left out: a false positive is not threat data.
+    ``last_seen`` is a date, so the daily re-scans of live sites do not produce a release every hour."""
+    rows = []
+    for threat, domain, active, first, last, ended, raw, slug in session.execute(
+        select(ThreatIntelligence.threat_type, Domain.normalized_domain, ThreatIntelligence.is_active,
+               ThreatIntelligence.first_seen, ThreatIntelligence.last_seen, ThreatIntelligence.deactivated_at,
+               ThreatIntelligence.raw, DataSource.slug)
+        .join(Domain, Domain.id == ThreatIntelligence.domain_id)
+        .join(DataSource, DataSource.id == ThreatIntelligence.source_id)
+        .where(Domain.is_active, publishable(), DataSource.slug.in_(THREAT_SOURCES), domain_scoped())
+        .order_by(Domain.normalized_domain, ThreatIntelligence.threat_type, ThreatIntelligence.first_seen)
+    ):
+        raw = raw or {}
+        if not active and not raw.get("expired_at"):
+            continue  # withdrawn
+        rows.append({"domain": domain, "threat_type": str(threat), "status": "active" if active else "expired",
+                     "first_seen": first.astimezone(UTC).isoformat(timespec="seconds"),
+                     "last_seen": last.astimezone(UTC).date().isoformat(),
+                     "ended_at": None if active or ended is None else ended.astimezone(UTC).isoformat(timespec="seconds"),
+                     "ended_reason": None if active else raw.get("expired_reason", "unreachable"),
+                     "confirmed_by": "person" if slug == REVIEW_SOURCE else "page-analysis"})
+    return rows
+
+
 # ----------------------------------------------------------------------------- formats
 # Domains are normalised ASCII (a-z 0-9 - _ .), so they cannot inject CSV formulas, zone directives or
 # extra lines. Free text (descriptions, model claims) is never written to feeds.
 
 
-def txt(meta: Meta, title: str, domains: list[str]) -> bytes:
-    return (meta.comments(title, len(domains)) + "".join(f"{d}\n" for d in domains)).encode()
+def txt(meta: Meta, title: str, domains: list[str], license: str = OWN_DATA_LICENSE) -> bytes:
+    return (meta.comments(title, len(domains), license=license) + "".join(f"{d}\n" for d in domains)).encode()
 
 
-def hosts(meta: Meta, title: str, domains: list[str]) -> bytes:
-    return (meta.comments(title, len(domains)) + "".join(f"0.0.0.0 {d}\n" for d in domains)).encode()
+def hosts(meta: Meta, title: str, domains: list[str], license: str = OWN_DATA_LICENSE) -> bytes:
+    return (meta.comments(title, len(domains), license=license) + "".join(f"0.0.0.0 {d}\n" for d in domains)).encode()
 
 
-def rpz(meta: Meta, title: str, domains: list[str]) -> bytes:
+def rpz(meta: Meta, title: str, domains: list[str], license: str = OWN_DATA_LICENSE) -> bytes:
     serial = meta.generated_at.strftime("%Y%m%d") + meta.version.rsplit(".", 1)[-1].zfill(2)[-2:]
     head = (f"$TTL 300\n$ORIGIN {RPZ_ORIGIN}\n"
             f"@ SOA localhost. hostmaster.localhost. ({serial} 3600 600 86400 300)\n@ NS localhost.\n")
     body = "".join(f"{d} CNAME .\n*.{d} CNAME .\n" for d in domains)
-    return (meta.comments(title, len(domains), prefix=";") + head + body).encode()
+    return (meta.comments(title, len(domains), prefix=";", license=license) + head + body).encode()
+
+
+def adblock(meta: Meta, title: str, domains: list[str], license: str = OWN_DATA_LICENSE) -> bytes:
+    """AdGuard Home / uBlock syntax: ``||example.com^`` also covers every subdomain."""
+    return (meta.comments(title, len(domains), prefix="!", license=license)
+            + "".join(f"||{d}^\n" for d in domains)).encode()
+
+
+def list_files(meta: Meta, name: str, title: str, domains: list[str], license: str = OWN_DATA_LICENSE) -> list[FeedFile]:
+    return [FeedFile(f"{name}.{ext}", fmt(meta, title, domains, license), len(domains), license)
+            for ext, fmt in (("txt", txt), ("hosts", hosts), ("rpz", rpz), ("adblock", adblock))]
 
 
 def csv_all(meta: Meta, rows) -> bytes:
@@ -155,6 +211,26 @@ def json_all(meta: Meta, rows) -> bytes:
 # ----------------------------------------------------------------------------- build
 
 
+def csv_threats(meta: Meta, rows: list[dict]) -> bytes:
+    buf = io.StringIO()
+    buf.write(meta.comments("threat dataset", len(rows), license=THREAT_LICENSE))
+    writer = csv.DictWriter(buf, fieldnames=DATASET_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows({k: ("" if v is None else v) for k, v in r.items()} for r in rows)
+    return buf.getvalue().encode()
+
+
+def json_threats(meta: Meta, rows: list[dict]) -> bytes:
+    doc = {"meta": {"title": "Cat-egory - threat dataset", "version": meta.version,
+                    "last_modified": meta.generated_at.isoformat(timespec="seconds"), "license": THREAT_LICENSE,
+                    "license_url": LICENSE_URLS[THREAT_LICENSE], "entries": len(rows),
+                    "notes": "Domain-scoped threats confirmed by a Cat-egory reviewer (confirmed_by=person) or proven on "
+                             "the page by Octryx (page-analysis). status=expired: the site was gone or taken down for "
+                             "14 days. Withdrawn false positives are not included."},
+           "threats": rows}
+    return json.dumps(doc, ensure_ascii=False, separators=(",", ":")).encode()
+
+
 def next_version(session: Session, now: datetime) -> str:
     prefix = now.strftime("%Y.%m.%d")
     # as numbers: compared as text, ".9" sorts after ".10" and the eleventh release of a day collides with the tenth
@@ -170,27 +246,32 @@ def render(session: Session, taxonomy: Taxonomy, meta: Meta) -> list[FeedFile]:
     for cid in taxonomy.assignable_ids("content"):
         domains = members.get(cid, [])
         title = taxonomy.get(cid).name
-        files += [FeedFile(f"{cid}.txt", txt(meta, title, domains), len(domains)),
-                  FeedFile(f"{cid}.hosts", hosts(meta, title, domains), len(domains)),
-                  FeedFile(f"{cid}.rpz", rpz(meta, title, domains), len(domains))]
+        files += list_files(meta, cid, title, domains)
     threats = threat_members(session)
     every_threat = sorted({d for ds in threats.values() for d in ds})
     for cid in taxonomy.assignable_ids("risk"):
         domains = threats.get(cid, [])
         title = taxonomy.get(cid).name
-        files += [FeedFile(f"{cid}.txt", txt(meta, title, domains), len(domains)),
-                  FeedFile(f"{cid}.hosts", hosts(meta, title, domains), len(domains)),
-                  FeedFile(f"{cid}.rpz", rpz(meta, title, domains), len(domains))]
-    files.append(FeedFile("security.rpz", rpz(meta, "security threats", every_threat), len(every_threat)))
+        files += list_files(meta, cid, title, domains, THREAT_LICENSE)
+    files.append(FeedFile("security.rpz", rpz(meta, "security threats", every_threat, THREAT_LICENSE),
+                          len(every_threat), THREAT_LICENSE))
+    for name, (title, categories) in PROFILES.items():
+        domains = sorted(set(every_threat).union(*(members.get(c, []) for c in categories)))
+        files += list_files(meta, name, title, domains, THREAT_LICENSE if not categories else OWN_DATA_LICENSE)
+    dataset = threat_dataset_rows(session)
+    files += [FeedFile("threats.csv", csv_threats(meta, dataset), len(dataset), THREAT_LICENSE),
+              FeedFile("threats.json", json_threats(meta, dataset), len(dataset), THREAT_LICENSE)]
     return files
 
 
 def _content_hash(body: bytes) -> str:
-    """Hash without the metadata header, so an unchanged domain list does not produce a new release."""
-    lines = [ln for ln in body.split(b"\n") if not ln.startswith((b"#", b";", b"@ SOA"))]
+    """Hash without the metadata header, so an unchanged domain list does not produce a new release. The licence
+    line stays in: a licence change must reach the published files."""
+    lines = [ln for ln in body.split(b"\n")
+             if not ln.startswith((b"#", b";", b"!", b"@ SOA")) or b" License: " in ln]
     if body.startswith(b"{"):
         doc = json.loads(body)
-        doc.pop("meta", None)
+        doc["meta"] = {"license": (doc.get("meta") or {}).get("license")}
         return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
     return hashlib.sha256(b"\n".join(lines)).hexdigest()
 
@@ -213,7 +294,7 @@ def build(session: Session, store, taxonomy: Taxonomy, *, now: datetime | None =
             continue
         key = f"feeds/{meta.version}/{f.name}"
         store.put(key, f.body, MEDIA_TYPES[f.name.rsplit(".", 1)[-1]])
-        release = FeedRelease(feed=f.name, version=meta.version, license=OWN_DATA_LICENSE,
+        release = FeedRelease(feed=f.name, version=meta.version, license=f.license,
                               taxonomy_version=taxonomy.version, record_count=f.records, sha256=f.sha256,
                               object_key=key, generated_at=now)
         session.add(release)

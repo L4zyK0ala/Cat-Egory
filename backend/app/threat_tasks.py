@@ -9,7 +9,7 @@ import redis
 
 from common.config import get_settings
 from database.session import session_factory
-from threats import octryx, sgb, virustotal
+from threats import abuse, octryx, sgb, virustotal
 
 from . import audit
 from .worker import celery_app
@@ -114,3 +114,23 @@ def sgb_check() -> dict | None:
 @celery_app.task(name="category.threats.virustotal_check", ignore_result=True, soft_time_limit=240, time_limit=300)
 def virustotal_check() -> dict | None:
     return run_virustotal_check() if virustotal_key() else None
+
+
+def run_abuse_drafts(limit: int | None = None) -> dict:
+    """Find abuse contacts (RDAP) and write report drafts. Nothing is sent: a person does that from the panel."""
+    settings = get_settings()
+
+    def run() -> dict:
+        with abuse.client() as http, session_factory()() as session:
+            return abuse.draft_due(session, abuse.Rdap(abuse.http_fetch(http)),
+                                   limit=limit or settings.abuse_drafts_batch,
+                                   repeat_days=settings.abuse_report_repeat_days, site_url=settings.public_site_url)
+
+    counts = _exclusive("abuse-drafts", run)
+    log.info("abuse drafts", extra=counts)
+    return counts
+
+
+@celery_app.task(name="category.threats.abuse_drafts", ignore_result=True, soft_time_limit=240, time_limit=300)
+def abuse_drafts() -> dict | None:
+    return run_abuse_drafts() if get_settings().abuse_drafts_enabled else None

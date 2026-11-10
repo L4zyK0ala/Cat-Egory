@@ -2,7 +2,7 @@
 COMPOSE = docker compose -f deployment/docker-compose.yml $(if $(NOSANDBOX),-f deployment/docker-compose.nosandbox.yml) --env-file .env
 PY ?= .venv/bin/python
 
-.PHONY: env up down logs ps test test-unit lint migrate seed sandbox-profile selftest backup backup-timer restore-test docker-after-vpn
+.PHONY: env up down logs ps test test-unit lint migrate seed sandbox-profile selftest backup backup-timer restore-test docker-after-vpn offsite-init offsite-check
 
 env:            ## create .env with random secrets
 	./deployment/scripts/generate-env.sh
@@ -53,6 +53,13 @@ backup-timer:   ## install the nightly backup timer (needs sudo)
 docker-after-vpn: ## start Docker after WireGuard, so ports bound to the VPN address can open (needs sudo)
 	sudo install -D -m 644 deployment/systemd/docker-after-wireguard.conf /etc/systemd/system/docker.service.d/10-after-wireguard.conf
 	sudo systemctl daemon-reload
+
+offsite-init:   ## create the encrypted off-site repository (needs /etc/cat-egory/offsite.env)
+	sudo ./deployment/scripts/offsite-backup.sh init
+
+offsite-check:  ## list off-site snapshots and read back 5 % of the data
+	sudo ./deployment/scripts/offsite-backup.sh snapshots
+	sudo ./deployment/scripts/offsite-backup.sh check
 
 restore-test:   ## restore the newest backup into a throwaway database (live stack untouched)
 	sudo ./deployment/scripts/restore-test.sh

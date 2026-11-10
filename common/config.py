@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     confidence_extra_validation: float = 0.70
     confidence_human_review: float = 0.50
     reanalyze_days: int = 1
+    # Community reputation (backend/app/api/community.py): an account's corrections apply at once after this record.
+    community_trust_min_accepted: int = Field(default=10, ge=1, description="moderator-accepted submissions needed")
+    community_trust_min_share: float = Field(default=0.9, ge=0, le=1, description="accepted / all moderated")
     dispute_threshold: int = Field(default=3, description="distinct reporters needed before a domain shows as disputed")
     max_text_chars: int = 12_000
     max_html_chars: int = 6_000
@@ -61,6 +64,14 @@ class Settings(BaseSettings):
     public_rate_limit_per_minute: int = 60
     anonymous_write_limit_per_minute: int = 10
     api_key_rate_limit_per_minute: int = 600
+    # Self-service developer keys (backend/app/api/developer.py): read-only, no personal data asked.
+    developer_key_per_minute: int = Field(default=120, ge=1)
+    bulk_lookup_max_anonymous: int = Field(default=100, ge=1, description="names per POST /lookup without a key")
+    bulk_lookup_max_with_key: int = Field(default=1000, ge=1, description="names per POST /lookup with a key")
+    developer_key_daily_quota: int = Field(default=20_000, ge=1)
+    developer_key_days: int = Field(default=365, ge=1, description="a key expires after this many days")
+    developer_keys_per_client_per_day: int = Field(default=3, ge=1)
+    developer_keys_per_day: int = Field(default=200, ge=1, description="all clients together")
     rate_limit_fail_open: bool = Field(
         default=True, description="If Redis is unreachable, allow requests (logged) instead of rejecting them."
     )
@@ -91,6 +102,10 @@ class Settings(BaseSettings):
     crawler_viewport_width: int = 1280
     crawler_viewport_height: int = 800
     max_in_flight_scans: int = 4
+    # threat fast lane: jobs at this priority or more urgent (lower number) get their own queues and worker,
+    # and may use extra crawl slots, so a suspected phishing site is not stuck behind routine scans
+    fast_lane_max_priority: int = 2
+    fast_lane_extra_slots: int = 1
     # re-scan scheduling (days until the next scan, chosen after every scan)
     scan_interval_days: int = 30            # classified, nothing notable
     scan_interval_verified_days: int = 60   # human-verified and unchanged
@@ -101,6 +116,13 @@ class Settings(BaseSettings):
                                                                       "again only after this many days")
     threat_expire_days: int = Field(default=14, ge=1, description="a confirmed threat whose site has been gone this "
                                                                   "long is deactivated (threats/lifecycle.py)")
+    # abuse-report drafts (threats/abuse.py): prepared hourly, sent only by a person
+    abuse_drafts_enabled: bool = True
+    abuse_drafts_batch: int = Field(default=10, ge=1, le=100)
+    abuse_report_repeat_days: int = Field(default=30, ge=1, description="draft again for a domain after this long")
+    public_site_url: str = "https://cat-egory.org"
+    threat_change_cooldown_days: int = Field(default=7, ge=1, description="a flagged page that changed goes to a "
+                                                                          "person at most this often (cloaking flips)")
     scan_interval_unreachable_days: int = 7 # broken domains are re-checked weekly
     scan_interval_blocked_days: int = 30    # robots.txt / SSRF policy refused
     scan_retry_infra_hours: int = 6         # our sandbox / crawler / storage failed: try again soon

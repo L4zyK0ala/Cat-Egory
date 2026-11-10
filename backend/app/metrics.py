@@ -14,11 +14,13 @@ from prometheus_client.core import GaugeMetricFamily
 from prometheus_client.registry import REGISTRY, Collector
 from sqlalchemy import func, select
 
+from common.config import get_settings
 from database.models import (
     AIPrediction,
     CommunitySubmission,
     Domain,
     FeedRelease,
+    JobStatus,
     ModerationStatus,
     ReviewStatus,
     ReviewTask,
@@ -52,6 +54,12 @@ class DatabaseCollector(Collector):
 
             families.append(GaugeMetricFamily("category_infra_failures_1h", "Scans failed on our side in the last hour",
                                               value=infra_failures_last_hour(s)))
+            oldest = s.scalar(select(func.min(ScanJob.queued_at)).where(
+                ScanJob.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
+                ScanJob.priority <= get_settings().fast_lane_max_priority))
+            families.append(GaugeMetricFamily(
+                "category_fast_lane_oldest_seconds", "Age of the oldest unfinished threat fast-lane scan (0 = none)",
+                value=(datetime.now(UTC) - oldest).total_seconds() if oldest else 0))
             families.append(GaugeMetricFamily("category_open_reviews", "Open human-review tasks", value=s.scalar(
                 select(func.count()).select_from(ReviewTask).where(ReviewTask.status == ReviewStatus.OPEN)) or 0))
             families.append(GaugeMetricFamily("category_pending_submissions", "Community items awaiting moderation",

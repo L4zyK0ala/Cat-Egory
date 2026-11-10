@@ -5,6 +5,12 @@ disputes a flag on the domain (accepting it withdraws our own reviewer record; a
 and is counted in the result), ``false_negative`` with a risk category reports a threat (accepting it records
 one). Threat reports never mark the content classification as ``disputed``.
 
+Reputation: an account (not an anonymous visitor) whose moderated submissions were accepted often enough
+(``community_trust_min_accepted``, ``community_trust_min_share``, never spam) is *trusted*: its category corrections
+apply at once, recorded as accepted with no moderator. Never for threats (those always go to a person), new
+domains, popular or official sites (threats/guard.py), or a domain a reviewer decided. Only moderator decisions
+count towards trust, so automatic acceptances cannot build it up.
+
 Abuse controls: anonymous writes share the strict ``write`` rate limit (per hashed IP); one pending report per
 reporter and domain; a domain only shows as ``disputed`` once ``dispute_threshold`` distinct reporters have
 open reports; nothing a contributor sends changes public data until a moderator accepts it. Free text is stored
@@ -41,6 +47,7 @@ from database.models import (
 )
 from database.publication import publishable
 from database.session import get_session
+from threats.guard import protected_owner
 from threats.records import domain_scoped, withdraw
 
 from .. import audit
@@ -88,6 +95,7 @@ class SubmissionOut(BaseModel):
 
 
 class SubmissionDetail(SubmissionOut):
+    submitter: Reputation | None = None
     comment: str | None
     category: str | None
     evidence: list[str]
@@ -97,6 +105,14 @@ class SubmissionDetail(SubmissionOut):
 
 class VoteIn(BaseModel):
     vote: Literal[1, -1]
+
+
+class Reputation(BaseModel):
+    account: bool = Field(description="false: an anonymous visitor (never trusted)")
+    accepted: int = 0
+    rejected: int = 0
+    spam: int = 0
+    trusted: bool = False
 
 
 class ModerateIn(BaseModel):
@@ -109,6 +125,24 @@ class ModerateIn(BaseModel):
 
 
 # ----------------------------------------------------------------------------- helpers
+
+
+def reputation(session: Session, user_id: int | None) -> Reputation:
+    """Moderator decisions on this account's earlier submissions (automatic acceptances do not count)."""
+    if user_id is None:
+        return Reputation(account=False)
+    counts = dict(session.execute(
+        select(CommunitySubmission.status, func.count())
+        .where(CommunitySubmission.submitter_id == user_id, CommunitySubmission.moderator_id.is_not(None))
+        .group_by(CommunitySubmission.status)).all())
+    accepted = counts.get(ModerationStatus.ACCEPTED, 0)
+    rejected = counts.get(ModerationStatus.REJECTED, 0)
+    spam = counts.get(ModerationStatus.SPAM, 0)
+    settings = get_settings()
+    decided = accepted + rejected + spam
+    trusted = (spam == 0 and accepted >= settings.community_trust_min_accepted
+               and accepted / decided >= settings.community_trust_min_share)
+    return Reputation(account=True, accepted=accepted, rejected=rejected, spam=spam, trusted=trusted)
 
 
 def _normalize(value: str) -> str:
@@ -211,10 +245,13 @@ def report(body: ReportIn, request: Request, principal: Principal = Depends(get_
     for url in urls:
         session.add(Evidence(community_submission_id=sub.id, type=EvidenceType.HUMAN, observation="evidence URL",
                              reference=url))
-    refresh_dispute(session, domain)
-    audit.record(session, action="community.report", target_type="domain", target_id=name,
-                 after={"submission_id": sub.id, "type": body.type, "category": body.category}, principal=principal,
-                 request_id=getattr(request.state, "request_id", None))
+    applied = _auto_accept(session, sub, principal)
+    if applied is None:
+        refresh_dispute(session, domain)
+    audit.record(session, action="community.auto_accept" if applied is not None else "community.report",
+                 target_type="domain", target_id=name,
+                 after={"submission_id": sub.id, "type": body.type, "category": body.category} | (applied or {}),
+                 principal=principal, request_id=getattr(request.state, "request_id", None))
     session.commit()
     return _out(session, sub)
 
@@ -278,7 +315,8 @@ def _detail(session: Session, s: CommunitySubmission) -> SubmissionDetail:
     urls = session.scalars(select(Evidence.reference).where(Evidence.community_submission_id == s.id))
     return SubmissionDetail(**_out(session, s).model_dump(), comment=s.comment, category=fp.category_id if fp else None,
                             evidence=[u for u in urls if u], moderation_note=s.moderation_note,
-                            reporters_for_domain=_reporters(session, s.domain_id) if s.domain_id else 0)
+                            reporters_for_domain=_reporters(session, s.domain_id) if s.domain_id else 0,
+                            submitter=reputation(session, s.submitter_id))
 
 
 @moderation.get("", response_model=list[SubmissionDetail], summary="Moderation queue (highest score first)")
@@ -305,42 +343,72 @@ def moderate(submission_id: int, body: ModerateIn, request: Request,
     if body.secondary:
         _check_categories(body.secondary)
     result: dict = {"action": body.action}
-
     if body.action == "accept":
-        if sub.type == SubmissionType.NEW_DOMAIN:
-            source = get_source(session, "community")
-            added = add_domains(session, [(1, sub.submitted_domain)], source=source, scan="new",
-                                reason=ScanReason.COMMUNITY, requested_by_id=principal.user_id)
-            sub.domain_id = session.scalar(select(Domain.id).where(Domain.normalized_domain == sub.submitted_domain))
-            result |= {"created": added.created, "scans_queued": added.scans_queued}
-        elif _threat_report(sub):
-            domain = session.get(Domain, sub.domain_id, with_for_update=True)
-            if sub.type == SubmissionType.FALSE_NEGATIVE and not body.confirm_protected:
-                guard_protected(session, domain.normalized_domain)  # "this is phishing" about a popular site
-            result |= _accept_threat_report(session, sub, domain)
-        else:
-            domain = session.get(Domain, sub.domain_id, with_for_update=True)
-            primary, secondary = _accepted_categories(sub, domain, body)
-            if primary is not None:
-                apply_categories(session, domain, primary=primary, secondary=secondary, confidence=None,
-                                 origin=AssignmentOrigin.COMMUNITY, taxonomy=TAX,
-                                 status=ClassificationStatus.VERIFIED, user_id=principal.user_id,
-                                 source_slug=REVIEW_SOURCE)
-                result |= {"primary": primary, "secondary": secondary}
-    sub.status = {"accept": ModerationStatus.ACCEPTED, "reject": ModerationStatus.REJECTED,
-                  "spam": ModerationStatus.SPAM}[body.action]
-    sub.moderator_id, sub.moderation_note, sub.resolved_at = principal.user_id, body.note, datetime.now(UTC)
-    session.execute(FalsePositiveReport.__table__.update()
-                    .where(FalsePositiveReport.community_submission_id == sub.id)
-                    .values(status=sub.status, resolution=body.note, resolved_at=sub.resolved_at))
-    if sub.domain_id:
-        session.flush()
-        refresh_dispute(session, session.get(Domain, sub.domain_id))
+        result |= _accept(session, sub, body, principal.user_id)
+    _resolve(session, sub, {"accept": ModerationStatus.ACCEPTED, "reject": ModerationStatus.REJECTED,
+                            "spam": ModerationStatus.SPAM}[body.action], principal.user_id, body.note)
     audit.record(session, action="community.moderate", target_type="community_submission", target_id=sub.id,
                  before={"status": "pending"}, after=result, principal=principal,
                  request_id=getattr(request.state, "request_id", None))
     session.commit()
     return _detail(session, sub)
+
+
+def _accept(session: Session, sub: CommunitySubmission, body: ModerateIn, user_id: int | None) -> dict:
+    """Apply an accepted submission. Raises ApiError when it cannot be applied as it stands."""
+    result: dict = {}
+    if sub.type == SubmissionType.NEW_DOMAIN:
+        source = get_source(session, "community")
+        added = add_domains(session, [(1, sub.submitted_domain)], source=source, scan="new",
+                            reason=ScanReason.COMMUNITY, requested_by_id=user_id)
+        sub.domain_id = session.scalar(select(Domain.id).where(Domain.normalized_domain == sub.submitted_domain))
+        result |= {"created": added.created, "scans_queued": added.scans_queued}
+    elif _threat_report(sub):
+        domain = session.get(Domain, sub.domain_id, with_for_update=True)
+        if sub.type == SubmissionType.FALSE_NEGATIVE and not body.confirm_protected:
+            guard_protected(session, domain.normalized_domain)  # "this is phishing" about a popular site
+        result |= _accept_threat_report(session, sub, domain)
+    else:
+        domain = session.get(Domain, sub.domain_id, with_for_update=True)
+        primary, secondary = _accepted_categories(sub, domain, body)
+        if primary is not None:
+            apply_categories(session, domain, primary=primary, secondary=secondary, confidence=None,
+                             origin=AssignmentOrigin.COMMUNITY, taxonomy=TAX,
+                             status=ClassificationStatus.VERIFIED, user_id=user_id,
+                             source_slug=REVIEW_SOURCE)
+            result |= {"primary": primary, "secondary": secondary}
+    return result
+
+
+def _resolve(session: Session, sub: CommunitySubmission, status: ModerationStatus, moderator_id: int | None,
+             note: str | None) -> None:
+    sub.status, sub.moderator_id, sub.moderation_note, sub.resolved_at = status, moderator_id, note, datetime.now(UTC)
+    session.execute(FalsePositiveReport.__table__.update()
+                    .where(FalsePositiveReport.community_submission_id == sub.id)
+                    .values(status=sub.status, resolution=note, resolved_at=sub.resolved_at))
+    if sub.domain_id:
+        session.flush()
+        refresh_dispute(session, session.get(Domain, sub.domain_id))
+
+
+AUTO_NOTE = "applied at once: trusted contributor"
+
+
+def _auto_accept(session: Session, sub: CommunitySubmission, principal: Principal) -> dict | None:
+    """A trusted account's category correction applies without waiting; anything else waits for a moderator."""
+    if sub.type == SubmissionType.NEW_DOMAIN or _threat_report(sub) or not reputation(session, principal.user_id).trusted:
+        return None
+    domain = session.get(Domain, sub.domain_id, with_for_update=True)
+    if protected_owner(session, domain.normalized_domain) is not None:
+        return None
+    if any(r.origin == AssignmentOrigin.HUMAN for r in current_assignments(session, domain.id)):
+        return None  # a reviewer decided this domain: a person looks at the change
+    try:
+        result = _accept(session, sub, ModerateIn(action="accept", note=AUTO_NOTE), principal.user_id)
+    except ApiError:
+        return None  # e.g. the main category would go and no new one was given
+    _resolve(session, sub, ModerationStatus.ACCEPTED, None, AUTO_NOTE)
+    return result
 
 
 def _threat_report(sub: CommunitySubmission) -> bool:

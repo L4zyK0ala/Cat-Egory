@@ -30,10 +30,18 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | `GET /api/v1/categories/{id}/domains?cursor=…` | ✅ P5 | domains in a category (paginated) |
 | `GET /api/v1/history/{domain}` | ✅ P5 | category timeline |
 | `GET /api/v1/stats` | ✅ P5 | counts for dashboard (`threats`: flagged domains, `threat_urls`: single reported pages) |
+| Community reputation | ✅ | an account whose moderated submissions were accepted (≥ 10, ≥ 90 %, never spam) is trusted: its category corrections apply at once (`community.auto_accept`, no moderator). Never for threats, new domains, popular or official sites, or domains a reviewer decided; automatic acceptances do not count towards trust. Moderators see each submitter's record |
+| `POST /api/v1/lookup` | ✅ | many names or URLs at once (100 without a key, 1000 with; each counts against a developer key's daily quota); same visibility as a single lookup, private imports only for staff; the `/lookup` page |
+| `POST /api/v1/developer/keys`, `GET /api/v1/developer/key`, `POST /api/v1/developer/key/revoke` | ✅ | self-service read-only keys: no account or e-mail, shown once, 120/min and 20 000/day (`X-Quota-*` headers, 429 `daily_quota_exceeded`), 3 a day per client, 200 a day overall; the `/developers` page |
+| `GET /api/v1/accuracy` | ✅ | accuracy measured against people: published AI answers (random verification sample, 95% Wilson interval, per category from 5 checks), hard cases apart, threat flags taken back and how fast, published domains by who decided (`classification/accuracy.py`) |
 | `GET /api/v1/feeds` (index), `GET /api/v1/feeds/{category}.txt` | ✅ P5 | domain list |
 | `GET /api/v1/feeds/{category}.hosts`, `{category}.rpz` | ✅ P5 | hosts format (`0.0.0.0 domain`) |
 | `GET /api/v1/feeds/all.json`, `all.csv` (aliases `all-domains.*`) | ✅ P5 | full dump |
 | `GET /api/v1/feeds/rpz` (all security threats) | ✅ P5 | DNS RPZ zone |
+| `GET /api/v1/feeds/{category}.adblock` | ✅ | AdGuard Home / uBlock syntax (`||domain^`, covers subdomains) |
+| `GET /api/v1/feeds/profile-security.{txt,hosts,rpz,adblock}`, `profile-family.*` | ✅ | ready-made router profiles: all threats; threats plus adult, gambling, drugs, violence, weapons, hate, proxies (`feeds/builder.PROFILES`); setup steps on `/integrations` |
+| `GET /api/v1/feeds/{name}/diff?from=<version>` | ✅ | list feeds only (txt, hosts, rpz, adblock): `+domain` added and `-domain` removed since that version; `X-Feed-Version` = the latest |
+| `GET /api/v1/changes?since=<time>&limit=` | ✅ | pull feed of changes, oldest first, at most 30 days back: `category` (published domain's main category; `old` null = newly categorised), `threat_added`, `threat_removed` (`reason` withdrawn/expired; same records as the threat feeds). Pass `until` as the next `since` and repeat while `more`; a page never ends inside one instant. Webhooks are not offered yet (outbound calls need the egress proxy and signing). The `/changes` page shows the last 7 days |
 | `POST /api/v1/community/report` | ✅ P6 | false positive / negative, correction |
 | `POST /api/v1/community/submit`, `GET /api/v1/community/submissions`, `POST …/{id}/vote` | ✅ P6 | propose a new domain |
 | `POST /api/v1/admin/domains` | ✅ P2 | add domains (single or ≤ 10 000), queue scans |

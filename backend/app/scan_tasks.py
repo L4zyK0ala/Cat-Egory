@@ -79,21 +79,32 @@ def lookup_dns(domain: str, resolver: Any = None) -> tuple[dict, list[str], str 
 # ----------------------------------------------------------------------------- dispatch / reap
 
 
-def claim_jobs(session: Session, settings: Settings) -> list[tuple[str, str]]:
-    running = session.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.status == JobStatus.RUNNING))
-    capacity = settings.max_in_flight_scans - (running or 0)
-    if capacity <= 0:
+def is_fast(priority: int, settings: Settings) -> bool:
+    """Threat fast lane: look-alikes from CT logs, Octryx findings, or a scan a person marked urgent."""
+    return priority <= settings.fast_lane_max_priority
+
+
+def claim_jobs(session: Session, settings: Settings) -> list[tuple[str, str, bool]]:
+    """Claim queued jobs up to the in-flight limit, most urgent first: (job id, task id, fast lane).
+    Fast-lane jobs may also use ``fast_lane_extra_slots`` above the limit, so they never wait for a free slot."""
+    running = session.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.status == JobStatus.RUNNING)) or 0
+    capacity = settings.max_in_flight_scans - running
+    fast_capacity = capacity + settings.fast_lane_extra_slots
+    if fast_capacity <= 0:
         return []
     jobs = session.scalars(
         select(ScanJob).where(ScanJob.status == JobStatus.QUEUED)
-        .order_by(ScanJob.priority, ScanJob.queued_at).limit(capacity).with_for_update(skip_locked=True)
+        .order_by(ScanJob.priority, ScanJob.queued_at).limit(fast_capacity).with_for_update(skip_locked=True)
     ).all()
     claimed = []
-    for job in jobs:
+    for job in jobs:  # most urgent first, so every fast-lane job comes before the routine ones
+        fast = is_fast(job.priority, settings)
+        if not fast and len(claimed) >= capacity:
+            break
         job.status, job.started_at, job.finished_at = JobStatus.RUNNING, datetime.now(UTC), None
         job.attempts += 1
         job.task_id = uuid.uuid4().hex
-        claimed.append((str(job.id), job.task_id))
+        claimed.append((str(job.id), job.task_id, fast))
     return claimed
 
 
@@ -206,9 +217,11 @@ def store_result(session: Session, result: CrawlResult, job_id: str, settings: S
     job.error_detail = result.error_detail
 
     # before the rescan interval below, which depends on whether active threats remain
-    if change := after_scan(session, domain, result, expire_days=settings.threat_expire_days, now=now):
+    if change := after_scan(session, domain, result, expire_days=settings.threat_expire_days, now=now, scan_id=scan.id,
+                            change_cooldown_days=settings.threat_change_cooldown_days):
         audit.record(session, action=f"threat.{change.action}", target_type="domain",
-                     target_id=domain.normalized_domain, after={"types": change.types, "last_seen": change.last_seen})
+                     target_id=domain.normalized_domain,
+                     after={"types": change.types, "last_seen": change.last_seen, "reason": change.reason})
         log.info("threat lifecycle", extra={"domain": domain.normalized_domain, "action": change.action})
     domain.last_scanned = now
     if job.status == JobStatus.FAILED and result.error_code in INFRA_ERRORS:
@@ -261,22 +274,30 @@ def dispatch() -> int:
     settings = get_settings()
     with session_factory()() as session, session.begin():
         claimed = claim_jobs(session, settings)
-    for job_id, task_id in claimed:
-        prepare.apply_async(args=[job_id], task_id=task_id)
+    for job_id, task_id, fast in claimed:
+        if fast:
+            prepare.apply_async(args=[job_id], kwargs={"fast": True}, task_id=task_id, queue="fast")
+        else:
+            prepare.apply_async(args=[job_id], task_id=task_id)
     return len(claimed)
 
 
 @celery_app.task(name="category.scan.prepare", ignore_result=True)
-def prepare(job_id: str) -> None:
+def prepare(job_id: str, fast: bool = False) -> None:
     settings = get_settings()
     with session_factory()() as session, session.begin():
         payload = precheck(session, job_id, settings)
-    if payload is not None:
+    if payload is None:
+        return
+    if fast:
+        celery_app.send_task("category.crawl.run", args=[payload], queue="crawl-fast",
+                             link=persist.s(job_id, fast=True).set(queue="fast"))
+    else:
         celery_app.send_task("category.crawl.run", args=[payload], queue="crawl", link=persist.s(job_id))
 
 
 @celery_app.task(name="category.scan.persist", ignore_result=True)
-def persist(result: dict, job_id: str) -> str:
+def persist(result: dict, job_id: str, fast: bool = False) -> str:
     settings = get_settings()
     with session_factory()() as session, session.begin():
         outcome = store_result(session, CrawlResult.from_dict(result), job_id, settings)
@@ -291,7 +312,7 @@ def persist(result: dict, job_id: str) -> str:
                 scan_result_id = None
     log.info("scan persisted", extra={"job_id": job_id, "outcome": outcome})
     if scan_result_id is not None:
-        celery_app.send_task("category.classify.scan", args=[scan_result_id], queue="classify")
+        celery_app.send_task("category.classify.scan", args=[scan_result_id], queue="fast" if fast else "classify")
     return outcome
 
 

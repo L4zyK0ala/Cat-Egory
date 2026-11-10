@@ -255,10 +255,49 @@ and `journalctl -u cat-egory-backup.service`). A run that was missed while the h
 `make restore-test` verifies the checksums and restores the newest dump into a throwaway container with no network;
 the live stack is not touched; pass a directory to test a copy (`sudo ./deployment/scripts/restore-test.sh /mnt/yedek/cat-egory`).
 Each run is also copied and checksummed to the second disk (`BACKUP_COPY_TO`, required) and a USB stick
-(`BACKUP_COPY_OPTIONAL`, newest 3). Both are on this machine: copy `./backups` off the host too, a fire or theft takes them all.
-The dumps hold e-mail addresses and password hashes, so encrypt them unless the destination is your own machine.
+(`BACKUP_COPY_OPTIONAL`, newest 3). Both are on this machine, so a fire or theft takes them all: set up the off-site
+copy below.
 The dump/restore round trip was tested against PostgreSQL 18; the object-store archive is a plain tarball of the SeaweedFS
 volume (restore by extracting into an empty `cat-egory_objectdata` volume while `storage` is stopped).
+
+### Off-site backup (encrypted)
+
+After each nightly backup, `deployment/scripts/offsite-backup.sh` copies the newest dump and the object store to
+a storage bucket with restic (pinned image, run through Docker).
+- **Encryption:** everything is encrypted on this machine first, so the provider only ever holds ciphertext. The
+  dumps contain e-mail addresses and password hashes.
+- **Uploads:** the object store is backed up file by file, so each night uploads only what changed.
+- **Retention:** 14 daily, 8 weekly and 12 monthly snapshots.
+- **Checks:** every run verifies the repository structure.
+- **Failure:** a failed upload is only a warning in the nightly run. It has its own heartbeat, and the
+  **OffsiteBackupStale** alert fires after 36 hours without a successful upload.
+
+Setup (once; Cloudflare R2 shown, B2 works too, see `deployment/offsite.env.example`):
+
+1. In Cloudflare, go to R2 and create the bucket `cat-egory-backup`. Then under Manage API tokens, create a token
+   with **Object Read & Write** on that bucket only.
+2. Put the settings in a root-only file outside the repository:
+   ```bash
+   sudo install -d -m 700 /etc/cat-egory
+   sudo install -m 600 deployment/offsite.env.example /etc/cat-egory/offsite.env
+   sudo nano /etc/cat-egory/offsite.env      # account ID, access key ID, secret access key
+   ```
+3. Run `make offsite-init`. It creates the encryption password (`/etc/cat-egory/offsite.password`) and the
+   repository. **Copy the password into your password manager**: without it the off-site copy cannot be read, and the
+   password itself is not in the backup. To show it, run `sudo cat /etc/cat-egory/offsite.password`.
+4. Run the first upload by hand (it can take a while): `sudo ./deployment/scripts/offsite-backup.sh backup`. Then run
+   `make offsite-check`, which lists the snapshots and reads back 5 % of the data.
+
+Restore drill, the "restore drill once" item in the checklist below. It does not touch the live stack:
+
+```bash
+sudo ./deployment/scripts/offsite-backup.sh restore latest /tmp/offsite-restore
+sudo ./deployment/scripts/restore-test.sh /tmp/offsite-restore     # restores the dump into a throwaway database
+sudo rm -rf /tmp/offsite-restore
+```
+
+The bucket token sits on this server, so someone who takes over the server could also delete the off-site copies.
+For that case, copy a backup to a disk kept elsewhere every few months.
 
 ## 5. Monitoring
 
@@ -270,11 +309,18 @@ while it lasts, plus a message when it ends. Send a test:
 `/metrics` on the API exports HTTP metrics and database-derived gauges (cached 30 s):
 `category_domains{status}`, `category_scan_jobs{status}`, `category_open_reviews`,
 `category_pending_submissions`, `category_active_threats`, `category_ai_predictions_24h{status}`,
-`category_feed_age_seconds`, `category_db_metrics_up`, and from Redis
+`category_feed_age_seconds`, `category_fast_lane_oldest_seconds`, `category_db_metrics_up`, and from Redis
 `category_task_last_success_timestamp_seconds{task}` (written by the worker after every successful Celery task)
 with `category_heartbeats_up`. Alerts: API down, DB metrics down, scan backlog, stale feeds, > 20 % invalid AI
 answers, API 5xx, **scheduler stopped** (no scan dispatch for 5 minutes: beat or the worker is down), scheduler
-never ran, discovery stopped for an hour, heartbeats unreadable.
+never ran, discovery stopped for an hour, heartbeats unreadable, **fast lane stuck** (a suspected threat waited
+over 20 minutes).
+
+**Threat fast lane.** Scan jobs at priority 0–2 (`CATEGORY_FAST_LANE_MAX_PRIORITY`): CT look-alikes, Octryx
+findings, and scans a person queues at that priority. They may use one crawl slot above
+`CATEGORY_MAX_IN_FLIGHT_SCANS` (`CATEGORY_FAST_LANE_EXTRA_SLOTS`). Their scan and classification steps run on
+the `fast` queue, which the `worker-fast` container works through on its own. The crawler reads `crawl-fast`
+before `crawl`.
 
 Celery beat stores its last-run times in the `beatdata` volume, so a restart or rebuild does not delay hourly
 tasks (feeds, source syncs) by up to an hour.
@@ -294,7 +340,7 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 - [x] UI CSP `connect-src` allows only this container's API origin (`frontend/proxy.ts`).
 - [x] **Chromium sandbox**: crawler AppArmor profile installed in `/etc/apparmor.d`, `crawler.selftest` reports OK.
 - [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth).
-- [ ] Off-host backups; restore drill once.
+- [ ] Off-host backups (`offsite-backup.sh`, set up per section 4); restore drill once.
 - [ ] Alertmanager (or Grafana alerting) wired to a channel you read.
 - [ ] EVREN: terms questions answered (`EVREN_INTEGRATION.md`), live checklist done. (Project-specific key: done 2026-11-08.)
 - [ ] Legal review of the data licence (CC BY 4.0 for own data) and of each enabled source.

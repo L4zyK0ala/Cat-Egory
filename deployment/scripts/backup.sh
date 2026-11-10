@@ -63,4 +63,10 @@ done
 # Seen by the BackupStale alert. A backup that succeeded stays a success if this one line fails.
 "${DC[@]}" exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli hset category:task-heartbeat backup.nightly "$(date +%s)"' \
   > /dev/null || echo "warning: could not record the backup heartbeat" >&2
+
+# Encrypted copy away from this machine, once set up (offsite-backup.sh init). Its own heartbeat and alert
+# (OffsiteBackupStale): a provider outage must not mark the local backup as failed.
+if [ -f "${OFFSITE_CONF:-/etc/cat-egory/offsite.env}" ]; then
+  ./deployment/scripts/offsite-backup.sh backup "$DIR" || echo "warning: off-site copy failed" >&2
+fi
 echo "done: $DIR/*-$STAMP*"

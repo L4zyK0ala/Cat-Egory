@@ -17,7 +17,7 @@ from common.logging import configure_logging
 from database.session import get_engine
 
 from . import errors
-from .api import admin, community, feeds, reviews, session, threats, v1
+from .api import abuse, admin, changes, community, developer, feeds, reviews, session, threats, v1
 
 log = logging.getLogger("category.api")
 
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
         title="Cat-egory API",
         version="0.1.0",
         description="Open web categorisation database. Code: Apache-2.0. Own classification data: CC BY 4.0; "
+                    "own threat confirmations (threat lists, security.rpz, threats.csv/json): CC0 1.0; "
                     "third-party data keeps its source licence.",
         license_info={"name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
         openapi_url="/api/v1/openapi.json",
@@ -108,8 +109,10 @@ def create_app() -> FastAPI:
                                            "Retry-After", "X-Request-ID", "X-Feed-Version"], max_age=600)
     errors.install(app)
     app.include_router(v1.router)
+    app.include_router(changes.router)  # before feeds: /feeds/{name}/diff must not be read as a feed name
     app.include_router(feeds.router)
     app.include_router(community.public)
+    app.include_router(developer.router)
     if settings.admin_routes:
         # Admin, review and moderation endpoints exist only on the admin instance. On the public API they are
         # absent (404), so a leaked admin key cannot be used from the internet.
@@ -117,6 +120,7 @@ def create_app() -> FastAPI:
         app.include_router(reviews.router)
         app.include_router(community.moderation)
         app.include_router(threats.router)
+        app.include_router(abuse.router)
         app.include_router(session.router)
     return app
 

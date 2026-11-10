@@ -6,7 +6,8 @@ import KeyGate from "./KeyGate";
 import { useLocale, useT } from "./LocaleProvider";
 
 type Sub = { id: number; type: string; domain: string; proposed_categories: string[]; score: number; comment: string | null;
-  category: string | null; evidence: string[]; reporters_for_domain: number; created_at: string };
+  category: string | null; evidence: string[]; reporters_for_domain: number; created_at: string;
+  submitter?: { account: boolean; accepted: number; rejected: number; spam: number; trusted: boolean } | null };
 
 function Queue({ api }: { api: string }) {
   const t = useT();
@@ -33,7 +34,13 @@ function Queue({ api }: { api: string }) {
       {items.length === 0 ? <div className="notice">{t("Nothing to moderate.", "Moderasyon bekleyen bir şey yok.")}</div> : items.map((s) => (
         <div key={s.id} className="panel stack">
           <div className="row"><b>{s.domain}</b><span className="badge pending">{types[s.type] ?? s.type.replaceAll("_", " ")}</span>
-            <span className="muted">{t(`score ${s.score} · reporters for domain ${s.reporters_for_domain}`, `puan ${s.score} · bu alan adını bildiren ${s.reporters_for_domain}`)}</span></div>
+            <span className="muted">{t(`score ${s.score} · reporters for domain ${s.reporters_for_domain}`, `puan ${s.score} · bu alan adını bildiren ${s.reporters_for_domain}`)}</span>
+            {s.submitter && (s.submitter.account
+              ? <span className={`badge ${s.submitter.trusted ? "verified" : s.submitter.spam ? "danger" : ""}`}
+                      title={t("Moderator decisions on this account's earlier submissions", "Bu hesabın önceki gönderilerine verilen moderatör kararları")}>
+                  {s.submitter.trusted ? t("trusted", "güvenilir") : t("account", "hesap")} · {t(`${s.submitter.accepted} accepted, ${s.submitter.rejected} rejected`, `${s.submitter.accepted} kabul, ${s.submitter.rejected} ret`)}
+                  {s.submitter.spam > 0 && ` · ${s.submitter.spam} spam`}</span>
+              : <span className="badge">{t("anonymous", "anonim")}</span>)}</div>
           {s.category && <div>{t("Category in question", "Söz konusu kategori")}: <span className="chip">{name(s.category)}</span></div>}
           {s.proposed_categories.length > 0 && <div>{t("Proposed", "Önerilen")}: {s.proposed_categories.map((c) => <span key={c} className="chip">{name(c)}</span>)}</div>}
           {s.comment && <div style={{ whiteSpace: "pre-wrap" }}>{s.comment}</div>}

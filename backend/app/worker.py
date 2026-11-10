@@ -6,6 +6,8 @@
 * ``ingest``      – imports and third-party source sync (Phase 5)
 * ``feeds``       – feed generation (Phase 5)
 * ``maintenance`` – health checks, retention, retries
+* ``fast``, ``crawl-fast`` – the threat fast lane: scan and classification steps (``fast``, own worker) and crawling
+  (``crawl-fast``, read before ``crawl``) of suspected threats, so routine work never delays them
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from kombu import Queue
 
 from common.config import get_settings
 
-QUEUES = ("crawl", "scan", "classify", "ingest", "feeds", "maintenance")
+QUEUES = ("crawl", "scan", "classify", "ingest", "feeds", "maintenance", "fast", "crawl-fast")
 
 settings = get_settings()
 celery_app = Celery("category", broker=settings.redis_url, backend=settings.redis_url,
@@ -54,6 +56,7 @@ celery_app.conf.update(
         "octryx-sync": {"task": "category.threats.octryx_sync", "schedule": 3600.0, "options": {"expires": 3000}},
         "virustotal-check": {"task": "category.threats.virustotal_check", "schedule": 900.0,
                              "options": {"expires": 800}},
+        "abuse-drafts": {"task": "category.threats.abuse_drafts", "schedule": 3600.0, "options": {"expires": 3000}},
     },
     timezone="UTC",
 )

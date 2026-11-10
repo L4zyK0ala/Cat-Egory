@@ -28,7 +28,9 @@ export default function ReportForm({ api, domain, categories, current, risks = [
     if (type === "category_correction") body.proposed_categories = [proposed];
     const r = await call(api, "/api/v1/community/report", { method: "POST", body: JSON.stringify(body), auth: false });
     setBusy(false);
-    setStatus(r.ok ? { ok: true, text: t("Thank you. A moderator will review your report.", "Teşekkürler. Bildiriminizi bir moderatör inceleyecek.") }
+    const applied = r.ok && (r.data as { status?: string }).status === "accepted";
+    setStatus(r.ok ? { ok: true, text: applied ? t("Thank you. As a trusted contributor your correction is already applied.", "Teşekkürler. Güvenilir katkıcı olduğunuz için düzeltmeniz hemen uygulandı.")
+                                                : t("Thank you. A moderator will review your report.", "Teşekkürler. Bildiriminizi bir moderatör inceleyecek.") }
                    : { ok: false, text: `${r.message} (${r.code})` });
   }
 

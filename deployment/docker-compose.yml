@@ -152,7 +152,7 @@ services:
     <<: *backend
     command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "scan,classify,ingest,feeds,maintenance",
               "--concurrency", "2", "--loglevel", "INFO"]
-    environment:
+    environment: &worker-env
       <<: *backend-env
       CATEGORY_EVREN_BASE_URL: ${CATEGORY_EVREN_BASE_URL:-https://evren-llmapi.ssyz.org.tr}
       CATEGORY_EVREN_API_KEY: ${CATEGORY_EVREN_API_KEY:-}
@@ -180,6 +180,25 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "2", memory: 1g}}}
+
+  # Threat fast lane: scan and classification steps of suspected threats (CT look-alikes, Octryx findings, scans a
+  # person marked priority 0-2). One process of its own, so routine classification, feed builds or source syncs
+  # on the main worker never hold up a suspected phishing site. Crawling goes through `crawl-fast` on the crawler.
+  worker-fast:
+    <<: *backend
+    command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "fast",
+              "--concurrency", "1", "--loglevel", "INFO"]
+    environment: *worker-env
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    networks: [core, egress]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: "1", memory: 768m}}}
 
   # Certificate Transparency relay (third-party image, pinned by digest). Downloads new certificates from the
   # public CT logs (~15 Mbit/s, nothing stored: read-only file system, no volume) and serves host names to

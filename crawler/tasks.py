@@ -1,7 +1,7 @@
 """Crawler worker (queue ``crawl``). Runs in the crawler container, which has no database credentials and no
 direct internet route: it talks only to Redis, the object store and the egress proxy.
 
-    celery -A crawler.tasks:celery_app worker -Q crawl --concurrency 2
+    celery -A crawler.tasks:celery_app worker -Q crawl-fast,crawl --concurrency 2
 """
 from __future__ import annotations
 

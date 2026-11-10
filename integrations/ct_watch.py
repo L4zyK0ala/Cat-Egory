@@ -33,7 +33,7 @@ from .lookalike import TopIndex, load_top_index
 
 log = logging.getLogger("category.ct_watch")
 SEEN_SECONDS = 30 * 86400
-PRIORITY = 3
+PRIORITY = 1  # threat fast lane (Settings.fast_lane_max_priority)
 HEARTBEAT_KEY = "category:task-heartbeat"  # same hash as the Celery heartbeats (backend/app/worker.py)
 
 

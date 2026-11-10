@@ -27,7 +27,7 @@ from .records import domain_scoped
 
 log = logging.getLogger("category.threats.octryx")
 THREATS = ["phishing", "lookalike-domain"]
-PRIORITY = 3
+PRIORITY = 1  # threat fast lane (Settings.fast_lane_max_priority)
 
 
 @dataclass

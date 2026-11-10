@@ -5,8 +5,9 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
+import redis
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import ColumnElement, Date, cast, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
@@ -34,7 +35,7 @@ from database.publication import publishable
 from database.session import get_session
 from threats.records import domain_scoped, listed, public, url_scoped
 
-from ..deps import Principal, get_principal, rate_limit
+from ..deps import Principal, consume_quota, get_principal, get_redis, rate_limit
 from ..errors import ApiError
 
 router = APIRouter(prefix="/api/v1", tags=["public"], dependencies=[Depends(rate_limit("read"))])
@@ -148,9 +149,15 @@ def _normalize(domain: str) -> str:
         raise ApiError(422, "invalid_domain", str(exc), details={"code": exc.code}) from exc
 
 
+def sees_private(principal: Principal) -> bool:
+    """Domains known only from a private import stay hidden from everyone but staff. Any API key used to be
+    enough; a self-service developer key must not be."""
+    return "domains:write" in principal.scopes
+
+
 def _find(session: Session, name: str, principal: Principal) -> Domain | None:
     stmt = select(Domain).where(Domain.normalized_domain == name, Domain.is_active)
-    if not principal.authenticated:
+    if not sees_private(principal):
         stmt = stmt.where(publishable())
     return session.scalar(stmt)
 
@@ -306,6 +313,92 @@ def get_url(url: str, request: Request, response: Response, principal: Principal
                                                      result=out, url_risk=_risk(url_threats))
 
 
+class LookupIn(BaseModel):
+    domains: list[str] = Field(min_length=1, max_length=1000, description="names or URLs; 100 without a key, 1000 with")
+
+
+class LookupItem(BaseModel):
+    input: str
+    domain: str | None = Field(description="normalised name, or None when the input is not a valid domain or URL")
+    status: Literal["found", "registrable_domain", "not_found", "invalid"]
+    matched: str | None = Field(description="the stored name the answer is for (the registrable domain on a fallback)")
+    primary: str | None
+    secondary: list[str]
+    threats: list[str] = Field(description="confirmed threat types on the domain itself")
+    classification_status: str | None
+
+
+class LookupOut(BaseModel):
+    taxonomy_version: str
+    items: list[LookupItem]
+
+
+def _lookup_name(raw: str) -> tuple[str, str] | None:
+    """(ascii name, registrable domain) of a name or URL, or None."""
+    value = raw.strip()
+    try:
+        if "/" in value or ":" in value:
+            parsed = normalize_url(value).domain
+        else:
+            parsed = normalize_domain(value)
+    except DomainError:
+        return None
+    return parsed.ascii, parsed.registrable
+
+
+@router.post("/lookup", response_model=LookupOut, summary="Look up many domains or URLs at once")
+def bulk_lookup(body: LookupIn, principal: Principal = Depends(get_principal), client: redis.Redis = Depends(get_redis),
+                session: Session = Depends(get_session)) -> LookupOut:
+    settings = get_settings()
+    limit = settings.bulk_lookup_max_with_key if principal.authenticated else settings.bulk_lookup_max_anonymous
+    if len(body.domains) > limit:
+        raise ApiError(422, "too_many_domains", f"at most {limit} names per request"
+                       + ("" if principal.authenticated else "; a free developer key allows more"))
+    consume_quota(client, principal, len(body.domains) - 1)  # the request itself already counted once
+    parsed = [(raw[:300], _lookup_name(raw[:300])) for raw in body.domains]
+    wanted = {n for _, p in parsed if p for n in p}
+    stmt = select(Domain).where(Domain.normalized_domain.in_(wanted), Domain.is_active)
+    if not sees_private(principal):
+        stmt = stmt.where(publishable())
+    rows = {d.normalized_domain: d for d in session.scalars(stmt)} if wanted else {}
+    ids = [d.id for d in rows.values()]
+    primary: dict[int, str] = {}
+    secondary: dict[int, list[str]] = {}
+    threats: dict[int, list[str]] = {}
+    if ids:
+        for domain_id, category_id, is_primary in session.execute(
+                select(DomainCategory.domain_id, DomainCategory.category_id, DomainCategory.is_primary)
+                .where(DomainCategory.domain_id.in_(ids), DomainCategory.valid_to.is_(None))
+                .order_by(DomainCategory.category_id)):
+            if is_primary:
+                primary[domain_id] = category_id
+            else:
+                secondary.setdefault(domain_id, []).append(category_id)
+        for domain_id, threat in session.execute(
+                public(select(ThreatIntelligence.domain_id, ThreatIntelligence.threat_type))
+                .where(ThreatIntelligence.domain_id.in_(ids), ThreatIntelligence.url_id.is_(None)).distinct()):
+            threats.setdefault(domain_id, []).append(str(threat))
+    items = []
+    for raw, names in parsed:
+        if names is None:
+            items.append(LookupItem(input=raw, domain=None, status="invalid", matched=None, primary=None, secondary=[],
+                                    threats=[], classification_status=None))
+            continue
+        name, registrable = names
+        row, status = rows.get(name), "found"
+        if row is None and registrable != name:
+            row, status = rows.get(registrable), "registrable_domain"
+        if row is None:
+            items.append(LookupItem(input=raw, domain=name, status="not_found", matched=None, primary=None,
+                                    secondary=[], threats=[], classification_status=None))
+            continue
+        items.append(LookupItem(input=raw, domain=name, status=status, matched=row.normalized_domain,
+                                primary=primary.get(row.id), secondary=secondary.get(row.id, []),
+                                threats=sorted(threats.get(row.id, [])),
+                                classification_status=str(row.classification_status)))
+    return LookupOut(taxonomy_version=_current_version(session), items=items)
+
+
 @router.get("/history/{domain}", response_model=HistoryOut, summary="Category history of a domain (newest first)")
 def history(domain: str, limit: int = Query(100, ge=1, le=500), cursor: int | None = Query(None, ge=0),
             principal: Principal = Depends(get_principal), session: Session = Depends(get_session)) -> HistoryOut:
@@ -326,6 +419,14 @@ def history(domain: str, limit: int = Query(100, ge=1, le=500), cursor: int | No
 
 
 # ----------------------------------------------------------------------------- stats
+
+
+@router.get("/accuracy", summary="How right the published data is, measured against people")
+def accuracy(response: Response, session: Session = Depends(get_session)) -> dict:
+    from classification.accuracy import report
+
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return report(session)
 
 
 @router.get("/stats", summary="Database statistics for dashboards")

@@ -20,7 +20,7 @@ from database.models import ApiKey, Role, User
 from database.session import get_session
 
 from .errors import ApiError
-from .security import ROLE_SCOPES, fingerprint, key_matches, parse_api_key
+from .security import DEVELOPER_ACCOUNT_EMAIL, ROLE_SCOPES, fingerprint, key_matches, parse_api_key
 
 log = logging.getLogger("category.auth")
 bearer = HTTPBearer(auto_error=False, description="API key: `cat_<prefix>_<secret>`")
@@ -45,6 +45,7 @@ class Principal:
     api_key_id: int | None = None
     scopes: frozenset[str] = field(default_factory=frozenset)
     rate_limit: int | None = None
+    daily_quota: int | None = None  # self-service developer keys only
 
     @property
     def authenticated(self) -> bool:
@@ -100,6 +101,8 @@ def get_principal(
     # Effective scopes: what the key was given AND what the user's current role allows.
     principal.scopes = frozenset(key.scopes) & ROLE_SCOPES[Role(user.role)]
     principal.rate_limit = key.rate_limit_per_minute
+    if user.email == DEVELOPER_ACCOUNT_EMAIL:
+        principal.daily_quota = settings.developer_key_daily_quota
     request.state.principal = principal
     return principal
 
@@ -114,6 +117,37 @@ def require(scope: str) -> Callable[..., Principal]:
         return principal
 
     return dependency
+
+
+def daily_usage(client: redis.Redis, key_id: int | None, *, count: bool = False) -> tuple[int, int]:
+    """Requests made with a developer key today (UTC), counting this one if ``count``; seconds until reset."""
+    now = int(time.time())
+    day, until_midnight = now // 86400, 86400 - now % 86400
+    name = f"quota:{key_id}:{day}"
+    if not count:
+        return int(client.get(name) or 0), until_midnight
+    pipe = client.pipeline()
+    pipe.incr(name)
+    pipe.expire(name, 2 * 86400)
+    return int(pipe.execute()[0]), until_midnight
+
+
+def consume_quota(client: redis.Redis, principal: Principal, extra: int) -> None:
+    """A request that does the work of many (bulk lookup) uses that many from a developer key's daily quota."""
+    if principal.daily_quota is None or extra <= 0:
+        return
+    try:
+        now = int(time.time())
+        name = f"quota:{principal.api_key_id}:{now // 86400}"
+        pipe = client.pipeline()
+        pipe.incrby(name, extra)
+        pipe.expire(name, 2 * 86400)
+        used = int(pipe.execute()[0])
+    except redis.RedisError:
+        return
+    if used > principal.daily_quota:
+        raise ApiError(429, "daily_quota_exceeded", "this key used its daily quota; it resets at 00:00 UTC",
+                       headers={"Retry-After": str(86400 - now % 86400)})
 
 
 class RateLimiter:
@@ -157,6 +191,16 @@ def rate_limit(bucket: str) -> Callable[..., None]:
         headers = {"RateLimit-Limit": str(limit), "RateLimit-Remaining": str(remaining), "RateLimit-Reset": str(reset)}
         if not allowed:
             raise ApiError(429, "rate_limited", "too many requests", headers=headers | {"Retry-After": str(reset)})
+        if principal.daily_quota is not None:
+            try:
+                used, until_midnight = daily_usage(client, principal.api_key_id, count=True)
+            except redis.RedisError:
+                used, until_midnight = 0, 0  # same fail-open choice as the per-minute limit
+            headers |= {"X-Quota-Limit": str(principal.daily_quota),
+                        "X-Quota-Remaining": str(max(0, principal.daily_quota - used))}
+            if used > principal.daily_quota:
+                raise ApiError(429, "daily_quota_exceeded", "this key used its daily quota; it resets at 00:00 UTC",
+                               headers=headers | {"Retry-After": str(until_midnight)})
         response.headers.update(headers)
 
     return dependency

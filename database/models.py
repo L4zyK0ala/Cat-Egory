@@ -553,6 +553,7 @@ class DomainCategory(Base):
         Index("uq_domain_categories_one_primary", "domain_id", unique=True,
               postgresql_where=text("valid_to IS NULL AND is_primary")),
         Index("ix_domain_categories_history", "domain_id", "valid_from"),
+        Index("ix_domain_categories_valid_from", "valid_from"),
     )
 
 
@@ -634,11 +635,15 @@ class ThreatIntelligence(Base):
     first_seen: Mapped[datetime] = _now()
     last_seen: Mapped[datetime] = _now()
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # withdrawn or expired
     raw: Mapped[dict | None] = mapped_column(JSONB)
 
     __table_args__ = (
         _confidence_check("confidence"),
         Index("ix_threat_intelligence_domain_active", "domain_id", postgresql_where=text("is_active")),
+        Index("ix_threat_intelligence_first_seen", "first_seen"),
+        Index("ix_threat_intelligence_deactivated_at", "deactivated_at",
+              postgresql_where=text("deactivated_at IS NOT NULL")),
         Index("uq_threat_intelligence_report", "domain_id", "threat_type", "source_id",
               text("coalesce(url_id, 0)"), unique=True),
     )
@@ -700,6 +705,33 @@ class ExternalListing(Base):
     checked_at: Mapped[datetime] = _now()
 
     __table_args__ = (UniqueConstraint("domain_id", "source"), Index("ix_external_listings_checked", "source", "checked_at"))
+
+
+class AbuseReport(Base):
+    """A prepared abuse report about one of our confirmed threats, for one recipient: the registrar's or the hosting
+    network's abuse contact, as their public RDAP records give it (threats/abuse.py). Nothing sends it: a person
+    reads it, sends it from their own mail program and marks it ``sent``. ``no_contact`` = no address was found."""
+
+    __tablename__ = "abuse_reports"
+
+    id: Mapped[int] = _pk()
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")  # draft sent dismissed no_contact
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # registrar, hosting, none
+    recipient: Mapped[str | None] = mapped_column(String(254))
+    organisation: Mapped[str | None] = mapped_column(String(200))
+    threat_types: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    lookup: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))  # RDAP server, IP
+    created_at: Mapped[datetime] = _now()
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'sent', 'dismissed', 'no_contact')", name="status_known"),
+        Index("ix_abuse_reports_status", "status", "created_at"),
+    )
 
 
 class FalsePositiveReport(Base):

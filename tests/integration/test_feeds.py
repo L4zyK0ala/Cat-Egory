@@ -154,3 +154,64 @@ def test_a_flagged_domain_leaves_the_content_lists(engine, client, admin, store)
     assert distribution["social-networking"] == 1
     page = client.get("/api/v1/domain/bad.example.com").json()  # the domain page still shows everything
     assert page["risk"]["sources"]
+
+
+def test_router_profiles_and_the_adblock_format(engine, client, admin, store):
+    setup_data(engine, client, admin)
+    run_build(engine, store)
+    lines = lambda name, mark: [ln for ln in body(store, engine, name).splitlines() if not ln.startswith(mark)]  # noqa: E731
+    assert lines("profile-security.txt", "#") == ["bad.example.com"]
+    assert lines("profile-family.txt", "#") == ["bad.example.com", "casino.example.com"]  # threats + gambling
+    assert "news.example.com" not in body(store, engine, "profile-family.txt")
+    assert lines("profile-family.adblock", "!") == ["||bad.example.com^", "||casino.example.com^"]
+    assert lines("gambling.adblock", "!") == ["||casino.example.com^"]
+    zone = dns.zone.from_text(body(store, engine, "profile-family.rpz"), origin="rpz.cat-egory.")
+    assert {str(n) for n in zone.nodes} >= {"casino.example.com", "*.casino.example.com", "bad.example.com"}
+
+
+def test_threat_data_is_public_domain(engine, client, admin, store):
+    from feeds.builder import _content_hash
+    from threats.records import withdraw
+
+    setup_data(engine, client, admin)
+    client.post("/api/v1/admin/domains", headers=admin, json={"domains": ["gone.example.com", "mistake.example.com"],
+                                                               "scan": "none"})
+    with Session(engine) as s, s.begin():
+        get = lambda n: s.scalar(select(Domain).where(Domain.normalized_domain == n))  # noqa: E731
+        record_threats(s, get("gone.example.com"), ["scam"])
+        record_threats(s, get("mistake.example.com"), ["phishing"])
+        s.flush()
+        withdraw(s, domain=get("mistake.example.com"))  # a false positive is not threat data
+        from database.models import ThreatIntelligence
+        row = s.scalar(select(ThreatIntelligence).where(ThreatIntelligence.domain_id == get("gone.example.com").id))
+        row.is_active, row.deactivated_at = False, datetime(2026, 11, 9, tzinfo=UTC)
+        row.raw = {"expired_at": "2026-11-09T00:00:00+00:00", "expired_reason": "taken_down"}
+    releases = {r.feed: r for r in _releases(engine, store)}
+
+    assert releases["phishing.txt"].license == "CC0-1.0" and releases["security.rpz"].license == "CC0-1.0"
+    assert releases["profile-security.adblock"].license == "CC0-1.0"
+    assert releases["profile-family.txt"].license == "CC-BY-4.0" and releases["gambling.txt"].license == "CC-BY-4.0"
+    phishing = body(store, engine, "phishing.txt")
+    assert "# License: CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)" in phishing
+    assert "Attribution: not required" in phishing
+    assert "; License: CC0-1.0" in body(store, engine, "security.rpz")
+    assert "# Attribution: Cat-egory contributors" in body(store, engine, "gambling.txt")
+
+    rows = list(csv.DictReader(ln for ln in body(store, engine, "threats.csv").splitlines() if not ln.startswith("#")))
+    assert [(r["domain"], r["threat_type"], r["status"], r["ended_reason"], r["confirmed_by"]) for r in rows] == [
+        ("bad.example.com", "phishing", "active", "", "person"),
+        ("gone.example.com", "scam", "expired", "taken_down", "person")]
+    assert len(rows[0]["last_seen"]) == 10 and rows[1]["ended_at"].startswith("2026-11-09")
+    doc = json.loads(body(store, engine, "threats.json"))
+    assert doc["meta"]["license"] == "CC0-1.0" and doc["meta"]["entries"] == 2
+    assert "mistake.example.com" not in json.dumps(doc)
+
+    old = phishing.replace("CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)",
+                           "CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)")
+    assert _content_hash(old.encode()) != _content_hash(phishing.encode())  # a licence change is a new release
+    assert _content_hash(phishing.replace("2026", "2027", 1).encode()) == _content_hash(phishing.encode())
+
+
+def _releases(engine, store):
+    with Session(engine) as s, s.begin():
+        return [type("R", (), {"feed": r.feed, "license": r.license}) for r in build(s, store, TAX)]

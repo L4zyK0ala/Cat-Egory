@@ -19,6 +19,8 @@ from argon2.exceptions import InvalidHashError, VerificationError
 from database.models import Role
 
 KEY_PREFIX = "cat"
+# Self-service developer keys belong to this one system account (no password, no scopes): no personal data needed.
+DEVELOPER_ACCOUNT_EMAIL = "developer-keys@cat-egory.invalid"
 _PREFIX_ALPHABET = string.ascii_lowercase + string.digits
 _PREFIX_LEN = 10
 

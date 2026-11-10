@@ -38,6 +38,7 @@ from database.models import (
 from database.models import Screenshot as ScreenshotRow
 from database.session import get_session
 from threats.guard import protected_owner
+from threats.records import withdraw
 
 from .. import audit
 from ..deps import Principal, rate_limit, require
@@ -105,9 +106,10 @@ class ReviewPage(BaseModel):
 
 
 class DecisionIn(BaseModel):
-    action: Literal["approve", "set", "reject"] = Field(
+    action: Literal["approve", "set", "reject", "withdraw"] = Field(
         description="approve = accept the model's categories; set = use the categories given here; "
-                    "reject = keep the current state and close the task")
+                    "reject = keep the current state and close the task; withdraw = take back our own threat "
+                    "flags on the domain (e.g. the page was cleaned) and close the task")
     primary: str | None = None
     secondary: list[str] = Field(default_factory=list, max_length=5)
     risk: list[str] = Field(default_factory=list, description="confirmed security-threat categories")
@@ -226,6 +228,13 @@ def decide_review(task_id: int, body: DecisionIn, request: Request,
         raise ApiError(422, "invalid_category", f"unknown security-threat categories: {bad_risk}")
     if body.risk and not body.confirm_protected:
         guard_protected(session, domain.normalized_domain)
+    withdrawn = 0
+    if body.action == "withdraw":
+        if body.risk:
+            raise ApiError(422, "validation_error", "withdraw takes no risk categories")
+        withdrawn = withdraw(session, domain=domain)
+        if not withdrawn:
+            raise ApiError(409, "nothing_to_withdraw", "the domain has no active threat flag of ours")
 
     primary, secondary, confidence = None, [], None
     if body.action == "approve":
@@ -258,7 +267,7 @@ def decide_review(task_id: int, body: DecisionIn, request: Request,
     task.decision_note = body.note
     audit.record(session, action="review.decide", target_type="domain", target_id=domain.normalized_domain,
                  before=before, after={"action": body.action, "primary": primary, "secondary": secondary,
-                                       "risk": body.risk, "task_id": task.id},
+                                       "risk": body.risk, "task_id": task.id, "withdrawn": withdrawn},
                  principal=principal, request_id=getattr(request.state, "request_id", None))
     session.commit()
     return _review_out(session, task)

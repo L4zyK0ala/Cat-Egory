@@ -29,6 +29,9 @@ export default function Privacy() {
         <p><b>Öneri veya düzeltme gönderdiğinizde:</b> Alan adı, seçtiğiniz kategori, yazdığınız açıklama ve kanıt
           bağlantıları ile IP adresinizin anahtarlı özeti saklanır. Ad veya e-posta istemiyoruz; lütfen açıklamaya kişisel
           bilgi yazmayın. Açıklamaları yalnızca moderatörler görür.</p>
+        <p><b>Geliştirici anahtarı aldığınızda:</b> Ad veya e-posta istemiyoruz. İsteğe bağlı yazdığınız etiket, anahtarın
+          geri döndürülemez özeti (anahtarın kendisi saklanmaz), oluşturma ve son kullanım zamanı, günlük istek sayısı ve IP
+          adresinizin anahtarlı özeti tutulur. Anahtarı istediğiniz an kendiniz iptal edebilirsiniz.</p>
         <p><b>Yönetici ve moderatör hesapları:</b> E-posta, görünen ad, parolanın geri döndürülemez özeti ve yapılan işlemlerin
           denetim kayıtları tutulur.</p>
         <p><b>Taranan web siteleri:</b> Herkese açık sayfaların ekran görüntüsü, HTML ve metni kategori belirlemek için alınır.
@@ -67,7 +70,7 @@ export default function Privacy() {
       <h2 lang="en">English Summary</h2>
       <div className="panel stack" lang="en">
         <p>No account and no analytics; one cookie remembers your language choice and nothing else. Your IP address is not stored in our database: a keyed, irreversible hash limits
-          abuse. Reports keep what you type, so please leave out personal details. Page content from scanned sites is private
+          abuse. Reports keep what you type, so please leave out personal details. Developer keys need no name or e-mail. Page content from scanned sites is private
           and deleted after 180 days. Cloudflare carries the traffic and Evren reads scanned pages; neither receives your
           reports. For requests about your data, use the address above.</p>
       </div>

@@ -88,7 +88,7 @@ def record_url_threats(session: Session, raw_url: str, risk_ids: list[str], *, s
                                            source_id=src, source_reference=reference))
             added += 1
         else:
-            row.is_active, row.last_seen = True, now
+            row.is_active, row.last_seen, row.deactivated_at = True, now, None
     url.last_seen = now
     return url, added
 
@@ -106,4 +106,4 @@ def withdraw(session: Session, *, domain: Domain, threat: ThreatType | None = No
         domain_scoped() if url is None else ThreatIntelligence.url_id == url.id)
     if threat is not None:
         stmt = stmt.where(ThreatIntelligence.threat_type == threat)
-    return session.execute(stmt.values(is_active=False)).rowcount or 0
+    return session.execute(stmt.values(is_active=False, deactivated_at=datetime.now(UTC))).rowcount or 0
