@@ -58,6 +58,6 @@ def open_job_for(session: Session, domain_id: int) -> ScanJob | None:
                                                 ScanJob.status.in_([JobStatus.QUEUED, JobStatus.RUNNING])))
 
 
-def cancel(session: Session, job: ScanJob) -> None:
+def cancel(job: ScanJob) -> None:
     job.status = JobStatus.CANCELLED
     job.finished_at = func.now()

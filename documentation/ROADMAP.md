@@ -39,8 +39,8 @@ Exit criteria met: 10 000 domains imported from one file in ≈ 2.5 s (target < 
 every write audit-logged; auth, scope, revocation, expiry and rate-limit tests green.
 
 Design note: scans are only *rows* in `scan_jobs` for now. Phase 3 adds a dispatcher that moves queued jobs
-to the crawler queue (DB = source of truth, no lost or phantom messages). Password login is deferred to the
-web UI (Phase 5), where it comes with sessions and CSRF protection.
+to the crawler queue (DB = source of truth, no lost or phantom messages). Password login came on 2026-11-09 as short-lived
+sign-in keys sent in a header: no cookies, so no CSRF surface.
 
 ## Phase 3 — Crawler ✅ (2026-11-07, sandbox verified)
 
@@ -120,8 +120,10 @@ Done later (2026-11-09): Threats module, step 1 (`THREATS.md`): URL-scoped threa
 a whole site, one public-visibility rule, admin threats API with evidence notes, threat disputes/reports via
 the community form, exact-link lookup in the UI.
 
-Open: TLS reverse proxy and production deployment,
-Alertmanager, off-host backups + restore drill on the real stack, horizontal scaling, ZAP/container scans.
+Done later (2026-11-09): nightly backups with copies to a second disk and a USB stick, restore test, Telegram
+alerts through Alertmanager, Cloudflare Tunnel and VPN-only admin prepared, privacy notice, retention purge.
+
+Open: going live through the tunnel, a backup copy away from the house, horizontal scaling, ZAP/container scans.
 
 ## Acceptance criteria mapping
 

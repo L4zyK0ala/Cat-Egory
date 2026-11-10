@@ -63,3 +63,14 @@ def test_set_password_cli(engine, clean, monkeypatch, capsys, client):
     assert client.post(SIGN_IN, json={"email": "admin@example.org", "password": "a new long password"}).status_code == 201
     with Session(engine) as s:
         assert s.scalar(select(ApiKey.name).order_by(ApiKey.id.desc())) == "web sign-in"
+
+
+def test_unknown_accounts_cost_as_much_as_wrong_passwords(client, monkeypatch):
+    """The response time must not reveal which e-mail addresses have accounts."""
+    from backend.app.api import session as session_api
+
+    checked = []
+    real = session_api.verify_password
+    monkeypatch.setattr(session_api, "verify_password", lambda h, p: checked.append(h) or real(h, p))
+    r = client.post("/api/v1/admin/session", json={"email": "nobody@example.com", "password": "whatever-long-1"})
+    assert r.status_code == 401 and checked == [session_api._NO_ACCOUNT_HASH]

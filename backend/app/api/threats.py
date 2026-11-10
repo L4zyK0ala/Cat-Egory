@@ -190,7 +190,8 @@ def record(body: RecordIn, request: Request, principal: Principal = Depends(requ
     reference = "admin"
     if body.url is not None:
         url = _url(session, body.url, create=True)
-        assert url is not None
+        if url is None:  # create=True always returns a row; kept explicit rather than an assert
+            raise ApiError(500, "internal_error", "URL record could not be created")
         if not body.confirm_protected:
             guard_protected(session, session.get(Domain, url.domain_id).normalized_domain)
         record_url_threats(session, url.normalized_url, types, reference=reference)

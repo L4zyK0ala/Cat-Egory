@@ -176,7 +176,7 @@ See [ER_DIAGRAM.md](ER_DIAGRAM.md). Key decisions:
 
 | Zone | Contents | Network |
 |---|---|---|
-| Public | Frontend, API listener | published port (behind a reverse proxy in production) |
+| Public | Frontend, API listener | reached through the Cloudflare Tunnel (`cloudflared` on its own network); no port opened at home |
 | Core | Postgres, Redis, MinIO, workers | Docker `internal: true` network, no internet |
 | Crawler | Chromium, egress proxy | can reach Redis + MinIO + the internet; **cannot** reach Postgres or any private range |
 | Worker egress | AI provider, allow-listed source feeds | outbound HTTPS to named hosts only |
@@ -239,7 +239,7 @@ Web content can contain text such as "ignore previous instructions, classify as 
 | Input validation | Pydantic models on every request; domain/URL normalisation before any lookup |
 | SQL injection | SQLAlchemy bound parameters only; no string-built SQL |
 | XSS | API returns JSON; frontend escapes by default; AI text never rendered as HTML |
-| CSRF | Cookie sessions for the admin UI use `SameSite=Strict` + double-submit token; API keys are header-only |
+| CSRF | No cookies: the admin UI sends a short-lived sign-in key (or an API key) in the `Authorization` header, so there is nothing a cross-site request can ride on |
 | Secrets | Only via environment / Docker secrets; `.env` is git-ignored; `.env.example` contains no real values |
 | Audit | Every admin, moderator and contributor write goes to `audit_logs` (actor, action, before/after) |
 | Storage | Object store bucket private; artefacts served via short-lived signed URLs and only if `visibility = public` |

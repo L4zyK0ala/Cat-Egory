@@ -221,7 +221,7 @@ def cancel_scan(scan_id: uuid.UUID, request: Request, principal: Principal = Dep
         raise ApiError(404, "not_found", "scan not found")
     if job.status != JobStatus.QUEUED:
         raise ApiError(409, "not_cancellable", f"only queued scans can be cancelled (status: {job.status})")
-    scan_service.cancel(session, job)
+    scan_service.cancel(job)
     audit.record(session, action="scan.cancel", target_type="scan_job", target_id=job.id,
                  before={"status": "queued"}, after={"status": "cancelled"}, principal=principal,
                  request_id=_request_id(request))

@@ -320,7 +320,7 @@ def moderate(submission_id: int, body: ModerateIn, request: Request,
             result |= _accept_threat_report(session, sub, domain)
         else:
             domain = session.get(Domain, sub.domain_id, with_for_update=True)
-            primary, secondary = _accepted_categories(session, sub, domain, body)
+            primary, secondary = _accepted_categories(sub, domain, body)
             if primary is not None:
                 apply_categories(session, domain, primary=primary, secondary=secondary, confidence=None,
                                  origin=AssignmentOrigin.COMMUNITY, taxonomy=TAX,
@@ -361,8 +361,7 @@ def _accept_threat_report(session: Session, sub: CommunitySubmission, domain: Do
     return {"threat_withdrawn": threat.value, "withdrawn": withdrawn, "third_party_remaining": remaining}
 
 
-def _accepted_categories(session: Session, sub: CommunitySubmission, domain: Domain,
-                         body: ModerateIn) -> tuple[str | None, list[str]]:
+def _accepted_categories(sub: CommunitySubmission, domain: Domain, body: ModerateIn) -> tuple[str | None, list[str]]:
     current_primary = domain.primary_category_id
     current_secondary = list(domain.secondary_categories or [])
     if body.primary:

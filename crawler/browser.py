@@ -170,7 +170,8 @@ def capture(domain: str, settings: Settings) -> PageCapture:
                 last = result
                 if result.error_code in ("timeout", "aborted", "download_refused"):
                     break
-            assert last is not None
+            if last is None:  # the loop runs at least once
+                raise RuntimeError("no capture attempt was made")
             return last
         finally:
             browser.close()

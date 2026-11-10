@@ -10,6 +10,7 @@ Brute force: the ``write`` rate limit per client, plus at most ``LOGIN_FAILURES`
 from __future__ import annotations
 
 import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import redis
@@ -24,7 +25,7 @@ from database.session import get_session
 from .. import audit
 from ..deps import Principal, get_principal, get_redis, rate_limit
 from ..errors import ApiError
-from ..security import ROLE_SCOPES, generate_api_key, verify_password
+from ..security import ROLE_SCOPES, generate_api_key, hash_password, verify_password
 
 router = APIRouter(prefix="/api/v1/admin/session", tags=["admin"], dependencies=[Depends(rate_limit("write"))])
 
@@ -33,6 +34,9 @@ LOGIN_FAILURES = 5
 LOGIN_WINDOW = 900  # seconds
 SHORT, LONG = timedelta(hours=12), timedelta(days=7)
 STAFF = (Role.ADMIN, Role.MODERATOR)
+# Checked when the account does not exist or cannot sign in, so both cases take as long as a wrong password and
+# the response time does not reveal which e-mail addresses have accounts.
+_NO_ACCOUNT_HASH = hash_password(secrets.token_urlsafe(32))
 
 
 class SignIn(BaseModel):
@@ -64,8 +68,10 @@ def sign_in(body: SignIn, request: Request, principal: Principal = Depends(get_p
         raise ApiError(503, "unavailable", "sign-in is unavailable right now") from exc
 
     user = session.scalar(select(User).where(User.email == email))
-    ok = (user is not None and user.is_active and user.password_hash is not None and Role(user.role) in STAFF
-          and verify_password(user.password_hash, body.password))
+    can_sign_in = (user is not None and user.is_active and user.password_hash is not None
+                   and Role(user.role) in STAFF)
+    password_ok = verify_password(user.password_hash if can_sign_in else _NO_ACCOUNT_HASH, body.password)
+    ok = can_sign_in and password_ok
     if not ok:
         try:
             pipe = client.pipeline()

@@ -59,7 +59,8 @@ def record_url_threats(session: Session, raw_url: str, risk_ids: list[str], *, s
     """Confirm threats on one URL only. Returns the Url row and how many new records were added (existing ones
     are re-activated)."""
     url = url_row(session, raw_url)
-    assert url is not None
+    if url is None:  # create=True always returns a row
+        raise RuntimeError("URL record could not be created")
     src = source_id(session, source_slug)
     now = datetime.now(UTC)
     added = 0

@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, Date, cast, func, literal_column, select
+from sqlalchemy import ColumnElement, Date, cast, func, select
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from classification.engine import threat_candidate
@@ -344,7 +344,7 @@ def stats(response: Response, session: Session = Depends(get_session)) -> dict:
     valid = count(select(func.count()).select_from(AIPrediction).where(AIPrediction.created_at >= month_ago,
                                                                          AIPrediction.validation_status == "valid"))
     daily = session.execute(
-        select(cast(func.timezone(literal_column(f"interval '{offset} hours'"), ScanJob.finished_at), Date).label("day"),
+        select(cast(func.timezone(func.make_interval(0, 0, 0, 0, offset), ScanJob.finished_at), Date).label("day"),
                ScanJob.status, func.count())
         .where(ScanJob.finished_at >= today - timedelta(days=13)).group_by("day", ScanJob.status).order_by("day")).all()
     daily_out: dict[str, dict[str, int]] = {}
