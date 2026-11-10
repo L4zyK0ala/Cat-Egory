@@ -1,11 +1,27 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CatRoll } from "@/components/CatScene";
+import { getT } from "@/lib/locale";
 
-export const metadata: Metadata = {
-  title: "About",
-  description: "Who builds Cat-Egory, why an open categorisation of the web matters, and the rules we follow.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return {
+    title: t("About", "Hakkında"),
+    description: t("Who builds Cat-Egory, why an open categorisation of the web matters, and the rules we follow.",
+                   "Cat-Egory'yi kim geliştiriyor, açık bir web kategorilendirmesi neden önemli ve hangi kurallara uyuyoruz."),
+  };
+}
+
+const PRINCIPLES_TR: [string, string][] = [
+  ["Varsayılan Olarak Açık",
+   "Kendi kategorilendirmelerimiz ve taksonomi CC BY 4.0, kod Apache-2.0 lisansıyla yayımlanır. Veriyi kullanın, denetleyin, üzerine inşa edin."],
+  ["Önemli Olduğunda İnsan Karar Verir",
+   "Dil modeli hızlı bir ilk okuyucudur, son söz değildir. Emin olunmayan cevaplar, markaları taklit ediyor olabilecek siteler ve her güvenlik tehdidi bir kişiye gider. Yapay zekâ bir insan kararını asla geçersiz kılmaz ve bir modelin iddiası asla herkese açık bir tehdit işaretine dönüşmez."],
+  ["Her Etiketin Bir Kaynağı Var",
+   "Her kategori yapay zekâdan mı, bir inceleyiciden mi, topluluktan mı, bir tahsis kuralından mı yoksa lisanslı bir listeden mi geldiğini söyler ve geçmişi saklanır. Hiçbir şey sessizce yeniden etiketlenmez."],
+  ["Web Sitelerine Saygı",
+   "Tarayıcımız bot olduğunu söyler, robots.txt'ye uyar ve korumalı bir ortamda çalışır. Sitelerin ekran görüntüleri ve HTML'i asla yayımlanmaz; başka projelerden gelen veriler kendi lisanslarını korur."],
+];
 
 const PRINCIPLES: [string, string][] = [
   ["Open by Default",
@@ -18,7 +34,9 @@ const PRINCIPLES: [string, string][] = [
    "Our crawler says it is a bot, obeys robots.txt and runs in a sandbox. Screenshots and HTML of websites are never published, and data from other projects keeps its own licence."],
 ];
 
-export default function About() {
+export default async function About() {
+  const { locale } = await getT();
+  if (locale === "tr") return <AboutTr />;
   return (
     <div className="about">
       <section className="hero">
@@ -72,6 +90,66 @@ export default function About() {
           <p className="muted">Download categories as TXT, hosts, CSV, JSON or DNS RPZ files, or query the REST API.
             Please credit &ldquo;Cat-Egory contributors&rdquo;.</p>
           <p className="row"><Link href="/feeds">Feeds →</Link><Link href="/categories">Categories →</Link></p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AboutTr() {
+  return (
+    <div className="about">
+      <section className="hero">
+        <div>
+          <h1><em>Cat-Egory</em> Hakkında</h1>
+          <p className="lead">Dünyadaki web sitelerini açık ve sürümlü bir kategori kümesine ayıran, bunu nasıl yaptığını da
+            gösteren bağımsız ve açık bir proje.</p>
+        </div>
+        <figure className="kostum">
+          <CatRoll />
+          <figcaption className="cat-name">Mr Kostüm</figcaption>
+        </figure>
+      </section>
+
+      <h2>Amacımız</h2>
+      <div className="panel stack">
+        <p>Bir sitenin ne olduğunu bilmek her gün önemli: okullarda ve evlerde DNS filtreleri, alarmları ayıklayan güvenlik
+          ekipleri, interneti inceleyen araştırmacılar. Bugün bu soruyu cevaplayan listeler çoğunlukla kapalı ve ücretli.
+          Bir sitenin neden o etiketi aldığını göremiyor, yanlışsa düzeltemiyorsunuz.</p>
+        <p><b>Cat-Egory açık alternatiftir:</b> herkesin kullanabileceği, denetleyebileceği ve düzeltebileceği, her etiketin
+          nereden geldiğini açıkça kaydeden bir kategorilendirme.</p>
+      </div>
+
+      <h2>Neyi Savunuyoruz</h2>
+      <ul className="principles">
+        {PRINCIPLES_TR.map(([title, text]) => (
+          <li key={title} className="panel"><h3>{title}</h3><p className="muted">{text}</p></li>
+        ))}
+      </ul>
+
+      <h2>Biz Kimiz</h2>
+      <div className="panel stack">
+        <p>Cat-Egory, Türkiye&apos;de <b>Ahmet Çetin</b> (GitHub&apos;da{" "}
+          <a href="https://github.com/L4zyK0ala" rel="noopener">@L4zyK0ala</a>) tarafından başlatılan ve geliştirilen bağımsız
+          bir açık kaynak projedir. Türk web sitelerine ve Türk bankalarını, kamu hizmetlerini taklit eden oltalama sitelerine
+          karşı erken uyarıya özel önem verir.</p>
+        <p className="muted">Sınıflandırma, EVREN platformunun sunduğu dil modelleriyle yapılır. Cat-Egory&apos;nin EVREN ile
+          bir bağı yoktur ve EVREN tarafından onaylanmış değildir.</p>
+      </div>
+
+      <h2>Nasıl Yardım Edebilirsiniz</h2>
+      <div className="grid2">
+        <div className="panel stack">
+          <h3>Veriyi Düzeltin</h3>
+          <p className="muted">Bir siteye bakın ve sayfasından yanlış bir kategoriyi bildirin ya da henüz görmediğimiz bir
+            siteyi önerin.</p>
+          <p className="row"><Link href="/">Site Ara →</Link><Link href="/submit">Site Öner →</Link></p>
+        </div>
+        <div className="panel stack">
+          <h3>Veriyi Kullanın</h3>
+          <p className="muted">Kategorileri TXT, hosts, CSV, JSON veya DNS RPZ dosyası olarak indirin ya da REST API&apos;yi
+            sorgulayın. Lütfen &ldquo;Cat-Egory contributors&rdquo; diye kaynak gösterin.</p>
+          <p className="row"><Link href="/feeds">Listeler →</Link><Link href="/categories">Kategoriler →</Link></p>
         </div>
       </div>
     </div>

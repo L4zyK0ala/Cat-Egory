@@ -3,26 +3,50 @@ import { api, ApiError, publicApiUrl } from "@/lib/api";
 import type { Category, DomainInfo, HistoryItem, Risk, UrlLookup } from "@/lib/types";
 import SearchBox from "@/components/SearchBox";
 import ReportForm from "@/components/ReportForm";
+import { categoryName, intl, type Locale, type T } from "@/lib/i18n";
+import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
 
-const RISK_LABELS: Record<string, string> = {
+const RISK_IDS: Record<string, string> = {
+  malware: "malware", phishing: "phishing", scam: "scam", fraud: "fraud", command_and_control: "command-and-control",
+  malicious_downloads: "malicious-downloads", suspicious: "suspicious", lookalike_domain: "lookalike-domain",
+};
+const RISK_EN: Record<string, string> = {
   malware: "Malware", phishing: "Phishing", scam: "Scam", fraud: "Fraud", command_and_control: "Command & control",
   malicious_downloads: "Malicious downloads", suspicious: "Suspicious", lookalike_domain: "Look-alike domain",
 };
 
-function when(value: string | null) {
-  return value ? new Date(value).toLocaleString("en", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Istanbul" }) : "–";
+function when(locale: Locale, value: string | null) {
+  return value ? new Date(value).toLocaleString(intl(locale), { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Istanbul" }) : "–";
 }
 
-function flagged(risk: Risk) {
-  return Object.entries(RISK_LABELS).filter(([k]) => risk[k as keyof Risk] === true);
+function flagged(locale: Locale, risk: Risk) {
+  return Object.keys(RISK_EN).filter((k) => risk[k as keyof Risk] === true)
+    .map((k) => [k, categoryName(locale, RISK_IDS[k], RISK_EN[k])] as const);
+}
+
+function originLabel(t: T, origin: string) {
+  const labels: Record<string, string> = { human: t("human", "insan"), ai: t("AI", "yapay zekâ"),
+    community: t("community", "topluluk"), rule: t("rule", "kural"), source: t("source", "kaynak") };
+  return labels[origin] ?? origin;
+}
+
+function statusLabel(t: T, status: string) {
+  const labels: Record<string, string> = {
+    verified: t("verified", "doğrulandı"), classified: t("classified", "sınıflandırıldı"),
+    needs_review: t("needs review", "incelemede"), reanalyze: t("reanalyse", "yeniden incelenecek"),
+    unclassified: t("unclassified", "sınıflandırılmadı"), unreachable: t("unreachable", "erişilemiyor"),
+    disputed: t("disputed", "itiraz edildi"),
+  };
+  return labels[status] ?? status.replace("_", " ");
 }
 
 export default async function DomainPage({ params, searchParams }: {
   params: Promise<{ domain: string }>; searchParams: Promise<{ url?: string | string[] }>;
 }) {
   const { domain } = await params;
+  const { locale, t } = await getT();
   const name = decodeURIComponent(domain);
   const link = (v => (Array.isArray(v) ? v[0] : v))((await searchParams).url)?.slice(0, 2000);
   // A full link was searched: also check that exact page (a phishing page can sit on an otherwise fine site).
@@ -55,8 +79,10 @@ export default async function DomainPage({ params, searchParams }: {
         <SearchBox initial={name} />
         <h1>{name}</h1>
         <div className={`notice ${error?.status === 404 ? "" : "error"}`}>
-          {error?.status === 404 ? <>This domain is not in the database yet. <Link href={`/submit?domain=${encodeURIComponent(name)}`}>Suggest it</Link>.</>
-            : error?.status === 422 ? `Not a valid public domain: ${error.message}` : "The API is not reachable right now."}
+          {error?.status === 404 ? <>{t("This domain is not in the database yet.", "Bu alan adı henüz veri tabanında yok.")}{" "}
+            <Link href={`/submit?domain=${encodeURIComponent(name)}`}>{t("Suggest it", "Önerin")}</Link>.</>
+            : error?.status === 422 ? `${t("Not a valid public domain", "Geçerli bir alan adı değil")}: ${error.message}`
+            : t("The API is not reachable right now.", "API'ye şu an ulaşılamıyor.")}
         </div>
       </>
     );
@@ -65,73 +91,77 @@ export default async function DomainPage({ params, searchParams }: {
     api<{ history: HistoryItem[] }>(`/api/v1/history/${encodeURIComponent(info.domain)}`, 60).catch(() => ({ history: [] })),
     api<{ items: Category[] }>("/api/v1/categories", 3600).catch(() => ({ items: [] as Category[] })),
   ]);
-  const names = Object.fromEntries(taxonomy.items.map((c) => [c.id, c.name]));
-  const risks = flagged(info.risk);
+  const names = Object.fromEntries(taxonomy.items.map((c) => [c.id, categoryName(locale, c.id, c.name)]));
+  const risks = flagged(locale, info.risk);
   const pick = (kind: Category["kind"]) => taxonomy.items
-    .filter((c) => c.kind === kind && !c.is_group && !c.deprecated_in).map((c) => ({ id: c.id, name: c.name }));
-  const linkRisks = lookup ? flagged(lookup.url_risk) : [];
+    .filter((c) => c.kind === kind && !c.is_group && !c.deprecated_in).map((c) => ({ id: c.id, name: categoryName(locale, c.id, c.name) }));
+  const linkRisks = lookup ? flagged(locale, lookup.url_risk) : [];
   return (
     <>
       <SearchBox initial={info.display_domain} />
       <div className="row"><h1>{info.display_domain}</h1>
-        <span className={`badge ${info.classification_status}`}>{info.classification_status.replace("_", " ")}</span></div>
+        <span className={`badge ${info.classification_status}`}>{statusLabel(t, info.classification_status)}</span></div>
       {info.display_domain !== info.domain && <div className="mono muted">{info.domain}</div>}
-      {viaParent && <div className="notice">{name} is not listed itself; showing its registrable domain {info.domain}.</div>}
+      {viaParent && <div className="notice">{t(`${name} is not listed itself; showing its registrable domain ${info.domain}.`,
+                                             `${name} kendisi listede yok; kayıtlı üst alan adı ${info.domain} gösteriliyor.`)}</div>}
       {lookup && (
         <div className={`notice ${linkRisks.length ? "error" : ""}`}>
           <div className="mono" style={{ overflowWrap: "anywhere", fontSize: 13 }}>{lookup.normalized_url}</div>
-          {linkRisks.length ? <>This exact link is confirmed as:{" "}
+          {linkRisks.length ? <>{t("This exact link is confirmed as:", "Bu bağlantı şu olarak onaylandı:")}{" "}
             {linkRisks.map(([k, label]) => <span key={k} className="badge danger" style={{ marginRight: 6 }}>{label}</span>)}</>
-            : "No confirmed threat report for this exact link. The site's own result is below."}
+            : t("No confirmed threat report for this exact link. The site's own result is below.",
+                "Bu bağlantı için onaylanmış bir tehdit kaydı yok. Sitenin kendi sonucu aşağıda.")}
         </div>
       )}
       <div className="grid2" style={{ marginTop: 16 }}>
         <section className="panel">
-          <h2 style={{ marginTop: 0 }}>Categories</h2>
-          {info.categories.length === 0 ? <p className="muted">Not classified yet.</p> : info.categories.map((c) => (
-            <span key={c.id} className={`chip ${c.primary ? "primary" : ""}`} title={`origin: ${c.origin}`}>
-              <Link href={`/categories/${c.id}`}>{c.name}</Link>{c.confidence != null && ` · ${(c.confidence * 100).toFixed(0)}%`}
+          <h2 style={{ marginTop: 0 }}>{t("Categories", "Kategoriler")}</h2>
+          {info.categories.length === 0 ? <p className="muted">{t("Not classified yet.", "Henüz sınıflandırılmadı.")}</p> : info.categories.map((c) => (
+            <span key={c.id} className={`chip ${c.primary ? "primary" : ""}`} title={`${t("origin", "kaynak")}: ${c.origin}`}>
+              <Link href={`/categories/${c.id}`}>{categoryName(locale, c.id, c.name)}</Link>{c.confidence != null && ` · ${locale === "tr" ? "%" : ""}${(c.confidence * 100).toFixed(0)}${locale === "tr" ? "" : "%"}`}
             </span>
           ))}
           <p className="muted" style={{ fontSize: 13 }}>
-            Source: {info.data_source ?? "–"}. Percentages are model confidence, not measured accuracy.
+            {t("Source", "Kaynak")}: {info.data_source ?? "–"}. {t("Percentages are model confidence, not measured accuracy.",
+                                                                       "Yüzdeler model güvenidir, ölçülmüş doğruluk değildir.")}
           </p>
-          <h2>Security</h2>
-          {risks.length === 0 ? <p className="muted">No confirmed threats for this domain (from reviewers or licensed threat
-            feeds; AI claims are not shown as threats).</p> :
+          <h2>{t("Security", "Güvenlik")}</h2>
+          {risks.length === 0 ? <p className="muted">{t("No confirmed threats for this domain (from reviewers or licensed threat feeds; AI claims are not shown as threats).",
+                                                        "Bu alan adı için onaylanmış tehdit yok (inceleyicilerden veya lisanslı tehdit kaynaklarından; yapay zekâ iddiaları tehdit olarak gösterilmez).")}</p> :
             risks.map(([k, label]) => <span key={k} className="badge danger" style={{ marginRight: 6 }}>{label}</span>)}
           {info.risk.reported_urls > 0 && (
             <p className="notice" style={{ fontSize: 13 }}>
-              {info.risk.reported_urls === 1 ? "One page" : `${info.risk.reported_urls} pages`} on this site{" "}
-              {info.risk.reported_urls === 1 ? "is" : "are"} confirmed as a threat. The site itself is not flagged; this
-              usually means it was hacked. Paste a full link into the search box to check that page.
+              {locale === "tr"
+                ? `Bu sitede ${info.risk.reported_urls === 1 ? "bir sayfa" : `${info.risk.reported_urls} sayfa`} tehdit olarak onaylandı. Sitenin kendisi işaretli değil; bu genelde sitenin hacklendiği anlamına gelir. O sayfayı denetlemek için tam bağlantıyı arama kutusuna yapıştırın.`
+                : `${info.risk.reported_urls === 1 ? "One page" : `${info.risk.reported_urls} pages`} on this site ${info.risk.reported_urls === 1 ? "is" : "are"} confirmed as a threat. The site itself is not flagged; this usually means it was hacked. Paste a full link into the search box to check that page.`}
             </p>
           )}
         </section>
         <section className="panel">
           <table><tbody>
-            <tr><th>Registrable domain</th><td className="mono">{info.registrable_domain}</td></tr>
-            <tr><th>First seen</th><td>{when(info.first_seen)}</td></tr>
-            <tr><th>Last scanned</th><td>{when(info.last_scanned)}</td></tr>
-            <tr><th>Last updated</th><td>{when(info.last_updated)}</td></tr>
-            <tr><th>Taxonomy</th><td>{info.taxonomy_version}</td></tr>
-            <tr><th>Licence</th><td>{info.license} · {info.attribution}</td></tr>
+            <tr><th>{t("Registrable domain", "Kayıtlı alan adı")}</th><td className="mono">{info.registrable_domain}</td></tr>
+            <tr><th>{t("First seen", "İlk görülme")}</th><td>{when(locale, info.first_seen)}</td></tr>
+            <tr><th>{t("Last scanned", "Son tarama")}</th><td>{when(locale, info.last_scanned)}</td></tr>
+            <tr><th>{t("Last updated", "Son güncelleme")}</th><td>{when(locale, info.last_updated)}</td></tr>
+            <tr><th>{t("Taxonomy", "Taksonomi")}</th><td>{info.taxonomy_version}</td></tr>
+            <tr><th>{t("Licence", "Lisans")}</th><td>{info.license} · {info.attribution}</td></tr>
           </tbody></table>
         </section>
       </div>
-      <h2>History</h2>
+      <h2>{t("History", "Geçmiş")}</h2>
       <div className="panel">
-        {history.history.length === 0 ? <p className="muted">No category changes recorded.</p> : (
+        {history.history.length === 0 ? <p className="muted">{t("No category changes recorded.", "Kayıtlı kategori değişikliği yok.")}</p> : (
           <table>
-            <thead><tr><th>Category</th><th>Role</th><th>Origin</th><th>From</th><th>Until</th></tr></thead>
+            <thead><tr><th>{t("Category", "Kategori")}</th><th>{t("Role", "Rol")}</th><th>{t("Origin", "Kaynak")}</th>
+              <th>{t("From", "Başlangıç")}</th><th>{t("Until", "Bitiş")}</th></tr></thead>
             <tbody>{history.history.map((h, i) => (
-              <tr key={i}><td>{names[h.category] ?? h.category}</td><td>{h.primary ? "primary" : "secondary"}</td>
-                <td>{h.origin}</td><td>{when(h.valid_from)}</td><td>{h.valid_to ? when(h.valid_to) : "current"}</td></tr>
+              <tr key={i}><td>{names[h.category] ?? h.category}</td><td>{h.primary ? t("primary", "ana") : t("secondary", "yan")}</td>
+                <td>{originLabel(t, h.origin)}</td><td>{when(locale, h.valid_from)}</td><td>{h.valid_to ? when(locale, h.valid_to) : t("current", "güncel")}</td></tr>
             ))}</tbody>
           </table>
         )}
       </div>
-      <h2>Is Something Wrong?</h2>
+      <h2>{t("Is Something Wrong?", "Bir Yanlışlık mı Var?")}</h2>
       <ReportForm api={publicApiUrl()} domain={info.domain} current={info.categories.map((c) => c.id)}
                   categories={pick("content")} risks={pick("risk")}
                   currentRisks={[...new Set(info.risk.sources.map((s) => s.type))]} />

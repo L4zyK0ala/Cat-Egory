@@ -11,7 +11,7 @@ export default function Privacy() {
   return (
     <div className="about" lang="tr">
       <h1>Gizlilik ve KVKK Aydınlatma Metni</h1>
-      <p className="muted">Son güncelleme: 9 Kasım 2026 · <span lang="en">An English summary is at the end of this page.</span></p>
+      <p className="muted">Son güncelleme: 10 Kasım 2026 · <span lang="en">An English summary is at the end of this page.</span></p>
 
       <h2>Veri Sorumlusu</h2>
       <div className="panel stack">
@@ -22,7 +22,8 @@ export default function Privacy() {
 
       <h2>Hangi Verileri, Neden İşliyoruz?</h2>
       <div className="panel stack">
-        <p><b>Siteyi ziyaret ettiğinizde:</b> Hesap açmanız gerekmez; çerez ve analiz aracı kullanmıyoruz. IP adresiniz
+        <p><b>Siteyi ziyaret ettiğinizde:</b> Hesap açmanız gerekmez; analiz aracı kullanmıyoruz. Yalnızca dil seçiminizi
+          (Türkçe/İngilizce) hatırlayan, kişisel veri içermeyen tek bir çerez kullanılır. IP adresiniz
           veritabanına yazılmaz. Hız sınırı ve kötüye kullanımın önlenmesi için IP adresinizin geri döndürülemeyen, anahtarlı
           bir özeti kullanılır. Teknik sunucu günlükleri sınırlı boyutta tutulur ve otomatik olarak silinir.</p>
         <p><b>Öneri veya düzeltme gönderdiğinizde:</b> Alan adı, seçtiğiniz kategori, yazdığınız açıklama ve kanıt
@@ -65,7 +66,7 @@ export default function Privacy() {
 
       <h2 lang="en">English Summary</h2>
       <div className="panel stack" lang="en">
-        <p>No account, cookies or analytics. Your IP address is not stored in our database: a keyed, irreversible hash limits
+        <p>No account and no analytics; one cookie remembers your language choice and nothing else. Your IP address is not stored in our database: a keyed, irreversible hash limits
           abuse. Reports keep what you type, so please leave out personal details. Page content from scanned sites is private
           and deleted after 180 days. Cloudflare carries the traffic and Evren reads scanned pages; neither receives your
           reports. For requests about your data, use the address above.</p>

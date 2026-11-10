@@ -30,3 +30,7 @@ evaluation-*.md
 
 # local exports (datasets prepared for other platforms)
 exports/
+
+# offline demo builds (deployment/demo/build.sh)
+demo-dist/
+/frontend/.demo-build/

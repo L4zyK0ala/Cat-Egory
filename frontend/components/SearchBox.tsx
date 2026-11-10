@@ -1,10 +1,12 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useT } from "./LocaleProvider";
 
 export default function SearchBox({ initial = "" }: { initial?: string }) {
   const router = useRouter();
   const [value, setValue] = useState(initial);
+  const t = useT();
   return (
     <form
       className="search"
@@ -24,9 +26,10 @@ export default function SearchBox({ initial = "" }: { initial?: string }) {
         router.push(`/domain/${encodeURIComponent(host)}${link ? `?url=${encodeURIComponent(link)}` : ""}`);
       }}
     >
-      <input type="search" aria-label="Domain or URL" placeholder="Search a domain or URL, e.g. example.com"
+      <input type="search" aria-label={t("Domain or URL", "Alan adı veya URL")}
+             placeholder={t("Search a domain or URL, e.g. example.com", "Bir alan adı ya da URL arayın, ör. example.com")}
              value={value} onChange={(e) => setValue(e.target.value)} />
-      <button type="submit">Look Up</button>
+      <button type="submit">{t("Look Up", "Ara")}</button>
     </form>
   );
 }

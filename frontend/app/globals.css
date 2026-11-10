@@ -302,3 +302,8 @@ details summary { cursor: pointer; font-size: 14px; }
   .tile:hover .hint-bubble { display: none; }
   .tile .hint:focus .hint-bubble { display: block; }
 }
+
+/* ---------- language switch */
+.lang-switch { display: inline-flex; gap: 2px; margin-left: 14px; border: 1px solid var(--line); border-radius: 999px; padding: 2px; }
+.lang-switch button { background: none; border: 0; color: var(--muted); font: 700 12px/1 inherit; padding: 5px 9px; border-radius: 999px; cursor: pointer; box-shadow: none; }
+.lang-switch button.on { background: var(--red); color: #fff; }

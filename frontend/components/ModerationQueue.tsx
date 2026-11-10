@@ -1,12 +1,20 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { call, postConfirmed } from "@/lib/client";
+import { categoryName } from "@/lib/i18n";
 import KeyGate from "./KeyGate";
+import { useLocale, useT } from "./LocaleProvider";
 
 type Sub = { id: number; type: string; domain: string; proposed_categories: string[]; score: number; comment: string | null;
   category: string | null; evidence: string[]; reporters_for_domain: number; created_at: string };
 
 function Queue({ api }: { api: string }) {
+  const t = useT();
+  const locale = useLocale();
+  const name = (id: string) => categoryName(locale, id, id);
+  const types: Record<string, string> = { new_domain: t("new domain", "yeni alan adı"), false_positive: t("wrong category", "yanlış kategori"),
+    false_negative: t("missing category", "eksik kategori"), category_correction: t("main category correction", "ana kategori düzeltmesi"),
+    verification: t("confirmation", "onay") };
   const [items, setItems] = useState<Sub[]>([]);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
@@ -22,17 +30,17 @@ function Queue({ api }: { api: string }) {
   return (
     <div className="stack">
       {error && <div className="notice error">{error}</div>}
-      {items.length === 0 ? <div className="notice">Nothing to moderate.</div> : items.map((s) => (
+      {items.length === 0 ? <div className="notice">{t("Nothing to moderate.", "Moderasyon bekleyen bir şey yok.")}</div> : items.map((s) => (
         <div key={s.id} className="panel stack">
-          <div className="row"><b>{s.domain}</b><span className="badge pending">{s.type.replaceAll("_", " ")}</span>
-            <span className="muted">score {s.score} · reporters for domain {s.reporters_for_domain}</span></div>
-          {s.category && <div>Category in question: <span className="chip">{s.category}</span></div>}
-          {s.proposed_categories.length > 0 && <div>Proposed: {s.proposed_categories.map((c) => <span key={c} className="chip">{c}</span>)}</div>}
+          <div className="row"><b>{s.domain}</b><span className="badge pending">{types[s.type] ?? s.type.replaceAll("_", " ")}</span>
+            <span className="muted">{t(`score ${s.score} · reporters for domain ${s.reporters_for_domain}`, `puan ${s.score} · bu alan adını bildiren ${s.reporters_for_domain}`)}</span></div>
+          {s.category && <div>{t("Category in question", "Söz konusu kategori")}: <span className="chip">{name(s.category)}</span></div>}
+          {s.proposed_categories.length > 0 && <div>{t("Proposed", "Önerilen")}: {s.proposed_categories.map((c) => <span key={c} className="chip">{name(c)}</span>)}</div>}
           {s.comment && <div style={{ whiteSpace: "pre-wrap" }}>{s.comment}</div>}
           {s.evidence.length > 0 && <ul>{s.evidence.map((u) => <li key={u} className="mono">{u}</li>)}</ul>}
-          <div className="row"><button onClick={() => act(s.id, "accept")}>Accept</button>
-            <button className="secondary" onClick={() => act(s.id, "reject")}>Reject</button>
-            <button className="danger" onClick={() => act(s.id, "spam")}>Spam</button></div>
+          <div className="row"><button onClick={() => act(s.id, "accept")}>{t("Accept", "Kabul Et")}</button>
+            <button className="secondary" onClick={() => act(s.id, "reject")}>{t("Reject", "Reddet")}</button>
+            <button className="danger" onClick={() => act(s.id, "spam")}>{t("Spam", "Spam")}</button></div>
         </div>
       ))}
     </div>
