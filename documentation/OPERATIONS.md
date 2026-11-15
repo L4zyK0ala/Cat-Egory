@@ -341,7 +341,7 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 - [x] **Chromium sandbox**: crawler AppArmor profile installed in `/etc/apparmor.d`, `crawler.selftest` reports OK.
 - [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth).
 - [ ] Off-host backups (`offsite-backup.sh`, set up per section 4); restore drill once.
-- [ ] Alertmanager (or Grafana alerting) wired to a channel you read.
+- [x] Alertmanager wired to Telegram (`CATEGORY_ALERT_TELEGRAM_CHAT_ID`; test message received 2026-11-09).
 - [ ] EVREN: terms questions answered (`EVREN_INTEGRATION.md`), live checklist done. (Project-specific key: done 2026-11-08.)
 - [ ] Legal review of the data licence (CC BY 4.0 for own data) and of each enabled source.
 
