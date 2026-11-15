@@ -66,7 +66,29 @@ footer .brand b { color: var(--red); }
 .hero h1 em { color: var(--red); font-style: italic; }
 .hero .lead { font-size: 1.1rem; color: var(--muted); margin: 0 0 4px; max-width: 34em; }
 .hero .mascot { width: min(240px, 60vw); margin: 0 auto; }
-@media (max-width: 859px) { .hero .mascot { display: none; } }
+/* phones and tablets: the headline keeps the full width; the mascot sits beside the intro text */
+@media (max-width: 859px) {
+  .hero { grid-template-columns: minmax(0, 1fr) 116px; gap: 4px 12px;
+          grid-template-areas: "title title" "lead cat" "search search" "more more"; }
+  .hero > .hero-text { display: contents; }  /* its children take part in the grid above */
+  .hero h1 { grid-area: title; }
+  .hero .lead { grid-area: lead; margin: 0; }
+  .hero .search { grid-area: search; margin-top: 10px; }
+  .hero .hero-more { grid-area: more; }
+  .hero .mascot { grid-area: cat; width: 116px; margin: 0; align-self: center; }
+}
+
+/* Kostüm's eyes catch a little light in the dark: a faint halo that breathes slowly (all cat drawings). Kept
+   subtle on purpose, so it never pulls attention from the page. Nothing of this by day. */
+.eye-glow { display: none; }
+@media (prefers-color-scheme: dark) {
+  .cat .eye, .kitty .eye { fill: #C9DE6A; }
+  .eye-glow { display: inline; fill: #C6E84E; opacity: .3; }
+}
+@media (prefers-color-scheme: dark) and (prefers-reduced-motion: no-preference) {
+  .eye-glow { animation: phosphor 5s ease-in-out infinite; }
+}
+@keyframes phosphor { 0%, 100% { opacity: .2; } 50% { opacity: .4; } }
 
 /* ---------- surfaces */
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }

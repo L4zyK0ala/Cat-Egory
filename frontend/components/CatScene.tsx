@@ -7,12 +7,17 @@ import { useId } from "react";
 
 type Eyes = "open" | "happy" | "asleep";
 
-/** The head, centred on (0, 0), facing the viewer. Place it with a transform. */
-function Head({ eyes = "open" }: { eyes?: Eyes }) {
+/** The head, centred on (0, 0), facing the viewer. Place it with a transform. ``look`` moves the pupils sideways
+ *  (negative: to the left). In dark mode open eyes glow (globals.css, "eye-glow"). */
+function Head({ eyes = "open", look = 0 }: { eyes?: Eyes; look?: number }) {
   const clip = useId();
+  const glow = useId();
   return (
     <g>
-      <defs><clipPath id={clip}><ellipse cx="0" cy="0" rx="36" ry="30" /></clipPath></defs>
+      <defs>
+        <clipPath id={clip}><ellipse cx="0" cy="0" rx="36" ry="30" /></clipPath>
+        <filter id={glow} x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="3" /></filter>
+      </defs>
       <polygon className="fur" points="-31,-10 -29,-47 -5,-26" />
       <polygon className="ear-in" points="-26,-16 -25,-38 -11,-26" />
       <polygon className="fur" points="31,-10 29,-47 5,-26" />
@@ -26,12 +31,14 @@ function Head({ eyes = "open" }: { eyes?: Eyes }) {
       <circle className="cheek" cx="22" cy="9" r="6" />
       {eyes === "open" ? (
         <>
+          <circle className="eye-glow" cx="-14" cy="-4" r="11" filter={`url(#${glow})`} />
+          <circle className="eye-glow" cx="14" cy="-4" r="11" filter={`url(#${glow})`} />
           <circle className="eye" cx="-14" cy="-4" r="8.5" />
           <circle className="eye" cx="14" cy="-4" r="8.5" />
-          <ellipse className="iris" cx="-13" cy="-4" rx="3.4" ry="6" />
-          <ellipse className="iris" cx="15" cy="-4" rx="3.4" ry="6" />
-          <circle className="glint" cx="-15" cy="-7" r="1.8" />
-          <circle className="glint" cx="13" cy="-7" r="1.8" />
+          <ellipse className="iris" cx={-13 + look} cy="-4" rx="3.4" ry="6" />
+          <ellipse className="iris" cx={15 + look} cy="-4" rx="3.4" ry="6" />
+          <circle className="glint" cx={-15 + look} cy="-7" r="1.8" />
+          <circle className="glint" cx={13 + look} cy="-7" r="1.8" />
         </>
       ) : (
         <path className="line" d={eyes === "happy" ? "M-21-2q7-8 14 0M7-2q7-8 14 0" : "M-21-4q7 6 14 0M7-4q7 6 14 0"} />
@@ -182,3 +189,4 @@ export function CatSit() {
     </div>
   );
 }
+

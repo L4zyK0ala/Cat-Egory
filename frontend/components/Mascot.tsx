@@ -1,10 +1,12 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 
 /** The Cat-Egory mascot (same drawing as the project website). Its eyes follow the pointer unless the
- *  visitor prefers reduced motion. Decorative: hidden from assistive technology. */
+ *  visitor prefers reduced motion; in dark mode they glow softly (globals.css, "eye-glow"). Decorative: hidden
+ *  from assistive technology. */
 export default function Mascot() {
   const ref = useRef<SVGSVGElement>(null);
+  const glow = useId();
   useEffect(() => {
     const svg = ref.current;
     if (!svg || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -35,6 +37,7 @@ export default function Mascot() {
         <defs>
           <clipPath id="cat-head-clip"><ellipse cx="180" cy="160" rx="102" ry="86" /></clipPath>
           <clipPath id="cat-body-clip"><ellipse cx="180" cy="292" rx="88" ry="56" /></clipPath>
+          <filter id={glow} x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="8" /></filter>
         </defs>
         <circle className="halo" cx="180" cy="190" r="165" />
         <path className="tail-outline" d="M122 304c-24 0-44-8-54-28" />
@@ -56,6 +59,8 @@ export default function Mascot() {
           <ellipse className="outline" cx="180" cy="160" rx="102" ry="86" />
           <circle className="cheek" cx="112" cy="190" r="13" />
           <circle className="cheek" cx="248" cy="190" r="13" />
+          <circle className="eye-glow" cx="140" cy="152" r="33" filter={`url(#${glow})`} />
+          <circle className="eye-glow" cx="220" cy="152" r="33" filter={`url(#${glow})`} />
           <circle className="eye" cx="140" cy="152" r="27" />
           <circle className="eye" cx="220" cy="152" r="27" />
           <g className="pupil" data-x="140" data-y="152">
