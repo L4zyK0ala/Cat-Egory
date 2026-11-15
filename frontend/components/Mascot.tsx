@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useRef } from "react";
 
-/** The Cat-Egory mascot (same drawing as the project website). Its eyes follow the pointer unless the
+/** The Cat-Egory mascot. Its eyes follow the pointer unless the
  *  visitor prefers reduced motion; in dark mode they glow softly (globals.css, "eye-glow"). Decorative: hidden
  *  from assistive technology. */
 export default function Mascot() {

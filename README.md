@@ -124,7 +124,6 @@ crawler/         Playwright crawler, SSRF guard, egress proxy
 integrations/    third-party source engine + licence catalogue
 feeds/           feed builders
 frontend/        Next.js web UI
-website/         project website (cat-egory.org, static, Cloudflare Pages)
 deployment/      Dockerfiles, compose, seccomp/AppArmor, Prometheus, Grafana, scripts
 documentation/   design documents
 tests/           unit, integration and browser tests
