@@ -71,6 +71,7 @@ def get_principal(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     session: Session = Depends(get_session),
+    client: redis.Redis = Depends(get_redis),
 ) -> Principal:
     settings = get_settings()
     ip = client_ip(request, settings)
@@ -79,20 +80,41 @@ def get_principal(
     if credentials is None:
         return principal
 
-    unauthorized = ApiError(401, "invalid_api_key", "invalid, expired or revoked API key",
-                            headers={"WWW-Authenticate": "Bearer"})
+    # A wrong key is refused before the rate limiter runs, so wrong keys are counted here: without it, every guess
+    # would be a free database query. Redis down = not counted (the same fail-open choice as the rate limit).
+    now_s = int(time.time())
+    failures = f"rl:authfail:{principal.fingerprint or ip or 'unknown'}:{now_s - now_s % 60}"
+    try:
+        blocked = int(client.get(failures) or 0) >= settings.auth_failure_limit_per_minute
+    except redis.RedisError:
+        blocked = False
+    if blocked:
+        raise ApiError(429, "rate_limited", "too many failed API key attempts",
+                       headers={"Retry-After": str(60 - now_s % 60)})
+
+    def refused() -> ApiError:
+        try:
+            pipe = client.pipeline()
+            pipe.incr(failures)
+            pipe.expire(failures, 65)
+            pipe.execute()
+        except redis.RedisError:
+            pass
+        return ApiError(401, "invalid_api_key", "invalid, expired or revoked API key",
+                        headers={"WWW-Authenticate": "Bearer"})
+
     prefix = parse_api_key(credentials.credentials)
     if prefix is None:
-        raise unauthorized
+        raise refused()
     row = session.execute(select(ApiKey, User).join(User, User.id == ApiKey.user_id)
                           .where(ApiKey.prefix == prefix)).first()
     now = datetime.now(UTC)
     if row is None:
-        raise unauthorized
+        raise refused()
     key, user = row
     if (not key_matches(credentials.credentials, key.key_hash) or key.revoked_at is not None
             or (key.expires_at is not None and key.expires_at <= now) or not user.is_active):
-        raise unauthorized
+        raise refused()
 
     if key.last_used_at is None or now - key.last_used_at > _LAST_USED_RESOLUTION:
         key.last_used_at = now

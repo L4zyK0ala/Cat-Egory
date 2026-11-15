@@ -18,8 +18,21 @@ def test_every_alert_has_a_severity_and_a_summary():
 
 def test_only_outages_are_critical():
     critical = {r["alert"] for r in rules() if r["labels"]["severity"] == "critical"}
-    assert critical == {"ApiDown", "DatabaseMetricsDown", "ApiErrors", "SchedulerStopped", "SchedulerNeverRan",
-                        "CrawlerOutage", "BackupStale", "FeedsStale"}
+    assert critical == {"ApiDown", "PublicApiDown", "SiteDown", "DatabaseMetricsDown", "ApiErrors", "SchedulerStopped",
+                        "SchedulerNeverRan", "CrawlerOutage", "BackupStale", "FeedsStale"}
+
+
+def test_what_visitors_use_is_watched():
+    """The public API and the public site each have a scrape job, and an alert on that job being down."""
+    jobs = {j["job_name"]: j for j in
+            yaml.safe_load((ROOT / "prometheus/prometheus.yml").read_text())["scrape_configs"]}
+    assert jobs["cat-egory-public-api"]["static_configs"][0]["targets"] == ["api:9100"]
+    assert jobs["cat-egory-site"]["metrics_path"] == "/healthz"
+    watched = {r["alert"]: r["expr"] for r in rules()}
+    assert 'job="cat-egory-public-api"' in watched["PublicApiDown"] and 'job="cat-egory-site"' in watched["SiteDown"]
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    assert compose["services"]["api"]["environment"]["CATEGORY_METRICS_PORT"] == "9100"
+    assert "9100" not in str(compose["services"]["api"]["ports"])  # never published
 
 
 def test_only_critical_alerts_reach_telegram():

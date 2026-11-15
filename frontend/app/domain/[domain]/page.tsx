@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api, ApiError, publicApiUrl } from "@/lib/api";
+import { api, ApiError, UNCACHED, publicApiUrl } from "@/lib/api";
 import type { Category, DomainInfo, HistoryItem, Risk, UrlLookup } from "@/lib/types";
 import SearchBox from "@/components/SearchBox";
 import ReportForm from "@/components/ReportForm";
@@ -47,24 +47,29 @@ export default async function DomainPage({ params, searchParams }: {
 }) {
   const { domain } = await params;
   const { locale, t } = await getT();
-  const name = decodeURIComponent(domain);
+  let name = domain;
+  try {
+    name = decodeURIComponent(domain);
+  } catch {
+    /* a broken %-escape: the API will refuse the name as it is */
+  }
   const link = (v => (Array.isArray(v) ? v[0] : v))((await searchParams).url)?.slice(0, 2000);
   // A full link was searched: also check that exact page (a phishing page can sit on an otherwise fine site).
   const lookup = link
-    ? await api<UrlLookup>(`/api/v1/url?url=${encodeURIComponent(link)}`, 60).catch(() => null)
+    ? await api<UrlLookup>(`/api/v1/url?url=${encodeURIComponent(link)}`, UNCACHED).catch(() => null)
     : null;
   let info: DomainInfo | null = null;
   let error: ApiError | null = null;
   let viaParent = false;
   try {
-    info = await api<DomainInfo>(`/api/v1/domain/${encodeURIComponent(name)}`, 60);
+    info = await api<DomainInfo>(`/api/v1/domain/${encodeURIComponent(name)}`, UNCACHED);
   } catch (e) {
     error = e instanceof ApiError ? e : new ApiError(0, "network", "API unreachable");
   }
   if (!info && error?.status === 404) {
     // e.g. www.example.com is not stored but example.com is: show the registrable domain, and say so.
     try {
-      const r = await api<{ match: string; result: DomainInfo }>(`/api/v1/url?url=${encodeURIComponent(`http://${name}/`)}`, 60);
+      const r = await api<{ match: string; result: DomainInfo }>(`/api/v1/url?url=${encodeURIComponent(`http://${name}/`)}`, UNCACHED);
       if (r.match === "registrable_domain") {
         info = r.result;
         viaParent = true;
@@ -88,7 +93,7 @@ export default async function DomainPage({ params, searchParams }: {
     );
   }
   const [history, taxonomy] = await Promise.all([
-    api<{ history: HistoryItem[] }>(`/api/v1/history/${encodeURIComponent(info.domain)}`, 60).catch(() => ({ history: [] })),
+    api<{ history: HistoryItem[] }>(`/api/v1/history/${encodeURIComponent(info.domain)}`, UNCACHED).catch(() => ({ history: [] })),
     api<{ items: Category[] }>("/api/v1/categories", 3600).catch(() => ({ items: [] as Category[] })),
   ]);
   const names = Object.fromEntries(taxonomy.items.map((c) => [c.id, categoryName(locale, c.id, c.name)]));

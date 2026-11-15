@@ -11,6 +11,21 @@ groups:
         annotations:
           summary: "Cat-egory API is not being scraped"
           telegram: "API'ye 5 dakikadır ulaşılamıyor. admin-api kapsayıcısına bakın."
+      # What visitors use. ApiDown above is the admin instance; these two are the containers behind the tunnel.
+      - alert: PublicApiDown
+        expr: up{job="cat-egory-public-api"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "The public API is not answering"
+          telegram: "Herkese açık API'ye 5 dakikadır ulaşılamıyor, site veri gösteremiyor. api kapsayıcısına bakın."
+      - alert: SiteDown
+        expr: up{job="cat-egory-site"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: "The public site is not answering"
+          telegram: "Herkese açık site 5 dakikadır yanıt vermiyor. frontend kapsayıcısına bakın."
       - alert: DatabaseMetricsDown
         expr: category_db_metrics_up == 0
         for: 10m
@@ -45,8 +60,8 @@ groups:
         for: 10m
         labels: {severity: critical}
         annotations:
-          summary: "API is returning 5xx responses"
-          telegram: "API 10 dakikadır sunucu hatası (5xx) veriyor. api kayıtlarına bakın."
+          summary: "API is returning 5xx responses (public or admin instance)"
+          telegram: "API 10 dakikadır sunucu hatası (5xx) veriyor. api ve admin-api kayıtlarına bakın."
       # Celery heartbeats: the dispatcher runs every 10 s, so a quiet 5 minutes means beat or the worker stopped.
       - alert: SchedulerStopped
         expr: time() - category_task_last_success_timestamp_seconds{task="category.scan.dispatch"} > 300

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api, ApiError, publicApiUrl } from "@/lib/api";
+import { api, ApiError, publicApiUrl, UNCACHED } from "@/lib/api";
 import type { Category } from "@/lib/types";
 import { categoryDescription, categoryName } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
@@ -17,9 +17,12 @@ export default async function CategoryPage({ params, searchParams }: {
   let category: Category | null = null;
   let page: Page | null = null;
   try {
-    category = await api<Category>(`/api/v1/categories/${encodeURIComponent(id)}`, 3600);
+    // The category comes from the (cached) list, so an id nobody defined never becomes a request or a cache entry.
+    const all = await api<{ items: Category[] }>("/api/v1/categories", 3600);
+    category = all.items.find((c) => c.id === id) ?? null;
+    if (!category) return <div className="notice">{t("Unknown category.", "Bilinmeyen kategori.")}</div>;
     const qs = new URLSearchParams({ limit: "100", ...(cursor && /^\d+$/.test(cursor) ? { cursor } : {}) });
-    page = await api<Page>(`/api/v1/categories/${encodeURIComponent(id)}/domains?${qs}`, 120);
+    page = await api<Page>(`/api/v1/categories/${encodeURIComponent(category.id)}/domains?${qs}`, UNCACHED);
   } catch (e) {
     if (e instanceof ApiError && e.status === 404) return <div className="notice">{t("Unknown category.", "Bilinmeyen kategori.")}</div>;
     return <div className="notice error">{t("The API is not reachable right now.", "API'ye şu an ulaşılamıyor.")}</div>;

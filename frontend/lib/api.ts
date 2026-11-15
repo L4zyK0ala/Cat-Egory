@@ -14,10 +14,15 @@ export class ApiError extends Error {
   }
 }
 
+/** For any call whose URL contains something the visitor chose (a domain, a link, a page cursor) or the time.
+ *  Next.js keeps one cache file per distinct URL and never deletes them; with visitor-chosen URLs that cache grows
+ *  until the container runs out of memory (the cache directory is a tmpfs). Only fixed URLs may be cached. */
+export const UNCACHED = 0;
+
 export async function api<T>(path: string, revalidate = 60): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (process.env.CATEGORY_FRONTEND_API_KEY) headers.Authorization = `Bearer ${process.env.CATEGORY_FRONTEND_API_KEY}`;
-  const res = await fetch(`${INTERNAL}${path}`, { headers, next: { revalidate } });
+  const res = await fetch(`${INTERNAL}${path}`, revalidate > 0 ? { headers, next: { revalidate } } : { headers, cache: "no-store" });
   if (!res.ok) {
     let code = "error";
     let message = res.statusText;

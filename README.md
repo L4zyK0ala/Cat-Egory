@@ -12,8 +12,8 @@ downloadable feeds (TXT, hosts, CSV, JSON, DNS RPZ).
 Commercial web-categorisation databases are closed and paid. Cat-egory's aim is an open alternative whose
 data anyone can use, check and correct, with a clear record of where every label came from.
 
-> **Status: alpha (0.1).** Everything below runs on the Docker stack on one machine, with real crawling and
-> real AI classification. It has not yet been run publicly or at scale; expect breaking changes.
+> **Status: alpha (0.1).** The public instance runs at [cat-egory.org](https://cat-egory.org) on the Docker
+> stack of one machine, with real crawling and real AI classification. Expect breaking changes.
 
 ## How it works
 
@@ -54,7 +54,7 @@ domains ──► scan queue ──► sandboxed Chromium ──► page text, H
 | Third-party sources with licence approval and provenance | ✅ engine; no source approved yet |
 | Monitoring (Prometheus, Grafana, alert rules), backup / restore scripts | ✅ |
 | Quality measurement on known sites (`python -m classification.evaluation`) | ✅ |
-| Public instance, TLS deployment, alert delivery | not yet — see the [roadmap](documentation/ROADMAP.md) |
+| Public instance (Cloudflare Tunnel, TLS), alerts to Telegram | ✅ [cat-egory.org](https://cat-egory.org) |
 
 ## Quick start (Docker)
 

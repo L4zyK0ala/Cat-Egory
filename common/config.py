@@ -72,12 +72,21 @@ class Settings(BaseSettings):
     developer_key_days: int = Field(default=365, ge=1, description="a key expires after this many days")
     developer_keys_per_client_per_day: int = Field(default=3, ge=1)
     developer_keys_per_day: int = Field(default=200, ge=1, description="all clients together")
+    auth_failure_limit_per_minute: int = Field(
+        default=20, ge=1, description="wrong API keys from one client per minute before it gets 429 instead of 401")
+    max_request_bytes: int = Field(
+        default=1024 * 1024, ge=1024, description="largest request body the API reads (the admin instance also "
+                                                  "allows max_upload_bytes for file uploads)")
     rate_limit_fail_open: bool = Field(
         default=True, description="If Redis is unreachable, allow requests (logged) instead of rejecting them."
     )
     cors_origins: list[str] = []
     trusted_proxies: list[IPvAnyNetwork] = Field(
         default=[], description="connections from these addresses may state the visitor's IP (CF-Connecting-IP)")
+    metrics_port: int | None = Field(
+        default=None, ge=1024, le=65535,
+        description="public API only: serve the HTTP request counters for Prometheus on this extra port (not "
+                    "published, not behind the tunnel). The admin instance has /metrics instead")
     admin_routes: bool = Field(
         default=False, description="serve /api/v1/admin/* and /metrics. Off on the public API; on only for the "
                                    "admin instance, which is bound to a private address (CATEGORY_ADMIN_BIND)")

@@ -26,6 +26,12 @@ function contentSecurityPolicy(): string {
  *  because the admin console links to them. The public site passes through (it answers 404 on /admin). */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  try {
+    decodeURIComponent(pathname);
+  } catch {
+    // A broken %-escape (/domain/%zz) otherwise fails inside the router as a 500 with no page.
+    return new NextResponse("Bad request\n", { status: 400, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
   if (process.env.UI_ADMIN === "true"
       && pathname !== "/admin" && !pathname.startsWith("/admin/") && !pathname.startsWith("/domain/")) {
     const panel = request.nextUrl.clone();

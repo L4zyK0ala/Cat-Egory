@@ -6,7 +6,9 @@
 #   core    internal-only: databases, queue, object store and the services that use them (no internet)
 #   crawl   internal-only: crawler <-> redis, object store, egress proxy. No Postgres, no internet.
 #   egress  outbound internet: worker (DNS pre-check, AI provider) and the egress proxy
-#   edge    published ports
+#   tunnel  internal-only: cloudflared <-> the public site and the public API
+#   tunnelout  outbound internet for cloudflared alone (it shares no network with the workers or the proxy)
+#   edge    published ports. After going public, docker-compose.public.yml takes the public containers off it.
 # The crawler's ONLY way to the internet is the egress-proxy, which enforces the SSRF policy at connect time.
 name: cat-egory
 
@@ -146,6 +148,9 @@ services:
       CATEGORY_ADMIN_ROUTES: "false"
       # only the tunnel's fixed address may state the visitor's IP
       CATEGORY_TRUSTED_PROXIES: '["10.250.61.250/32"]'
+      # Request counters for Prometheus on a port of their own: not published, and not behind the tunnel (which
+      # forwards port 8000 only), so the internet cannot read them.
+      CATEGORY_METRICS_PORT: "9100"
     networks: [core, edge, tunnel]
     ports:
       - "${CATEGORY_PUBLIC_BIND:-127.0.0.1}:${CATEGORY_API_PORT:-8110}:8000"
@@ -343,7 +348,9 @@ services:
       OPERATOR_NAME: ${CATEGORY_OPERATOR_NAME:-}
       CATEGORY_FRONTEND_API_KEY: ${CATEGORY_FRONTEND_API_KEY:-}
     read_only: true
-    tmpfs: [/tmp, "/app/.next/cache"]
+    # A tmpfs is charged to the container's memory. The size keeps a growing cache from ending in an OOM kill:
+    # when it is full Next.js only fails to write a cache entry.
+    tmpfs: ["/tmp:size=64m", "/app/.next/cache:size=64m"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks: [core, edge, tunnel]
@@ -367,7 +374,7 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks:
-      egress: {}
+      tunnelout: {}   # its own way out: the internet-facing container shares no network with the workers
       tunnel: {ipv4_address: 10.250.61.250}   # the address CATEGORY_TRUSTED_PROXIES names; high, so nothing else gets it
     depends_on:
       frontend: {condition: service_started}
@@ -385,7 +392,7 @@ services:
       API_INTERNAL_URL: http://admin-api:8000
       PUBLIC_API_URL: ${CATEGORY_ADMIN_API_URL:-http://127.0.0.1:8111}
     read_only: true
-    tmpfs: [/tmp, "/app/.next/cache"]
+    tmpfs: ["/tmp:size=64m", "/app/.next/cache:size=64m"]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     networks: [core, edge]
@@ -460,6 +467,7 @@ networks:
   tunnel:
     internal: true   # cloudflared <-> the public site and API only
     ipam: {config: [{subnet: 10.250.61.0/24}]}
+  tunnelout: {}      # cloudflared's outbound connection to Cloudflare, nothing else on it
   edge: {}
 
 volumes:

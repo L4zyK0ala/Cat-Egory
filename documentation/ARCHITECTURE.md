@@ -261,7 +261,8 @@ third-party-derived feed carries that source's licence and attribution header, o
 - Structured JSON logs (one event per line, `request_id`, `job_id`, `domain`) on stdout.
 - Prometheus metrics: HTTP latency/status, queue depth, crawl outcomes, AI latency/tokens/validation
   failures, feed build age. Grafana dashboards provisioned from `deployment/grafana`.
-- Health endpoints: `/healthz` (process up), `/readyz` (DB + Redis reachable).
+- Health endpoints: `/healthz` (process up), `/readyz` (DB + Redis reachable). The public site has `/healthz` too (scraped by Prometheus).
+- The public API serves its request counters on port 9100 (not published, not forwarded by the tunnel); `/metrics` exists on the admin instance only.
 
 ## 8. Technology choices
 

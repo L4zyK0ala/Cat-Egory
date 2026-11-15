@@ -347,12 +347,20 @@ age of the backups. It only reads the database. Preview it, or send it now:
 `$DC exec worker python -m backend.cli daily-report [--send]`. Turn it off with `CATEGORY_DAILY_REPORT_ENABLED=false`.
 The token reaches the alertmanager and the main worker only.
 
-`/metrics` on the API exports HTTP metrics and database-derived gauges (cached 30 s):
+**What visitors use.** Prometheus scrapes three targets: the admin API (`/metrics`, everything below), the public
+API (`api:9100`, request counters and process memory only; the port is not published and the tunnel does not forward
+it) and the public site (`frontend:3000/healthz`). **PublicApiDown** and **SiteDown** fire after 5 minutes without
+an answer; the 5xx alert counts both API instances, including crashes (an unhandled error is answered with the
+normal error envelope and counted). Prometheus runs on the same machine, so it cannot report the machine or the
+home connection being down: for that, turn on Cloudflare's *Tunnel health* notification (Notifications → Add) or any
+external uptime check of the public address.
+
+`/metrics` on the admin API exports HTTP metrics and database-derived gauges (cached 30 s):
 `category_domains{status}`, `category_scan_jobs{status}`, `category_open_reviews`,
 `category_pending_submissions`, `category_active_threats`, `category_ai_predictions_24h{status}`,
 `category_feed_age_seconds`, `category_fast_lane_oldest_seconds`, `category_db_metrics_up`, and from Redis
 `category_task_last_success_timestamp_seconds{task}` (written by the worker after every successful Celery task)
-with `category_heartbeats_up`. Alerts: API down, DB metrics down, scan backlog, stale feeds, > 20 % invalid AI
+with `category_heartbeats_up`. Alerts: API down, public API down, site down, DB metrics down, scan backlog, stale feeds, > 20 % invalid AI
 answers, API 5xx, **scheduler stopped** (no scan dispatch for 5 minutes: beat or the worker is down), scheduler
 never ran, discovery stopped for an hour, heartbeats unreadable, **fast lane stuck** (a suspected threat waited
 over 20 minutes).
@@ -379,9 +387,12 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 
 ## 7. Production checklist
 
-- [ ] Publish through Cloudflare Tunnel and move the admin side to the VPN (see "Going public" below).
+- [ ] Publish through Cloudflare Tunnel; the admin side stays on a private address (see "Going public" below).
 - [x] UI CSP `connect-src` allows only this container's API origin (`frontend/proxy.ts`).
 - [x] **Chromium sandbox**: crawler AppArmor profile installed in `/etc/apparmor.d`, `crawler.selftest` reports OK.
+- [x] Request bodies are capped (1 MB on the public API), wrong API keys are throttled, the site's fetch cache
+      cannot grow with visitor input (pre-launch review 2026-11-15, `tests/integration/test_hardening.py`).
+- [ ] Public containers off the `edge` network (`docker-compose.public.yml`, step 5 below).
 - [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth).
 - [ ] Off-host backups (`offsite-backup.sh`, set up per section 4); restore drill once.
 - [x] Alertmanager wired to Telegram (`CATEGORY_ALERT_TELEGRAM_CHAT_ID`; test message received 2026-11-09).
@@ -392,16 +403,45 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 
 The Cloudflare Tunnel dials out, so no port is opened at home. `cloudflared` sits on the `tunnel` network with only
 `frontend` and `api`, and has a fixed address, the only one whose `CF-Connecting-IP` header the public API believes.
-Admin containers never join that network.
+Its way out to Cloudflare is a network of its own (`tunnelout`), shared with nothing. Admin containers never join
+either network.
 
 1. In Cloudflare Zero Trust create a tunnel and copy its token to `CATEGORY_TUNNEL_TOKEN` in `.env`. Public hostnames:
-   the site to `http://frontend:3000`, the API to `http://api:8000`.
-2. In `.env`: `CATEGORY_PUBLIC_API_URL` and `CATEGORY_CORS_ORIGINS` to the HTTPS origins, `CATEGORY_PUBLIC_BIND=127.0.0.1`.
-3. Admin side on the VPN: `make docker-after-vpn`, then `CATEGORY_ADMIN_BIND=<VPN address>`,
-   `CATEGORY_ADMIN_API_URL=http://<VPN address>:8111`, `CATEGORY_ADMIN_CORS_ORIGINS=["http://<VPN address>:3012"]`.
-4. `$DC --profile public up -d --build`. The admin UI is then at `http://<VPN address>:3012` from a VPN client only.
+   the site to `http://frontend:3000`, the API to `http://api:8000`. Nothing else: no hostname for `admin-ui`,
+   `admin-api`, Grafana, Prometheus or `api:9100`.
+2. In `.env`: `CATEGORY_PUBLIC_API_URL` and `CATEGORY_CORS_ORIGINS` to the HTTPS origins (no trailing slash),
+   `CATEGORY_CONTACT_EMAIL` and `CATEGORY_OPERATOR_NAME` set, and a `CATEGORY_FRONTEND_API_KEY` (section 1).
+3. The admin side stays on a private address and is never given a tunnel hostname. Either the home network
+   (`CATEGORY_ADMIN_BIND=<LAN address>`, reachable from home only) or the VPN: `make docker-after-vpn`, then
+   `CATEGORY_ADMIN_BIND=<VPN address>`, `CATEGORY_ADMIN_API_URL=http://<VPN address>:8111`,
+   `CATEGORY_ADMIN_CORS_ORIGINS=["http://<VPN address>:3012"]`.
+4. `$DC --profile public up -d --build`, then `$DC restart prometheus` (new scrape jobs and alerts).
+5. Once the public address works, take the public containers off the `edge` network:
+   `$DC -f deployment/docker-compose.public.yml --profile public up -d`. From then on `:3010` and `:8110` no longer
+   answer on the server's own address (use the public one), and a compromised public container has no route to the
+   home network or the internet. Keep the extra `-f` in every later `up`; without it the ports come back.
 
-Check from outside the VPN that `:3012` and `:8111` do not answer, and that `/admin` on the public site is a 404.
+Check from outside: `/admin` on the site is a 404; `/metrics` and `/api/v1/admin/me` on the API are 404; `:3012`,
+`:8111`, `:3011` and `:9091` do not answer from the internet; `https://<api>/readyz` says `ok`. In Prometheus
+(Status → Targets) all three jobs are up.
+
+**Cloudflare settings** (dashboard, not in this repository):
+
+- SSL/TLS: *Always Use HTTPS* on. The site and the API already send `Strict-Transport-Security`.
+- A rate-limiting rule on the site's hostname (Security → WAF → Rate limiting rules), for example 120 requests per
+  10 seconds per IP → block. Page renders on the server use one service key for all visitors, so the API's
+  per-visitor limit does not apply to them; this rule is the per-visitor limit for pages. The API hostname has its
+  own limits (60 reads and 10 writes a minute per visitor, 20 wrong keys a minute).
+- Notifications: *Tunnel health* to your e-mail. It is the only alert that still works when the server is off.
+- Two-factor authentication on the Cloudflare account: whoever controls it controls where the tunnel points.
+- Indexing is a choice, not a default here: there is no `robots.txt`, so search engines may index every
+  `/domain/<name>` page they find a link to.
+
+**Limits that protect the public API** (defaults; `common/config.py`): request bodies over 1 MB are refused with 413
+before they are read (`CATEGORY_MAX_REQUEST_BYTES`; the admin instance allows uploads up to
+`CATEGORY_MAX_UPLOAD_BYTES`); after 20 wrong API keys in a minute a client gets 429 instead of 401
+(`CATEGORY_AUTH_FAILURE_LIMIT_PER_MINUTE`). These are not passed through `docker-compose.yml`; add them to the `api`
+service's environment if you ever need other values.
 
 ## 8. Performance (measured 2026-11-07)
 

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import CopyText from "@/components/CopyText";
-import { api, publicApiUrl } from "@/lib/api";
+import { api, publicApiUrl, UNCACHED } from "@/lib/api";
 import { categoryName, intl } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 import type { Category } from "@/lib/types";
@@ -27,7 +27,7 @@ export default async function ChangesPage() {
   let data: Changes | null = null;
   let names: Record<string, string> = {};
   try {
-    const [c, cats] = await Promise.all([api<Changes>(`/api/v1/changes?since=${encodeURIComponent(since)}&limit=1000`, 60),
+    const [c, cats] = await Promise.all([api<Changes>(`/api/v1/changes?since=${encodeURIComponent(since)}&limit=1000`, UNCACHED),  // "since" differs on every request
                                          api<{ items: Category[] }>("/api/v1/categories", 3600)]);
     data = c;
     names = Object.fromEntries(cats.items.map((x) => [x.id, categoryName(locale, x.id, x.name)]));

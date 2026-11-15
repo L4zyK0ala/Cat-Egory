@@ -1,0 +1,20 @@
+# After the site is public through the tunnel: take the two internet-facing containers off the `edge` network.
+#
+#   docker compose -f deployment/docker-compose.yml -f deployment/docker-compose.public.yml \
+#     --env-file .env --profile public up -d
+#
+# Why: `edge` is an ordinary bridge, so a container on it can open connections to the home network and the
+# internet. The public API and the public site are the only containers strangers can send input to; if one of them
+# were ever taken over, that is the way out. Without `edge` they are left with `core` (database, Redis, object
+# store) and `tunnel` (cloudflared), both internal: no route to the LAN, the host's other services or the internet.
+#
+# The price: http://<server>:3010 and :8110 stop answering, because a port cannot be published from an internal
+# network. Visitors and you use the public address; the admin panel (:3012, :8111), Grafana and Prometheus are not
+# touched. Needs Docker Compose 2.24 or newer (the !override and !reset tags).
+services:
+  api:
+    networks: !override [core, tunnel]
+    ports: !reset []
+  frontend:
+    networks: !override [core, tunnel]
+    ports: !reset []
