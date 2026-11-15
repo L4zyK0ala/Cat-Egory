@@ -352,7 +352,9 @@ over 20 minutes).
 **Threat fast lane.** Scan jobs at priority 0–2 (`CATEGORY_FAST_LANE_MAX_PRIORITY`): CT look-alikes, Octryx
 findings, and scans a person queues at that priority. They may use one crawl slot above
 `CATEGORY_MAX_IN_FLIGHT_SCANS` (`CATEGORY_FAST_LANE_EXTRA_SLOTS`). Their scan and classification steps run on
-the `fast` queue, which the `worker-fast` container works through on its own. The crawler reads `crawl-fast`
+the `fast` queue, which the `worker-fast` container works through on its own. Routine scanning also has its own
+`worker-scan` container (queue `scan`: dispatch, DNS pre-check, storing results). Long AI calls on the main
+`worker` cannot starve it; on 2026-11-15 they did, and scanning stopped for an hour (**scheduler stopped** alert). The crawler reads `crawl-fast`
 before `crawl`.
 
 Celery beat stores its last-run times in the `beatdata` volume, so a restart or rebuild does not delay hourly

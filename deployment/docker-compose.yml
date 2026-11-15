@@ -152,7 +152,7 @@ services:
 
   worker:
     <<: *backend
-    command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "scan,classify,ingest,feeds,maintenance",
+    command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "classify,ingest,feeds,maintenance",
               "--concurrency", "2", "--loglevel", "INFO"]
     environment: &worker-env
       <<: *backend-env
@@ -182,6 +182,24 @@ services:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
     deploy: {resources: {limits: {cpus: "2", memory: 1g}}}
+
+  # The scan pipeline's short steps (dispatch every 10 s, DNS pre-check, storing results, scheduling, reaping) on a
+  # worker of their own. On the main worker, long AI calls (a batch of 448 name-only questions on 2026-11-15) took
+  # every slot, the 10-second dispatch expired unrun for an hour and scanning stopped. No AI key here.
+  worker-scan:
+    <<: *backend
+    command: ["celery", "-A", "backend.app.worker:celery_app", "worker", "-Q", "scan",
+              "--concurrency", "2", "--loglevel", "INFO"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A backend.app.worker:celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 | grep -q pong"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    networks: [core, egress]   # the DNS pre-check resolves names
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: "1", memory: 512m}}}
 
   # Threat fast lane: scan and classification steps of suspected threats (CT look-alikes, Octryx findings, scans a
   # person marked priority 0-2). One process of its own, so routine classification, feed builds or source syncs

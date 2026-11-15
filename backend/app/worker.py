@@ -1,7 +1,8 @@
 """Celery application. Each workload has its own queue so it can be scaled (or isolated) separately:
 
 * ``crawl``       – browser crawling, runs only in the crawler container (no DB access)
-* ``scan``        – scan pipeline on the core worker: dispatch, DNS pre-check, persist results
+* ``scan``        – scan pipeline (dispatch, DNS pre-check, persist results) on its own worker (worker-scan), so
+                    long AI calls on the main worker can never starve the 10-second dispatch
 * ``classify``    – AI classification + validation (Phase 4)
 * ``ingest``      – imports and third-party source sync (Phase 5)
 * ``feeds``       – feed generation (Phase 5)

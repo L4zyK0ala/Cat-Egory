@@ -97,3 +97,15 @@ def test_a_stuck_fast_lane_shows_in_metrics(client, engine, admin):
     assert 1700 < oldest() < 1900
     rules = (ROOT / "deployment/prometheus/alerts.yml").read_text()
     assert "category_fast_lane_oldest_seconds > 1200" in rules
+
+
+
+def test_scanning_has_a_worker_of_its_own():
+    """2026-11-15: 448 queued AI calls held both slots of the main worker; the 10-second dispatch expired unrun."""
+    services = yaml.safe_load((ROOT / "deployment/docker-compose.yml").read_text())["services"]
+    queues = {name: svc["command"][svc["command"].index("-Q") + 1].split(",")
+              for name, svc in services.items() if "celery" in str(svc.get("command", "")) and "-Q" in svc["command"]}
+    assert queues["worker-scan"] == ["scan"]
+    assert "scan" not in queues["worker"] and "classify" in queues["worker"]
+    assert "CATEGORY_EVREN_API_KEY" not in str(services["worker-scan"].get("environment", {}))
+    assert "worker-scan" in (ROOT / "deployment/scripts/restore.sh").read_text()
