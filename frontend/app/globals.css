@@ -94,7 +94,11 @@ footer .brand b { color: var(--red); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
 .tile .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
-.tile .value { font: 700 2rem/1.1 var(--serif); color: var(--red); margin-top: 6px; font-variant-numeric: tabular-nums; }
+/* Tiles in a row are equally tall; the number sits at the bottom, so all numbers line up even when a label
+   wraps onto a second line. */
+.tile { display: flex; flex-direction: column; }
+.tile .value { font: 700 2rem/1.1 var(--serif); color: var(--red); margin-top: auto; padding-top: 6px;
+               font-variant-numeric: tabular-nums; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
 /* Two panels side by side end on the same line; a shorter table spreads its rows over the height. */
