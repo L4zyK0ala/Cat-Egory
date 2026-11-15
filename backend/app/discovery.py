@@ -30,7 +30,16 @@ from sqlalchemy.orm import Session
 from common.config import Settings, get_settings
 from common.timeutil import local_midnight
 from crawler.result import INFRA_ERRORS
-from database.models import AIPrediction, DataSource, Domain, DomainSourceRecord, JobStatus, ScanJob, ScanReason
+from database.models import (
+    AIPrediction,
+    DataSource,
+    Domain,
+    DomainSourceRecord,
+    JobStatus,
+    ModelComparison,
+    ScanJob,
+    ScanReason,
+)
 from database.session import session_factory
 
 from .services.domains import queue_scans
@@ -58,10 +67,14 @@ def infra_failures_last_hour(session: Session, now: datetime | None = None) -> i
 
 
 def tokens_since(session: Session, since: datetime) -> int:
-    """AI tokens (in + out) used since ``since`` by real providers (the offline mock costs nothing)."""
-    return int(session.scalar(select(func.coalesce(func.sum(
-        func.coalesce(AIPrediction.input_tokens, 0) + func.coalesce(AIPrediction.output_tokens, 0)), 0))
-        .where(AIPrediction.created_at >= since, AIPrediction.provider != "mock")) or 0)
+    """AI tokens (in + out) used since ``since`` by real providers (the offline mock costs nothing), including
+    model comparisons (``classification/model_compare.py``): they spend the same account's quota."""
+    total = 0
+    for table in (AIPrediction, ModelComparison):
+        total += int(session.scalar(select(func.coalesce(func.sum(
+            func.coalesce(table.input_tokens, 0) + func.coalesce(table.output_tokens, 0)), 0))
+            .where(table.created_at >= since, table.provider != "mock")) or 0)
+    return total
 
 
 def discovery_source_ids(session: Session, entries: dict[str, dict[str, Any]] | None = None) -> list[int]:

@@ -100,6 +100,42 @@ The report gives crawl failures (not counted as wrong answers), valid-answer rat
 accuracy per confidence band, **wrong answers that were published automatically** (the number that matters for
 the 0.90 threshold), wrong secondaries, and latency. The evaluation domains stay in the database as normal domains.
 
+### Comparing models on the same sites
+
+`report` only measures the production pipeline (the default model, plus the second model in the 0.70-0.89 band).
+`compare` asks several models about the same pages: for every site of a set with a successful scan, the stored
+scan (text, HTML excerpt, and the screenshot for models that take images) goes to each listed model with the
+production prompt, and each answer is validated exactly as in production (`AIProvider.classify`). All models see
+the same scan of a site. It needs the EVREN key, so it runs in the worker; run `add --yes` first so the sites
+are scanned.
+
+```bash
+MODELS=qwen3.8-flash-next,deepseek-v4.1-flash,mimo-v2.6-pro,gemma-4-31b,glm-5.3
+$DC exec -T worker python -m classification.evaluation compare --models $MODELS          # dry run: counts calls
+$DC exec -T worker python -m classification.evaluation compare --models $MODELS --yes \
+    > model-comparison-$(date +%F).md                                                   # progress goes to stderr
+$DC exec -T worker python -m classification.evaluation compare-report --models $MODELS  # re-print, no calls
+# --set evaluation_holdout.yaml for the held-out set; --again to ask anew; --pause N seconds between calls (2)
+```
+
+* **Nothing public changes.** Answers go to the `model_comparisons` table (migration `0009`), never to
+  `ai_predictions`: no domain status or category changes, no review task, no second opinion, and neither `report`
+  nor the public accuracy page reads them. Their tokens do count towards `CATEGORY_AI_DAILY_TOKEN_CAP` (they use the
+  same account's quota), so discovery pauses earlier on a day with a large comparison.
+* **Calls.** At most (models × sites with a successful scan); the dry run prints the exact number per model.
+  Calls are made one at a time from the command, next to the worker's two classify slots, with the provider's
+  usual retry rules. A site/model pair that already has a valid answer for the current prompt and taxonomy versions
+  is skipped, so an interrupted run resumes where it stopped and a finished one costs nothing to repeat. The run
+  stops at the first auth, credit, permission or rate-limit error (exit code 2, report still printed). At the default model's measured median of
+  37-78 s an answer, a full five-model run on the 36-site set takes a few hours; other models' latency is unknown.
+* **Images.** `glm-5.3` takes no images (`KNOWN_MODELS` in `ai_providers/evren.py`): it gets the text only and the
+  report says so in its *input* column. Sites without a stored screenshot are noted there too.
+* **Report.** One row per model: answers, valid-answer rate, strict and lenient accuracy, lenient accuracy on the
+  sites every model answered validly (the like-for-like figure), wrong answers at >= 0.90, median / p95 latency,
+  output tokens (median / total), prompt version; accuracy per confidence band (>= 0.90, 0.70-0.89, 0.50-0.69,
+  < 0.50); how often each pair of models picks the same primary category; the confident wrong answers; and a
+  per-site table with each model's primary category and confidence.
+
 ## Live verification checklist (Phase 4)
 
 Run with the project's own key and record results here. Cat-egory has its own EVREN key since 2026-11-08:

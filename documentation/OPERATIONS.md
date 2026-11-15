@@ -164,6 +164,22 @@ $DC exec worker python -m backend.cli second-opinion          # dry run
 $DC exec worker python -m backend.cli second-opinion --yes    # queue them (category.classify.second_opinion)
 ```
 
+### Comparing models on the evaluation sets
+
+To see how other EVREN models would classify the evaluation sites (`classification/evaluation_set.yaml`,
+`evaluation_holdout.yaml`), ask them about the stored scans. It runs in the worker (the key lives there), needs
+migration `0009` (applied by `$DC up -d`), and changes nothing public: answers go to `model_comparisons` only.
+
+```bash
+$DC exec -T worker python -m classification.evaluation compare --models qwen3.8-flash-next,glm-5.3   # dry run
+$DC exec -T worker python -m classification.evaluation compare --models qwen3.8-flash-next,glm-5.3 --yes \
+    > model-comparison-$(date +%F).md
+```
+
+The dry run prints how many EVREN calls a real run makes; pairs with a valid answer are skipped on re-runs (so
+an interrupted run resumes). Calls are sequential and count towards `CATEGORY_AI_DAILY_TOKEN_CAP`. Details and
+the report's contents: [EVREN_INTEGRATION.md](EVREN_INTEGRATION.md#comparing-models-on-the-same-sites).
+
 ### Two review queues
 
 `GET /api/v1/admin/reviews?queue=categories|threats|all`. *Threat candidates* are look-alikes (`brand_lookalike`,

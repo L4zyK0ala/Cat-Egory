@@ -25,16 +25,21 @@ def _mock(settings: Settings) -> AIProvider:
     return MockProvider(max_text_chars=settings.max_text_chars, max_html_chars=settings.max_html_chars)
 
 
-@register("evren")
-def _evren(settings: Settings) -> AIProvider:
+def evren_provider(settings: Settings, model: str) -> EvrenProvider:
+    """An EVREN client for ``model`` with the production settings (key, timeouts, limits, prompt sizes)."""
     return EvrenProvider(
         api_key=settings.evren_api_key.get_secret_value() if settings.evren_api_key else None,
-        base_url=settings.evren_base_url, model=settings.evren_model, timeout=settings.evren_timeout_seconds,
+        base_url=settings.evren_base_url, model=model, timeout=settings.evren_timeout_seconds,
         deadline=settings.evren_deadline_seconds,
         max_output_tokens=settings.evren_max_output_tokens,
         json_mode=settings.evren_json_mode, max_text_chars=settings.max_text_chars,
         max_html_chars=settings.max_html_chars,
     )
+
+
+@register("evren")
+def _evren(settings: Settings) -> AIProvider:
+    return evren_provider(settings, settings.evren_model)
 
 
 def available() -> list[str]:
@@ -55,14 +60,7 @@ def get_second_opinion(settings: Settings | None = None) -> AIProvider | None:
     settings = settings or get_settings()
     if settings.ai_provider == "evren" and settings.evren_second_model \
             and settings.evren_second_model != settings.evren_model:
-        return EvrenProvider(
-            api_key=settings.evren_api_key.get_secret_value() if settings.evren_api_key else None,
-            base_url=settings.evren_base_url, model=settings.evren_second_model,
-            timeout=settings.evren_timeout_seconds,
-            deadline=settings.evren_deadline_seconds,
-            max_output_tokens=settings.evren_max_output_tokens, json_mode=settings.evren_json_mode,
-            max_text_chars=settings.max_text_chars, max_html_chars=settings.max_html_chars,
-        )
+        return evren_provider(settings, settings.evren_second_model)
     return None
 
 

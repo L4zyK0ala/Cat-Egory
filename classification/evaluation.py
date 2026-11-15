@@ -4,10 +4,15 @@
     python -m classification.evaluation add --failed --yes   # re-queue only sites without a valid answer
     python -m classification.evaluation report [--provider evren]
     ... --set evaluation_holdout.yaml   # bundled set of sites never used to tune the prompt
+    python -m classification.evaluation compare --models qwen3.8-flash-next,glm-5.3 [--yes] [--again]
+    python -m classification.evaluation compare-report --models qwen3.8-flash-next,glm-5.3
 
 ``report`` reads the latest prediction of the given provider for every site, compares its primary category with
 the accepted answers and prints a Markdown report: crawl failures, valid-answer rate, strict / lenient accuracy,
 accuracy per confidence band, wrong answers that were published automatically, and latency.
+``compare`` asks several EVREN models about the same scanned sites and stores their answers apart from the
+production predictions (see ``classification/model_compare.py``); ``compare-report`` prints the side-by-side report
+from what is stored, without calling any model.
 Nothing here is shown publicly; it is an operator tool.
 """
 from __future__ import annotations
@@ -154,6 +159,12 @@ def _pct(n: int, d: int) -> str:
     return f"{n}/{d} ({100 * n / d:.0f} %)" if d else "-"
 
 
+def p95(values: list[int]) -> int:
+    """Nearest-rank 95th percentile of a non-empty list."""
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(round(0.95 * (len(ordered) - 1))))]
+
+
 def render(rows: list[Row], provider: str) -> str:
     answered = [r for r in rows if r.answered]
     predicted = [r for r in rows if r.validation is not None]
@@ -170,9 +181,8 @@ def render(rows: list[Row], provider: str) -> str:
             f"| wrong secondary categories (from `reject`) | {sum(len(r.rejected_secondary) for r in rows)} |"]
     latencies = sorted(r.latency_ms for r in predicted if r.latency_ms)
     if latencies:
-        p95 = latencies[min(len(latencies) - 1, int(round(0.95 * (len(latencies) - 1))))]
         out.append(f"| latency median / p95 / max | {statistics.median(latencies) / 1000:.0f} s / "
-                   f"{p95 / 1000:.0f} s / {latencies[-1] / 1000:.0f} s |")
+                   f"{p95(latencies) / 1000:.0f} s / {latencies[-1] / 1000:.0f} s |")
     out += ["", "## Accuracy per stated confidence", "", "| band | answers | lenient correct |", "|---|---|---|"]
     for low, high, label in BANDS:
         band = [r for r in answered if r.confidence is not None and low <= r.confidence < high]
@@ -210,15 +220,31 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("report", help="print a Markdown report")
     p.add_argument("--provider", default="evren")
     p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
+    p = sub.add_parser("compare", help="ask several EVREN models about the same scanned sites (dry run without --yes)")
+    p.add_argument("--models", required=True, help="comma-separated EVREN model names")
+    p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
+    p.add_argument("--yes", action="store_true", help="really call the models (default is a dry run)")
+    p.add_argument("--again", action="store_true", help="ask again where a valid answer for this prompt exists")
+    p.add_argument("--pause", type=float, default=2.0, help="seconds between two calls (default 2)")
+    p = sub.add_parser("compare-report", help="Markdown report of stored comparison answers (no model calls)")
+    p.add_argument("--models", required=True, help="comma-separated EVREN model names")
+    p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
     args = parser.parse_args(argv)
 
     from database.session import session_factory
 
     try:
         sites = load_set(getattr(args, "set", SET_PATH))
+        if args.command in ("compare", "compare-report"):
+            from .model_compare import check_models
+
+            args.models = check_models(args.models)
     except (OSError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    if args.command in ("compare", "compare-report"):
+        with session_factory()() as session:
+            return compare_command(session, sites, args)
     with session_factory()() as session, session.begin():
         if args.command == "add":
             if args.failed:
@@ -231,6 +257,45 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(render(collect(session, sites, args.provider), args.provider), end="")
     return 0
+
+
+def compare_command(session: Session, sites: list[Site], args: argparse.Namespace) -> int:
+    from ai_providers.prompting import PROMPT_VERSION
+    from common.config import get_settings
+
+    from . import model_compare
+    from .taxonomy import default_taxonomy
+
+    set_name = resolve_set(args.set).name
+    code = 0
+    if args.command == "compare":
+        p = model_compare.plan(session, sites, args.models, prompt_version=PROMPT_VERSION,
+                               taxonomy_version=default_taxonomy().version, again=args.again)
+        if not args.yes:
+            print(model_compare.describe(p, set_name))
+            session.rollback()
+            return 0
+        settings = get_settings()
+        if p.todo:
+            if not settings.evren_api_key:
+                print("error: CATEGORY_EVREN_API_KEY is not set here; run this in the worker container",
+                      file=sys.stderr)
+                return 1
+            summary = model_compare.run(session, p, lambda model: model_compare.make_provider(settings, model),
+                                        store=model_compare.make_store(settings),
+                                        use_screenshot=settings.classify_use_screenshot, pause=max(args.pause, 0.0))
+            print(f"asked {summary.asked}: {summary.valid} valid, {summary.failed} failed; "
+                  f"{p.skipped} skipped (already answered)", file=sys.stderr)
+            if summary.stopped:
+                print(f"stopped early ({summary.stopped}); run the same command again to resume", file=sys.stderr)
+                code = 2
+        else:
+            print(f"nothing to ask: {p.skipped} pairs already answered (--again asks anew)", file=sys.stderr)
+    report = model_compare.render(sites, args.models, model_compare.collect(session, sites, args.models),
+                                  set_name=set_name, prompt_version=PROMPT_VERSION)
+    session.rollback()
+    print(report, end="")
+    return code
 
 
 if __name__ == "__main__":

@@ -527,6 +527,47 @@ class AIPrediction(Base):
     )
 
 
+class ModelComparison(Base):
+    """One model's answer about one evaluation site, asked by ``python -m classification.evaluation compare``.
+
+    Kept apart from ``ai_predictions`` on purpose: nothing that publishes, reviews or measures public accuracy reads
+    this table, so asking several models about the same page can never change what visitors see, open a review or
+    trigger a second opinion, and the ``report`` command keeps measuring the production pipeline only. A table (not a
+    result file) because the worker container is read-only and re-runs must skip answers already paid for."""
+
+    __tablename__ = "model_comparisons"
+
+    id: Mapped[int] = _pk()
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
+    scan_result_id: Mapped[int | None] = mapped_column(ForeignKey("scan_results.id", ondelete="SET NULL"))
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)  # the model asked (the gateway may name it otherwise)
+    answered_by: Mapped[str | None] = mapped_column(String(100))  # model name in the response
+    prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    taxonomy_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    validation_status: Mapped[str] = mapped_column(String(32), nullable=False)  # ai_providers.schemas.ValidationStatus
+    validation_errors: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    primary_category_id: Mapped[str | None] = mapped_column(String(64))  # a claim; not a foreign key, never published
+    secondary_category_ids: Mapped[list[str]] = mapped_column(ARRAY(String(64)), nullable=False, server_default=text("'{}'"))
+    risk_flags: Mapped[list[str]] = mapped_column(ARRAY(String(64)), nullable=False, server_default=text("'{}'"))
+    confidence: Mapped[Decimal | None] = mapped_column(CONFIDENCE)
+    screenshot_available: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    used_screenshot: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    injection_suspected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    raw_response: Mapped[dict | None] = mapped_column(JSONB)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    request_id: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (
+        _confidence_check("confidence"),
+        Index("ix_model_comparisons_domain_model", "domain_id", "model", "created_at"),
+        Index("ix_model_comparisons_created_at", "created_at"),
+    )
+
+
 class DomainCategory(Base):
     """Temporal category assignment. Current rows: ``valid_to IS NULL``; the rest is history."""
 
