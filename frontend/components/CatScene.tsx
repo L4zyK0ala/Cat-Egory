@@ -190,3 +190,33 @@ export function CatSit() {
   );
 }
 
+/** Sitting by a clipboard, ticking the rows off with a pencil: two right, one wrong (used on the accuracy page).
+ *  The marks are drawn one after another; without motion they are simply there. */
+export function CatCheck() {
+  return (
+    <div className="cat-scene check" aria-hidden="true">
+      <svg className="kitty" viewBox="0 0 250 210">
+        <Stub x1={46} y1={178} x2={20} y2={164} className="flick" />
+        <Body cx={86} cy={152} rx={54} ry={48} belly="M58 112c10-10 46-10 56 0 10 30 6 68-28 90-34-22-38-60-28-90z" />
+        <ellipse className="paw" cx="68" cy="198" rx="13" ry="8" />
+        <ellipse className="paw" cx="104" cy="198" rx="13" ry="8" />
+        <g transform="rotate(-5 196 148)">
+          <rect className="board" x="150" y="86" width="92" height="118" rx="8" />
+          <rect className="paper" x="158" y="98" width="76" height="100" rx="3" />
+          <rect className="clip" x="180" y="80" width="32" height="14" rx="4" />
+          <path className="row-line" d="M166 118h28M166 146h28M166 174h28" />
+          <path className="mark tick t1" d="M204 116l6 6 12-14" />
+          <path className="mark tick t2" d="M204 144l6 6 12-14" />
+          <path className="mark cross t3" d="M206 164l14 14M220 164l-14 14" />
+        </g>
+        <g className="writer">
+          <Leg x1={112} y1={130} x2={170} y2={160} up />
+          <path className="pencil" d="M176 152l22-30" />
+          <path className="pencil-tip" d="M172 158l4-6" />
+        </g>
+        <g className="tilt" transform="translate(84 76)"><g className="tilt-inner"><g transform="rotate(8)"><Head look={2} /></g></g></g>
+      </svg>
+    </div>
+  );
+}
+

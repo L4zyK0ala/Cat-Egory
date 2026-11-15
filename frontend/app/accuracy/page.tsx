@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CatCheck } from "@/components/CatScene";
 import { api } from "@/lib/api";
 import { categoryName, intl, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
@@ -49,9 +50,14 @@ export default async function AccuracyPage() {
   const th = data.threats;
   return (
     <div className="about">
-      <h1>{t("Accuracy", "Doğruluk")}</h1>
-      <p className="lead">{t("How right is the data? Measured against people, not against the model itself, and published with how much it can be trusted.",
-                             "Veri ne kadar doğru? Modelin kendisiyle değil insanlarla ölçülür ve ne kadar güvenilebileceğiyle birlikte yayımlanır.")}</p>
+      <div className="page-head">
+        <div>
+          <h1>{t("Accuracy", "Doğruluk")}</h1>
+          <p className="lead">{t("How right is the data? Measured against people, not against the model itself, and published with how much it can be trusted.",
+                                 "Veri ne kadar doğru? Modelin kendisiyle değil insanlarla ölçülür ve ne kadar güvenilebileceğiyle birlikte yayımlanır.")}</p>
+        </div>
+        <CatCheck />
+      </div>
 
       <h2>{t("Published AI Answers", "Yayımlanan Yapay Zekâ Cevapları")}</h2>
       <div className="panel stack">
