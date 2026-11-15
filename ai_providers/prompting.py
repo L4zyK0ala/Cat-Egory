@@ -16,7 +16,7 @@ from classification.taxonomy import Taxonomy
 
 from .schemas import ClassificationInput
 
-PROMPT_VERSION = "2026-11-15.1"
+PROMPT_VERSION = "2026-11-15.2"
 
 _INJECTION_PATTERNS = [
     re.compile(p, re.IGNORECASE)
@@ -68,6 +68,8 @@ Guidance:
   (a licence number, or a state lottery or totalisator) and the domain is the operator's own site. Choose
   "illegal-gambling" when no licence is shown, or for addresses made to get round blocking: "new address" or
   "giriş" pages, numbered or mirror copies of a betting brand, and unrelated domain names that now show a casino.
+  Such pages say so in any language: "güncel giriş", "yeni adres", "link truy cập", "link vào", "alternatif link",
+  "mirror", "official access link", or a domain that is not the brand's own name.
 - "primary_category": what the site is mainly for, judged by what its visitors do there, not by who runs it.
   Choose the most specific category that clearly fits; use a broad one (business, information-technology,
   finance, shopping, media, entertainment) only when no narrower category describes the site's main purpose.

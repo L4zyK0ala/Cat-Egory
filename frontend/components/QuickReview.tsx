@@ -46,6 +46,9 @@ function UsomBadge({ sgb }: { sgb?: Review["sgb"] }) {
     : <span className="badge" title={`${t("checked", "kontrol")} ${new Date(sgb.checked_at).toLocaleString(intl(locale))}`}>{t("USOM: not on the list", "USOM: listede değil")}</span>;
 }
 
+/** Close categories a reviewer often has to swap between: one click instead of typing (S). */
+const SWAP: Record<string, string> = { gambling: "illegal-gambling", "illegal-gambling": "gambling" };
+
 const isLookalike = (reason: string) => reason === "brand_lookalike" || reason.startsWith("lookalike_of:");
 
 function typing(target: EventTarget | null) {
@@ -89,10 +92,10 @@ function Quick({ api }: { api: string }) {
 
   const advance = useCallback(() => setItems((xs) => xs.slice(1)), []);
 
-  const decide = useCallback(async (action: Action) => {
+  const decide = useCallback(async (action: Action, preset?: string) => {
     if (!current || busy) return;
-    let primary: string | undefined;
-    if (action === "set") {
+    let primary: string | undefined = preset;
+    if (action === "set" && !primary) {
       const typed = choice.trim().toLowerCase();
       primary = content.find((c) => c.id === typed || c.name.toLowerCase() === typed || name(c.id).toLocaleLowerCase(intl(locale)) === typed)?.id;
       if (!primary) { setMsg({ ok: false, text: t("Choose a category from the list first (press S).", "Önce listeden bir kategori seçin (S tuşu).") }); picker.current?.focus(); return; }
@@ -213,6 +216,11 @@ function Quick({ api }: { api: string }) {
               <div className="row">
                 <button disabled={busy || !p?.primary_category} onClick={() => decide("approve")}>{t("Approve", "Onayla")} <kbd>A</kbd></button>
                 <button className="secondary" disabled={busy} onClick={() => decide("set")}>{t("Set Category", "Kategori Ata")} <kbd>S</kbd></button>
+                {p?.primary_category && SWAP[p.primary_category] && (
+                  <button className="secondary" disabled={busy} onClick={() => decide("set", SWAP[p.primary_category!])}>
+                    {t(`Set as ${name(SWAP[p.primary_category])}`, `${name(SWAP[p.primary_category])} Olarak Ata`)}
+                  </button>
+                )}
                 {changed && <button className="danger" disabled={busy} onClick={() => decide("withdraw")}>{t("Withdraw Flag", "İşareti Kaldır")} <kbd>W</kbd></button>}
                 <button className="secondary" disabled={busy} onClick={() => decide("reject")}>{changed ? t("Keep Flag", "İşaret Kalsın") : t("Reject", "Reddet")} <kbd>R</kbd></button>
                 <button className="secondary" disabled={busy} onClick={() => { advance(); setMsg(null); }}>{t("Skip", "Atla")} <kbd>N</kbd></button>
