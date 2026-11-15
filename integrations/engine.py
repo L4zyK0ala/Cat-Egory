@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from backend.app import audit
 from backend.app.services.domains import normalize_rows
 from backend.app.services.imports import HEADER_NAMES, parse_text
+from common.domains import DomainError, normalize_domain
 from crawler.ssrf import BlockedError, check_url, resolve_public
 from database.models import (
     DataSource,
@@ -217,7 +218,15 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
 
     domains, invalid, _ = normalize_rows(rows)
     result.entries, result.valid, result.invalid = len(rows), len(domains), len(invalid)
-    rank = {d.ascii: i for i, d in enumerate(domains, start=1)}  # position in the (filtered) source list
+    # Rank = the row in the source file, not the position after filtering: two catalogue entries cut from the same
+    # list (the top 20,000 and "every .tr name") must agree on how popular a name is. Numbering the filtered list
+    # 1, 2, 3 put the 600,000th .tr site level with the world's 3,000th, so discovery scanned them side by side.
+    rank: dict[str, int] = {}
+    for n, value in rows:
+        try:
+            rank.setdefault(normalize_domain(value).ascii, n)
+        except DomainError:
+            continue
     label = entry.get("category")
     ids: list[int] = []
     ranks: dict[int, int] = {}

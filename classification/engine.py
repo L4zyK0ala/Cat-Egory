@@ -229,6 +229,7 @@ BRAND_WATCH_SOURCE = "ct-brand-watch"  # integrations/ct_watch.py
 
 # Review reasons that ask "is this a threat?" rather than "which category?". They form their own queue, so a
 # flood of look-alike candidates does not bury category reviews (and vice versa).
+ROBOTS_BLOCKED = "robots_blocked"  # robots.txt closes the site to bots: a model's suggestion from the name, for a person
 THREAT_RETURNED = "threat_returned"  # a flag expired with its dead site, and the site is back (threats/lifecycle.py)
 THREAT_PAGE_CHANGED = "threat_page_changed"  # a flagged site is up with another page: cleaned? (threats/lifecycle.py)
 THREAT_CANDIDATE_REASONS = ("brand_lookalike", "risk_claim", THREAT_RETURNED, THREAT_PAGE_CHANGED)
@@ -506,3 +507,31 @@ def _mark_reanalyze(domain: Domain, days: int) -> None:
     if domain.classification_status not in (ClassificationStatus.CLASSIFIED, ClassificationStatus.VERIFIED):
         domain.classification_status = ClassificationStatus.REANALYZE
     domain.next_scan = datetime.now(UTC) + timedelta(days=days)
+
+
+# ----------------------------------------------------------------------------- sites closed to bots
+
+
+def name_suggestion_due(session: Session, domain: Domain) -> bool:
+    """A site whose robots.txt shuts out every bot (facebook, x, reddit ...) can only be classified from its name.
+    Ask once per domain, and only while it has no category of its own."""
+    if domain.primary_category_id is not None:
+        return False
+    return session.scalar(select(ReviewTask.id).where(ReviewTask.domain_id == domain.id,
+                                                      ReviewTask.reason == ROBOTS_BLOCKED).limit(1)) is None
+
+
+def suggest_from_name(session: Session, domain: Domain, result: ProviderResult, *, min_confidence: float = 0.5) -> str:
+    """Record the model's answer for a site it could not read, and put it before a person. Never applied on its own:
+    the model saw no page. Returns "review", "unknown" (the model did not recognise the name: nothing to ask a person),
+    "invalid" or "retry"."""
+    pred = record_prediction(session, domain, None, result)
+    if not result.ok:
+        return "retry" if result.status.value == "provider_error" else "invalid"
+    out = result.output
+    if out.primary_category is None or out.confidence < min_confidence:
+        return "unknown"
+    pred.risk_flags = []  # no page, so no evidence for a threat claim
+    open_review(session, domain, pred, ROBOTS_BLOCKED)
+    domain.classification_status = _review_status(domain)
+    return "review"

@@ -67,7 +67,9 @@ def test_build_formats(engine, client, admin, store):
     assert "# License: CC-BY-4.0" in gambling and "# Version: 2026.11.07.1" in gambling
     assert [ln for ln in gambling.splitlines() if not ln.startswith("#")] == ["casino.example.com"]
     assert "secret-casino" not in gambling  # private import never published
-    assert body(store, engine, "entertainment.hosts").splitlines()[-1] == "0.0.0.0 casino.example.com"
+    # lists use the main category only; the secondary one stays in all.csv
+    assert [ln for ln in body(store, engine, "entertainment.hosts").splitlines() if not ln.startswith("#")] == []
+    assert "0.0.0.0 casino.example.com" in body(store, engine, "gambling.hosts")
 
     rows = list(csv.reader(io.StringIO("\n".join(ln for ln in body(store, engine, "all.csv").splitlines()
                                                  if not ln.startswith("#")))))

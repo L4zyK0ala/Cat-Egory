@@ -1,7 +1,10 @@
 # Taxonomy
 
 The category tree lives in [`classification/taxonomy.yaml`](../classification/taxonomy.yaml) (CC BY 4.0) and
-is loaded into the `categories` table by `python -m database.seed`. Current version: **1.1.0** (2026-11-08: added the risk category `lookalike-domain`, code 908).
+is loaded into the `categories` table by `python -m database.seed`. Current version: **2.0.0** (2026-11-15: `gambling` narrowed to operators licensed in at least one country; new
+content category `illegal-gambling`, code 609, for unlicensed sites and block-evasion mirrors. Major, because
+`gambling` changed meaning: block both lists to block all gambling). 1.1.0 (2026-11-08) added the risk category
+`lookalike-domain`, code 908.
 
 ## Structure
 

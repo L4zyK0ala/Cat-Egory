@@ -6,6 +6,8 @@
     python -m backend.cli list-keys    [--email mod@example.org]
     python -m backend.cli revoke-key   --prefix abcdefghij
     python -m backend.cli reclassify-provider --provider mock [--yes]
+    python -m backend.cli reclassify-category --category gambling [--yes]
+    python -m backend.cli suggest-robots-blocked [--yes]
     python -m backend.cli apply-registry-rules [--yes]
 
 In Docker: ``docker compose ... exec api python -m backend.cli ...`` (add ``-it`` for --password prompts).
@@ -18,7 +20,7 @@ import getpass
 import sys
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app import audit
@@ -139,6 +141,58 @@ def reclassify_provider(session: Session, provider: str, *, dry_run: bool = Fals
     audit.record(session, action="domains.reclassify_provider", target_type="ai_provider", target_id=provider,
                  after={"domains": len(ids), "closed_review_tasks": len(tasks), "queued_scans": queued})
     return len(ids), len(tasks)
+
+
+def reclassify_category(session: Session, category: str, *, dry_run: bool = False) -> list[str]:
+    """Scan again, and ask the model again, every active domain whose main category is ``category``: after a
+    taxonomy change, e.g. 2.0.0 split gambling into licensed (gambling) and illegal-gambling. AI answers are
+    replaced as usual; a domain a person verified goes back to a person when the new answer differs
+    (conflicts_with_human_decision). Returns the domain names."""
+    from backend.app.services.domains import queue_scans
+    from database.models import Domain, ScanReason
+
+    rows = session.execute(select(Domain.id, Domain.normalized_domain).where(
+        Domain.is_active, Domain.primary_category_id == category).order_by(Domain.id)).all()
+    if dry_run or not rows:
+        return [name for _, name in rows]
+    queued = queue_scans(session, [i for i, _ in rows], reason=ScanReason.RESCAN, priority=3, requested_by_id=None)
+    audit.record(session, action="domains.reclassify_category", target_type="category", target_id=category,
+                 after={"domains": len(rows), "queued_scans": queued})
+    return [name for _, name in rows]
+
+
+def robots_blocked_domains(session: Session) -> list[tuple[int, str]]:
+    """Domains without a category whose latest scan was refused by their robots.txt, not asked about yet."""
+    from sqlalchemy import exists
+
+    from classification.engine import ROBOTS_BLOCKED
+    from database.models import Domain, JobStatus, ReviewTask, ScanJob
+
+    latest = (select(ScanJob.domain_id, ScanJob.status, ScanJob.error_code,
+                     func.row_number().over(partition_by=ScanJob.domain_id,
+                                            order_by=(ScanJob.queued_at.desc(), ScanJob.id.desc())).label("rn"))
+              .subquery())
+    asked = exists(select(ReviewTask.id).where(ReviewTask.domain_id == Domain.id, ReviewTask.reason == ROBOTS_BLOCKED))
+    return [(i, n) for i, n in session.execute(
+        select(Domain.id, Domain.normalized_domain).join(latest, latest.c.domain_id == Domain.id)
+        .where(latest.c.rn == 1, latest.c.status == JobStatus.BLOCKED, latest.c.error_code == "robots_disallowed",
+               Domain.is_active, Domain.primary_category_id.is_(None), ~asked)
+        .order_by(Domain.id))]
+
+
+def suggest_robots_blocked(session: Session, *, dry_run: bool = False) -> list[str]:
+    """Ask the model, from the name only, about every site closed to bots (category.classify.name_only). Each answer
+    goes to the review queue; nothing is published without a person. Returns the domain names."""
+    rows = robots_blocked_domains(session)
+    if dry_run or not rows:
+        return [n for _, n in rows]
+    from backend.app.worker import celery_app
+
+    for domain_id, _ in rows:
+        celery_app.send_task("category.classify.name_only", args=[domain_id], queue="classify")
+    audit.record(session, action="domains.suggest_robots_blocked", target_type="domain", target_id=None,
+                 after={"domains": len(rows)})
+    return [n for _, n in rows]
 
 
 def apply_registry_rules(session: Session, *, dry_run: bool = False) -> list[str]:
@@ -311,6 +365,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--provider", required=True, help="provider name, e.g. mock")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
 
+    p = sub.add_parser("reclassify-category",
+                       help="re-scan and re-classify the domains whose main category is this one (taxonomy change)")
+    p.add_argument("--category", required=True, help="category id, e.g. gambling")
+    p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
+
+    p = sub.add_parser("suggest-robots-blocked",
+                       help="ask the model, from the name only, about sites whose robots.txt shuts out bots (to review)")
+    p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
+
     p = sub.add_parser("apply-registry-rules",
                        help="classify unreadable .gov.tr/.edu.tr/... domains from their registry allocation rule")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
@@ -456,6 +519,14 @@ def main(argv: list[str] | None = None) -> int:
                 names = retry_infra_failures(session, hours=args.hours, dry_run=not args.yes)
                 verb = "queued" if args.yes else "dry run: would queue"
                 print(f"{verb} {len(names)} domains for a new scan" + (f": {', '.join(names[:10])} ..." if names else ""))
+            elif args.command == "suggest-robots-blocked":
+                names = suggest_robots_blocked(session, dry_run=not args.yes)
+                verb = "asked about" if args.yes else "dry run: would ask about"
+                print(f"{verb} {len(names)} domains closed to bots" + (f": {', '.join(names[:10])} ..." if names else ""))
+            elif args.command == "reclassify-category":
+                names = reclassify_category(session, args.category, dry_run=not args.yes)
+                verb = "queued" if args.yes else "dry run: would queue"
+                print(f"{verb} {len(names)} domains for re-classification" + (f": {', '.join(names[:10])} ..." if names else ""))
             elif args.command == "reclassify-provider":
                 domains, tasks = reclassify_provider(session, args.provider, dry_run=not args.yes)
                 if args.yes:

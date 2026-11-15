@@ -251,7 +251,14 @@ def precheck(session: Session, job_id: str, settings: Settings, resolver: Any = 
         return None
     domain = session.get(Domain, job.domain_id).normalized_domain
     info, addresses, error = lookup_dns(domain, resolver)
-    result = CrawlResult(job_id=job_id, domain=domain, requested_url=f"https://{domain}/", dns=info,
+    host = domain
+    if error == "dns_no_address" and not domain.startswith("www."):
+        # Many sites answer only on www (the bare name has no A/AAAA record): read the site there instead.
+        www_info, www_addresses, www_error = lookup_dns(f"www.{domain}", resolver)
+        if www_error is None:
+            host, addresses, error = f"www.{domain}", www_addresses, None
+            info = info | {"a": www_info["a"], "aaaa": www_info["aaaa"], "host": host}
+    result = CrawlResult(job_id=job_id, domain=domain, requested_url=f"https://{host}/", dns=info,
                          resolved_ips=addresses)
     if error:
         result.error_code = error
@@ -263,7 +270,7 @@ def precheck(session: Session, job_id: str, settings: Settings, resolver: Any = 
         result.error_detail = f"{len(blocked)} non-public address(es)"
         store_result(session, result, job_id, settings)
         return None
-    return {"job_id": job_id, "domain": domain, "dns": info, "resolved_ips": addresses}
+    return {"job_id": job_id, "domain": domain, "host": host, "dns": info, "resolved_ips": addresses}
 
 
 # ----------------------------------------------------------------------------- celery tasks
@@ -301,7 +308,7 @@ def persist(result: dict, job_id: str, fast: bool = False) -> str:
     settings = get_settings()
     with session_factory()() as session, session.begin():
         outcome = store_result(session, CrawlResult.from_dict(result), job_id, settings)
-        scan_result_id = None
+        scan_result_id = suggest_id = None
         if outcome == "succeeded":
             from .classify_tasks import scan_result_for_job
 
@@ -310,7 +317,16 @@ def persist(result: dict, job_id: str, fast: bool = False) -> str:
                     session, session.get(ScanResult, scan_result_id).domain_id,
                     every_days=settings.threat_reclassify_days, now=datetime.now(UTC)):
                 scan_result_id = None
+        elif outcome == "blocked" and result.get("blocked_reason") == "robots_disallowed":
+            from classification.engine import name_suggestion_due
+
+            job = session.get(ScanJob, uuid.UUID(job_id))
+            domain = session.get(Domain, job.domain_id)
+            if name_suggestion_due(session, domain):
+                suggest_id = domain.id
     log.info("scan persisted", extra={"job_id": job_id, "outcome": outcome})
+    if suggest_id is not None:  # closed to bots: a suggestion from the name only, for a person to confirm
+        celery_app.send_task("category.classify.name_only", args=[suggest_id], queue="fast" if fast else "classify")
     if scan_result_id is not None:
         celery_app.send_task("category.classify.scan", args=[scan_result_id], queue="fast" if fast else "classify")
     return outcome

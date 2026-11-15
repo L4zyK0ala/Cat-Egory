@@ -37,6 +37,8 @@ class ClassificationInput:
     html: str | None = None
     language_hint: str | None = None
     screenshot: Screenshot | None = None
+    # Why no page was read, e.g. "robots_disallowed": the model then answers from what is known about the name.
+    not_fetched: str | None = None
 
 
 class EvidenceKind(StrEnum):

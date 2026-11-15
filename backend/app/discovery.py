@@ -9,8 +9,13 @@ under a daily budget so that crawling and the AI provider's quota grow slowly an
 * nothing while the last hour has ``discovery_pause_after_infra_failures`` failures on our side, so an outage does
   not burn through the list,
 * nothing while ``discovery_max_queued`` scans are already waiting, so manual and scheduled work goes first,
-* each domain once, most popular first (``domain_source_records.source_rank``); later scans are scheduled by
-  ``category.scan.schedule`` like any other domain.
+* nothing once today's EVREN tokens (all work, Türkiye time) reach ``ai_daily_token_cap``, so discovery never eats
+  into the share of the account's quota that other projects need,
+* each domain once, most popular first (``domain_source_records.source_rank``, the row in the source file); later
+  scans are scheduled by ``category.scan.schedule`` like any other domain,
+* a quarter of each batch goes to names that hint at restricted content (``RESTRICTED_HINT``: casino, bahis, porn,
+  vape, ...), most popular first, so the lists people block with most (adult, gambling, alcohol, tobacco, drugs,
+  weapons) fill up without waiting for the whole popularity order. A wrong hint costs nothing: the scan decides.
 
 A source takes part when its catalogue entry says ``discover: true`` and a maintainer approved its licence.
 """
@@ -25,13 +30,23 @@ from sqlalchemy.orm import Session
 from common.config import Settings, get_settings
 from common.timeutil import local_midnight
 from crawler.result import INFRA_ERRORS
-from database.models import DataSource, Domain, DomainSourceRecord, JobStatus, ScanJob, ScanReason
+from database.models import AIPrediction, DataSource, Domain, DomainSourceRecord, JobStatus, ScanJob, ScanReason
 from database.session import session_factory
 
 from .services.domains import queue_scans
 from .worker import celery_app
 
 PRIORITY = 8  # after manual (5), evaluation (4) and scheduled re-scans (7)
+# Names that hint at restricted content (PostgreSQL regex, case-insensitive, on the ASCII name). Kept narrow: "gun"
+# would catch every "gunes" (güneş), "sex" every "essex".
+RESTRICTED_HINT = (
+    r"casino|bahis|betting|sportsbook|poker|roulette|rulet|jackpot|iddaa|kumar|slots?[.-]|(^|[.-])bet|bet([0-9]|[.-])"
+    r"|porn|xxx|xvideo|xnxx|xhamster|hentai|escort|onlyfans|nsfw"
+    r"|vape|vaping|tobacco|sigara|cigar|nargile|hookah|shisha|cbd|cannabis|marijuana|kratom"
+    r"|wine|sarap|beer|bira|vodka|whisk|liquor|brewery"
+    r"|silah|firearm|ammo|airsoft|tabanca|tufek"
+)
+RESTRICTED_SHARE = 4  # one in four of each batch
 NOT_SPENT = (JobStatus.FAILED, JobStatus.BLOCKED, JobStatus.CANCELLED)  # never reached the AI
 
 
@@ -40,6 +55,13 @@ def infra_failures_last_hour(session: Session, now: datetime | None = None) -> i
     since = (now or datetime.now(UTC)) - timedelta(hours=1)
     return session.scalar(select(func.count()).select_from(ScanJob).where(
         ScanJob.status == JobStatus.FAILED, ScanJob.error_code.in_(INFRA_ERRORS), ScanJob.finished_at >= since)) or 0
+
+
+def tokens_since(session: Session, since: datetime) -> int:
+    """AI tokens (in + out) used since ``since`` by real providers (the offline mock costs nothing)."""
+    return int(session.scalar(select(func.coalesce(func.sum(
+        func.coalesce(AIPrediction.input_tokens, 0) + func.coalesce(AIPrediction.output_tokens, 0)), 0))
+        .where(AIPrediction.created_at >= since, AIPrediction.provider != "mock")) or 0)
 
 
 def discovery_source_ids(session: Session, entries: dict[str, dict[str, Any]] | None = None) -> list[int]:
@@ -66,6 +88,8 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
     day_start = local_midnight(now, settings.app_utc_offset_hours)
     if infra_failures_last_hour(session, now) >= settings.discovery_pause_after_infra_failures:
         return 0
+    if settings.ai_daily_token_cap and tokens_since(session, day_start) >= settings.ai_daily_token_cap:
+        return 0  # today's share of the AI quota is used up; tomorrow it starts again
     used = session.scalar(select(func.count()).select_from(ScanJob).where(
         ScanJob.reason == ScanReason.DISCOVERY, ScanJob.queued_at >= day_start, ScanJob.status.not_in(NOT_SPENT))) or 0
     waiting = session.scalar(select(func.count()).select_from(ScanJob).where(ScanJob.status == JobStatus.QUEUED)) or 0
@@ -73,13 +97,19 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
             settings.discovery_batch_size)
     if n <= 0:
         return 0
-    ever_queued = exists(select(ScanJob.id).where(ScanJob.domain_id == Domain.id))
+    # A cancelled job never ran (895 domains were cancelled when the offline demo was cleaned up and then never
+    # came back): only a job that was not cancelled counts as "already queued once".
+    ever_queued = exists(select(ScanJob.id).where(ScanJob.domain_id == Domain.id,
+                                                  ScanJob.status != JobStatus.CANCELLED))
     rank = func.min(DomainSourceRecord.source_rank)
-    ids = list(session.scalars(
-        select(Domain.id).join(DomainSourceRecord, DomainSourceRecord.domain_id == Domain.id)
-        .where(DomainSourceRecord.source_id.in_(source_ids), DomainSourceRecord.is_listed, Domain.is_active,
-               Domain.last_scanned.is_(None), ~ever_queued)
-        .group_by(Domain.id).order_by(rank.asc().nulls_last(), Domain.id).limit(n)))
+    candidates = (select(Domain.id).join(DomainSourceRecord, DomainSourceRecord.domain_id == Domain.id)
+                  .where(DomainSourceRecord.source_id.in_(source_ids), DomainSourceRecord.is_listed, Domain.is_active,
+                         Domain.last_scanned.is_(None), ~ever_queued)
+                  .group_by(Domain.id).order_by(rank.asc().nulls_last(), Domain.id))
+    hinted = list(session.scalars(candidates.where(Domain.normalized_domain.op("~*")(RESTRICTED_HINT))
+                                  .limit(max(1, n // RESTRICTED_SHARE))))
+    ids = hinted + list(session.scalars(candidates.where(Domain.id.not_in(hinted) if hinted else True)
+                                        .limit(n - len(hinted))))
     return queue_scans(session, ids, reason=ScanReason.DISCOVERY, priority=PRIORITY, requested_by_id=None) if ids else 0
 
 

@@ -46,11 +46,12 @@ def test_sync_applies_filters_and_ranks(engine, clean):
         approved(s, "test-tr", TR)
         assert sync(s, "test-top", data=CSV, entry=TOP).valid == 3
         assert sync(s, "test-tr", data=CSV, entry=TR).valid == 2
-    assert ranks(engine, "test-top") == {"big.example.com": 1, "haber.example.com.tr": 2, "mid.example.com": 3}
-    assert ranks(engine, "test-tr") == {"haber.example.com.tr": 1, "banka.example.com.tr": 2}
+    # the row in the source file (line 1 is the header): both cuts of the same list agree on popularity
+    assert ranks(engine, "test-top") == {"big.example.com": 2, "haber.example.com.tr": 3, "mid.example.com": 4}
+    assert ranks(engine, "test-tr") == {"haber.example.com.tr": 3, "banka.example.com.tr": 5}
     with Session(engine) as s, s.begin():  # the list changed: ranks follow, dropped entries are delisted
         sync(s, "test-top", data=CSV.replace(b"1,1,big", b"9,9,gone"), entry=TOP)
-    assert ranks(engine, "test-top")["haber.example.com.tr"] == 2 and ranks(engine, "test-top")["big.example.com"] == 1
+    assert ranks(engine, "test-top")["haber.example.com.tr"] == 3 and ranks(engine, "test-top")["big.example.com"] == 2
     with Session(engine) as s:
         assert not s.scalar(select(DomainSourceRecord.is_listed).join(Domain, Domain.id == DomainSourceRecord.domain_id)
                             .where(Domain.normalized_domain == "big.example.com"))
@@ -67,21 +68,22 @@ def test_discovery_budget_order_and_once(engine, clean):
     budget = Settings(_env_file=None, discovery_daily_budget=3, discovery_batch_size=2, discovery_max_queued=10)
     with Session(engine) as s, s.begin():
         assert queue_discovery(s, budget, entries=entries) == 2  # batch size
-    # best rank across sources first: big (1 in top) and haber (1 in tr), then banka (2 in tr), then mid (3)
+    # most popular first, by the row in the shared source file: big (2), haber (3), then mid (4), then banka (5).
+    # (Before, the .tr cut numbered its own rows 1, 2 ... and banka, 5th in the file, came before mid.)
     # (jobs queued in one batch share queued_at and have random ids, so compare the batch as a set)
     assert {q[0] for q in queued(engine)} == {"big.example.com", "haber.example.com.tr"}
     assert {q[1:] for q in queued(engine)} == {("discovery", PRIORITY)}
     with Session(engine) as s, s.begin():
         assert queue_discovery(s, budget, entries=entries) == 1  # only 1 left of today's budget of 3
         assert queue_discovery(s, budget, entries=entries) == 0
-    assert {q[0] for q in queued(engine)} - {"big.example.com", "haber.example.com.tr"} == {"banka.example.com.tr"}
+    assert {q[0] for q in queued(engine)} - {"big.example.com", "haber.example.com.tr"} == {"mid.example.com"}
 
     tomorrow = datetime.now(UTC) + timedelta(days=1)
     with Session(engine) as s, s.begin():
         assert queue_discovery(s, budget, entries=entries, now=tomorrow) == 1  # a new day, one domain left
         s.execute(ScanJob.__table__.update().values(status=JobStatus.SUCCEEDED))
         assert queue_discovery(s, budget, entries=entries, now=tomorrow) == 0  # each domain only once
-    assert len(queued(engine)) == 4 and "mid.example.com" in {q[0] for q in queued(engine)}
+    assert len(queued(engine)) == 4 and "banka.example.com.tr" in {q[0] for q in queued(engine)}
 
 
 def test_discovery_waits_for_other_work_and_needs_approval(engine, clean, client, admin):
@@ -160,3 +162,65 @@ def test_infra_failures_are_counted_for_the_alert(engine, clean):
     spend(engine, [JobStatus.FAILED], "storage_error", now - timedelta(hours=2))
     with Session(engine) as s:
         assert infra_failures_last_hour(s, now) == 1
+
+
+def test_a_share_of_each_batch_goes_to_restricted_hints(engine, clean):
+    rows = ["GlobalRank,TldRank,Domain,TLD,RefSubNets"] + [f"{i},{i},site{i}.example.com,com,1" for i in range(1, 9)]
+    rows += ["9,9,mega-casino.example.com,com,1", "10,10,bet365.example.com,com,1", "11,11,gunes-haber.example.com,com,1",
+             "12,12,essex-news.example.com,com,1", "13,13,vapeshop.example.com,com,1"]
+    entry = TOP | {"max_entries": None}
+    with Session(engine) as s, s.begin():
+        approved(s, "test-top", entry)
+        sync(s, "test-top", data="\n".join(rows).encode(), entry=entry)
+    batch = Settings(_env_file=None, discovery_daily_budget=100, discovery_batch_size=8, discovery_max_queued=100)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, batch, entries={"test-top": entry}) == 8
+    names = {q[0] for q in queued(engine)}
+    assert {"mega-casino.example.com", "bet365.example.com"} <= names  # 8 // 4 = 2 hinted, most popular first
+    assert "vapeshop.example.com" not in names  # the third hint waits for the next batch
+    assert "gunes-haber.example.com" not in names and "essex-news.example.com" not in names  # not hints
+    assert {f"site{i}.example.com" for i in range(1, 7)} <= names  # the rest by popularity
+
+
+def test_discovery_stops_at_the_daily_token_cap(engine, clean):
+    from database.models import AIPrediction, ValidationStatus
+
+    entries = {"test-top": TOP}
+    with Session(engine) as s, s.begin():
+        approved(s, "test-top", TOP)
+        sync(s, "test-top", data=CSV, entry=TOP)
+    capped = Settings(_env_file=None, discovery_daily_budget=10, discovery_batch_size=1, discovery_max_queued=10,
+                      ai_daily_token_cap=10_000)
+
+    def spent(tokens, provider="evren", when=None):
+        with Session(engine) as s, s.begin():
+            d = s.scalar(select(Domain).limit(1))
+            s.add(AIPrediction(domain_id=d.id, provider=provider, model="m", prompt_version="1", taxonomy_version="1",
+                               validation_status=ValidationStatus.VALID, input_tokens=tokens - 500, output_tokens=500,
+                               **({"created_at": when} if when else {})))
+
+    spent(9_000, when=datetime.now(UTC) - timedelta(days=1))  # yesterday: does not count
+    spent(50_000, provider="mock")                              # the offline mock costs nothing
+    spent(6_000)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, capped, entries=entries) == 1  # 6,000 of 10,000 used
+    spent(4_000)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, capped, entries=entries) == 0  # cap reached: discovery waits for tomorrow
+        assert queue_discovery(s, capped, entries=entries, now=datetime.now(UTC) + timedelta(days=1)) == 1
+
+
+
+def test_a_cancelled_scan_is_not_a_scan(engine, clean):
+    entries = {"test-top": TOP}
+    with Session(engine) as s, s.begin():
+        approved(s, "test-top", TOP)
+        sync(s, "test-top", data=CSV, entry=TOP)
+    every = Settings(_env_file=None, discovery_daily_budget=10, discovery_batch_size=3, discovery_max_queued=10)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, every, entries=entries) == 3
+        s.execute(ScanJob.__table__.update().values(status=JobStatus.CANCELLED, error_code="demo_cleanup"))
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, every, entries=entries) == 3  # never ran, so they come back
+        s.execute(ScanJob.__table__.update().where(ScanJob.status == JobStatus.QUEUED).values(status=JobStatus.SUCCEEDED))
+        assert queue_discovery(s, every, entries=entries) == 0  # really scanned now: once is enough

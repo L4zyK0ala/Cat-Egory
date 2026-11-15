@@ -249,7 +249,9 @@ def get_category(category_id: str, session: Session = Depends(get_session)) -> C
 
 @router.get("/categories/{category_id}/domains", response_model=CategoryDomainsOut,
             summary="Published domains in a category (keyset pagination)")
-def category_domains(category_id: str, response: Response, primary_only: bool = False,
+def category_domains(category_id: str, response: Response,
+                     primary_only: bool = Query(True, description="false: also domains where it is a secondary "
+                                                                 "category (the lists use main categories only)"),
                      limit: int = Query(100, ge=1, le=1000), cursor: int | None = Query(None, ge=0),
                      session: Session = Depends(get_session)) -> CategoryDomainsOut:
     category = session.get(Category, category_id)

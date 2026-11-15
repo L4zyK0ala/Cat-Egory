@@ -128,6 +128,26 @@ $DC exec api python -m backend.cli reclassify-provider --provider mock          
 $DC exec api python -m backend.cli reclassify-provider --provider mock --yes    # do it
 ```
 
+After a taxonomy change that redefines a category (2.0.0 split `gambling` into licensed `gambling` and
+`illegal-gambling`), re-classify the domains filed under it. They are re-scanned at priority 3 and the model answers
+again under the new definitions. Domains a person verified go back to a person if the new answer differs:
+
+```bash
+$DC exec api python -m backend.cli reclassify-category --category gambling          # dry run: lists them
+$DC exec api python -m backend.cli reclassify-category --category gambling --yes    # do it
+```
+
+**Sites closed to bots.** Some sites' robots.txt shuts out every bot: facebook, instagram, x, reddit and others.
+They are never fetched. After such a blocked scan the model is asked once, from the domain name only
+(`category.classify.name_only`). If it recognises the site (confidence ≥ 0.5), a `robots_blocked` review opens with
+its suggestion. Nothing is published until a person approves it; threat claims are dropped. Unknown names create
+no task. For sites blocked before this existed, run once:
+
+```bash
+$DC exec api python -m backend.cli suggest-robots-blocked          # dry run: lists them
+$DC exec api python -m backend.cli suggest-robots-blocked --yes    # ask the model (answers land in the review queue)
+```
+
 When a later classification is applied automatically (≥ 0.90, or two models agree), open review tasks that only
 said "the model was unsure" (or came from the mock) are closed as `skipped` with a note. Risk claims,
 prompt-injection findings and model-requested reviews stay open for a person.
@@ -220,10 +240,23 @@ $DC exec api python -m integrations.cli sync urlhaus
 
 Entries with `discover: true` in `integrations/sources.yaml` only bring domains in; syncing never scans. The
 `category.discovery.queue` task then queues their first scans slowly, most popular first, at priority 8 (after
-manual and scheduled work): at most `CATEGORY_DISCOVERY_BATCH_SIZE` (10) per run, `CATEGORY_DISCOVERY_DAILY_BUDGET`
-(200) per day (Türkiye time), and nothing while `CATEGORY_DISCOVERY_MAX_QUEUED` (20) scans are waiting. One classification
-uses ~7k EVREN tokens, so 200/day is ~1.4M tokens (~10 % of the account's daily quota). Large CSV feeds are
-streamed (a 1M-row list needs ~15 MB), so run syncs in the `worker` container.
+manual and scheduled work). Popularity is the row in the source file, so both Majestic cuts agree. One in four of
+each batch goes to names that hint at restricted content (casino, bahis, porn, vape ...; `RESTRICTED_HINT` in
+`backend/app/discovery.py`), so the lists people block most fill up early. Limits:
+- at most `CATEGORY_DISCOVERY_BATCH_SIZE` (15) per run;
+- at most `CATEGORY_DISCOVERY_DAILY_BUDGET` (1,000) per day, Türkiye time;
+- nothing while `CATEGORY_DISCOVERY_MAX_QUEUED` (30) scans are waiting;
+- nothing once today's EVREN tokens reach `CATEGORY_AI_DAILY_TOKEN_CAP`. That count covers every task, not just
+  discovery; 0 means no cap.
+
+One classification uses ~7k EVREN tokens on average, so 1,000/day is ~7M tokens. The account's daily quota is not
+documented here. Agreed on 2026-11-15: Cat-Egory may use 60 % of it. Read the quota on the EVREN panel and set the
+cap in `.env` to 60 % of it, e.g. `CATEGORY_AI_DAILY_TOKEN_CAP=8400000` for a 14M quota. The cap is the real limit;
+the domain budget only spreads the work over the day.
+
+To watch usage, see `category_ai_tokens_today` and `category_ai_daily_token_cap` on `/metrics`. EVREN's free
+period ends on 2026-12-01; check the price before keeping this pace. Large CSV feeds are streamed (a 1M-row list
+needs ~15 MB), so run syncs in the `worker` container.
 
 The first discovery sources are two views of the Majestic Million (CC BY 3.0, licence read on its download page
 on 2026-11-08): `majestic-million-top` (first 20,000) and `majestic-million-tr` (all `.tr` names). After reading

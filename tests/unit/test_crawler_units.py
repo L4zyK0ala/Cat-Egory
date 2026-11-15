@@ -131,3 +131,17 @@ def test_s3_store_against_moto():
         art = save(store, "scans/x/text.txt.gz", b"hello", "text/plain", compress=True)
         import gzip
         assert gzip.decompress(store.get(art.key)) == b"hello" and art.size == 5
+
+
+
+def test_crawl_reads_the_host_precheck_chose():
+    asked = []
+    def capture(host, settings):
+        asked.append(("page", host))
+        return fake_capture()(host, settings)
+    def robots(host, **k):
+        asked.append(("robots", host))
+        return RobotsDecision(True, "parsed")
+    r = crawl({"job_id": "j", "domain": "bare.com", "host": "www.bare.com"}, S, MemoryStore(), capture_fn=capture,
+              robots_fn=robots)
+    assert r.domain == "bare.com" and asked == [("robots", "www.bare.com"), ("page", "www.bare.com")]

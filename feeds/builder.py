@@ -2,7 +2,8 @@
 
 Outputs (per content category and per security-threat category, plus combined files):
 
-* ``<category>.txt``    one domain per line
+* ``<category>.txt``    one domain per line, every domain whose **main** category it is (secondary categories are
+                        only in all.csv / all.json)
 * ``<category>.hosts``  ``0.0.0.0 domain`` (hosts-file blockers, Pi-hole)
 * ``<category>.rpz``    DNS Response Policy Zone (BIND/Unbound/PowerDNS); answers NXDOMAIN for domain + subdomains
 * ``all.csv`` / ``all.json``  every published domain with its categories
@@ -50,8 +51,8 @@ MEDIA_TYPES = {"txt": "text/plain; charset=utf-8", "hosts": "text/plain; charset
                "rpz": "text/dns; charset=utf-8", "adblock": "text/plain; charset=utf-8",
                "csv": "text/csv; charset=utf-8", "json": "application/json"}
 # Ready-made lists for routers and DNS filters (the /integrations page). Every profile also blocks all threats.
-FAMILY_CATEGORIES = ("adult-content", "gambling", "illegal-drugs", "violence", "weapons", "hate-and-discrimination",
-                     "proxy-services")
+FAMILY_CATEGORIES = ("adult-content", "gambling", "illegal-gambling", "illegal-drugs", "violence", "weapons",
+                     "hate-and-discrimination", "proxy-services")
 PROFILES = {"profile-security": ("security threats", ()), "profile-family": ("family filter", FAMILY_CATEGORIES)}
 RPZ_ORIGIN = "rpz.cat-egory."
 THREAT_SOURCES = OWN_THREAT_SOURCES  # threat records we may redistribute under our own licence
@@ -99,11 +100,15 @@ def published_rows(session: Session) -> list[tuple[str, str, list[str], float | 
 
 
 def category_members(session: Session) -> dict[str, list[str]]:
+    """Domains per content category, by their **main** category only. Secondary categories stay in all.csv/all.json
+    and the API: in a list they made allow and block rules too blunt (a bank's annual-report page put it in "news",
+    a brewer's corporate site in "alcohol", the state arms maker in "weapons")."""
     members: dict[str, list[str]] = {}
     for category_id, domain in session.execute(
         select(DomainCategory.category_id, Domain.normalized_domain)
         .join(Domain, Domain.id == DomainCategory.domain_id)
-        .where(DomainCategory.valid_to.is_(None), listed()).order_by(Domain.normalized_domain)
+        .where(DomainCategory.valid_to.is_(None), DomainCategory.is_primary, listed())
+        .order_by(Domain.normalized_domain)
     ):
         members.setdefault(category_id, []).append(domain)
     return members

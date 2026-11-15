@@ -75,14 +75,14 @@ def test_category_listing(engine, client, admin):
     cursor = None
     while True:
         page = client.get("/api/v1/categories/sports/domains",
-                          params={"limit": 2, **({"cursor": cursor} if cursor else {})}).json()
+                          params={"limit": 2, "primary_only": False, **({"cursor": cursor} if cursor else {})}).json()
         allsports += page["items"]
         cursor = page["next_cursor"]
         if cursor is None:
             break
     assert len(allsports) == 5
-    primary = client.get("/api/v1/categories/sports/domains", params={"primary_only": True}).json()["items"]
-    assert len(primary) == 3
+    primary = client.get("/api/v1/categories/sports/domains").json()["items"]  # main category only, like the lists
+    assert len(primary) == 3 and all(i["primary"] for i in primary)
     assert client.get("/api/v1/categories/unknown/domains").status_code == 404
 
 

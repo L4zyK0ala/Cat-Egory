@@ -16,7 +16,7 @@ from classification.taxonomy import Taxonomy
 
 from .schemas import ClassificationInput
 
-PROMPT_VERSION = "2026-11-08.2"
+PROMPT_VERSION = "2026-11-15.1"
 
 _INJECTION_PATTERNS = [
     re.compile(p, re.IGNORECASE)
@@ -64,6 +64,10 @@ Guidance:
 - "confidence" is your probability (0.0-1.0) that primary_category is correct. Use < 0.5 when the page is empty,
   an error page, a login wall, or in a language you cannot read reliably.
 - Parked or for-sale pages: primary_category "parked-domains", site_type "parked".
+- Gambling: "gambling" only when the page names its operator's licence from a gambling regulator in some country
+  (a licence number, or a state lottery or totalisator) and the domain is the operator's own site. Choose
+  "illegal-gambling" when no licence is shown, or for addresses made to get round blocking: "new address" or
+  "giriş" pages, numbered or mirror copies of a betting brand, and unrelated domain names that now show a casino.
 - "primary_category": what the site is mainly for, judged by what its visitors do there, not by who runs it.
   Choose the most specific category that clearly fits; use a broad one (business, information-technology,
   finance, shopping, media, entertainment) only when no narrower category describes the site's main purpose.
@@ -150,6 +154,17 @@ def build_prompt(
         "screenshot_attached": data.screenshot is not None,
     }
     body = _strip_marker(json.dumps(observations, ensure_ascii=False, indent=1), nonce)
+    if data.not_fetched:
+        # Our own words, outside the untrusted block: nothing from the site is involved.
+        user = (
+            "No page was fetched for this domain: its robots.txt does not allow automated visitors, and we respect "
+            "that. Classify the website from what is generally known about this domain name. If you do not "
+            "recognise it as a real, well-known website, set confidence below 0.5. Give one evidence item of type "
+            "\"metadata\" saying that the answer rests on general knowledge of the domain, not on its page. Leave "
+            "risk_categories empty. Reply with the JSON object only.\n\n"
+            f"{open_marker}\n{body}\n{close_marker}\n\nDomain under analysis: {data.domain}"
+        )
+        return system, user, []
     user = (
         f"Classify the website described by the observations below. Reply with the JSON object only.\n\n"
         f"{open_marker}\n{body}\n{close_marker}\n\n"

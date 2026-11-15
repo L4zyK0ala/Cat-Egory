@@ -148,10 +148,14 @@ class Settings(BaseSettings):
     virustotal_check_max_age_hours: int = Field(default=72, ge=1)
     virustotal_check_pause_seconds: float = Field(default=16.0, ge=0, description="the public API allows 4 a minute")
     # discovery (first scans of domains from discovery sources; backend/app/discovery.py)
-    discovery_daily_budget: int = Field(default=200, ge=0, description="new domains per day that can reach the "
-                                                                       "AI (failed scans do not count); 0 = off")
-    discovery_batch_size: int = Field(default=10, ge=1, description="new domains queued per 15-minute run")
-    discovery_max_queued: int = Field(default=20, ge=1, description="pause while this many scans are waiting")
+    discovery_daily_budget: int = Field(default=1000, ge=0, description="new domains per day that can reach the "
+                                                                        "AI (failed scans do not count); 0 = off")
+    discovery_batch_size: int = Field(default=15, ge=1, description="new domains queued per 15-minute run")
+    discovery_max_queued: int = Field(default=30, ge=1, description="pause while this many scans are waiting")
+    ai_daily_token_cap: int = Field(default=0, ge=0, description="EVREN tokens (in + out) per day, Türkiye time, after "
+                                                                 "which discovery pauses; other work goes on. "
+                                                                 "0 = no cap. Set it to the share of the account's "
+                                                                 "daily quota Cat-Egory may use")
     discovery_pause_after_infra_failures: int = Field(default=20, ge=1,
                                                       description="pause while the last hour has this many failures "
                                                                   "on our side (sandbox, storage, ...)")

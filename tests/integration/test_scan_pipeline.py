@@ -49,6 +49,10 @@ ZONE = {
     "mixed.com": {"A": ["93.184.215.14", "127.0.0.1"]},
     "slow.com": {"A": "timeout", "AAAA": "timeout"},
     "nomail.com": {},
+    "bare.com": {"NS": ["ns1.bare.com."]},             # no address on the bare name ...
+    "www.bare.com": {"A": ["93.184.215.20"]},           # ... the site answers on www
+    "sneaky.com": {},
+    "www.sneaky.com": {"A": ["192.168.1.10"]},          # www points into a private network
 }
 
 
@@ -94,7 +98,19 @@ def run_precheck(engine, name, zone=ZONE):
 def test_precheck_ok_returns_payload(client, engine, admin):
     add(client, admin, "ok.com")
     payload, job_id = run_precheck(engine, "ok.com")
-    assert payload == {"job_id": job_id, "domain": "ok.com", "dns": payload["dns"], "resolved_ips": ["93.184.215.14"]}
+    assert payload == {"job_id": job_id, "domain": "ok.com", "host": "ok.com", "dns": payload["dns"],
+                       "resolved_ips": ["93.184.215.14"]}
+
+
+def test_precheck_falls_back_to_www(client, engine, admin):
+    add(client, admin, "bare.com", "sneaky.com", "nomail.com")
+    payload, _ = run_precheck(engine, "bare.com")
+    assert payload["host"] == "www.bare.com" and payload["resolved_ips"] == ["93.184.215.20"]
+    assert payload["dns"]["ns"] == ["ns1.bare.com."] and payload["dns"]["host"] == "www.bare.com"
+    assert run_precheck(engine, "sneaky.com")[0] is None  # www is checked like any other address
+    assert jobs(engine)["sneaky.com"].error_code == "resolves_to_blocked_ip"
+    assert run_precheck(engine, "nomail.com")[0] is None  # neither name has an address
+    assert jobs(engine)["nomail.com"].error_code == "dns_no_address"
 
 
 def test_precheck_blocks_private_and_mixed_answers(client, engine, admin):

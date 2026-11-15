@@ -4,8 +4,8 @@
 #   * Every change bumps `version` (semver): new category = minor, deprecation/redefinition = major, wording = patch.
 #   * `kind: risk` categories form the separate security-threat classification.
 #   * Groups (`group: true`) organise the tree and are never assigned to a domain.
-version: "1.1.0"
-released: "2026-11-08"
+version: "2.0.0"
+released: "2026-11-15"
 license: "CC-BY-4.0"
 
 categories:
@@ -117,7 +117,7 @@ categories:
   - {id: adult-content, code: 601, parent: group-restricted-content, kind: content, name: "Adult Content",
      description: "Sexually explicit material, pornography and adult services."}
   - {id: gambling, code: 602, parent: group-restricted-content, kind: content, name: "Gambling",
-     description: "Betting, casinos, lotteries, poker and sports betting."}
+     description: "Betting, casinos, lotteries and poker run by an operator that a gambling regulator licenses in at least one country (a national lottery, a licensed sportsbook or casino)."}
   - {id: alcohol, code: 603, parent: group-restricted-content, kind: content, name: "Alcohol",
      description: "Sale or promotion of alcoholic beverages."}
   - {id: tobacco, code: 604, parent: group-restricted-content, kind: content, name: "Tobacco",
@@ -130,6 +130,8 @@ categories:
      description: "Graphic violence, gore or glorification of violent acts."}
   - {id: hate-and-discrimination, code: 608, parent: group-restricted-content, kind: content, name: "Hate and Discrimination",
      description: "Content attacking people based on protected characteristics."}
+  - {id: illegal-gambling, code: 609, parent: group-restricted-content, kind: content, name: "Illegal Gambling",
+     description: "Betting and casino sites with no licence from any gambling regulator, and domains made to get round blocking (mirror, \"new address\" or numbered copies, unrelated domains that now show a casino)."}
 
   # ------------------------------------------------------------------ 700 Web Infrastructure
   - {id: group-web-infrastructure, code: 700, kind: content, group: true, name: "Web Infrastructure",

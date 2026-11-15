@@ -26,14 +26,15 @@ def crawl(payload: dict, settings: Settings, store: ArtifactStore, *,
           capture_fn: Callable | None = None,
           robots_fn: Callable[..., RobotsDecision] = fetch_robots) -> CrawlResult:
     job_id, domain = payload["job_id"], payload["domain"]
-    result = CrawlResult(job_id=job_id, domain=domain, requested_url=f"https://{domain}/",
+    host = payload.get("host") or domain  # www.<domain> when only that name has an address (precheck)
+    result = CrawlResult(job_id=job_id, domain=domain, requested_url=f"https://{host}/",
                          dns=payload.get("dns", {}), resolved_ips=payload.get("resolved_ips", []))
     started = time.monotonic()
     try:
         if settings.crawler_respect_robots:
             t = time.monotonic()
             token = settings.egress_proxy_token.get_secret_value() if settings.egress_proxy_token else None
-            decision = robots_fn(domain, agent=settings.crawler_user_agent_token, proxy_url=settings.crawler_proxy_url,
+            decision = robots_fn(host, agent=settings.crawler_user_agent_token, proxy_url=settings.crawler_proxy_url,
                                  proxy_token=token)
             result.timings["robots_ms"] = int((time.monotonic() - t) * 1000)
             result.robots_allowed = decision.allowed
@@ -49,7 +50,7 @@ def crawl(payload: dict, settings: Settings, store: ArtifactStore, *,
 
         if capture_fn is None:
             from .browser import capture as capture_fn  # imported lazily: Playwright exists only in this image
-        page = capture_fn(domain, settings)
+        page = capture_fn(host, settings)
         result.requested_url = page.requested_url
         result.final_url, result.http_status = page.final_url, page.http_status
         result.redirect_chain, result.response_headers, result.tls = page.redirect_chain, page.response_headers, page.tls

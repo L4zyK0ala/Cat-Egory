@@ -39,7 +39,7 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | `GET /api/v1/feeds/all.json`, `all.csv` (aliases `all-domains.*`) | ✅ P5 | full dump |
 | `GET /api/v1/feeds/rpz` (all security threats) | ✅ P5 | DNS RPZ zone |
 | `GET /api/v1/feeds/{category}.adblock` | ✅ | AdGuard Home / uBlock syntax (`||domain^`, covers subdomains) |
-| `GET /api/v1/feeds/profile-security.{txt,hosts,rpz,adblock}`, `profile-family.*` | ✅ | ready-made router profiles: all threats; threats plus adult, gambling, drugs, violence, weapons, hate, proxies (`feeds/builder.PROFILES`); setup steps on `/integrations` |
+| `GET /api/v1/feeds/profile-security.{txt,hosts,rpz,adblock}`, `profile-family.*` | ✅ | ready-made router profiles: all threats; threats plus adult, gambling (licensed and illegal), drugs, violence, weapons, hate, proxies (`feeds/builder.PROFILES`); setup steps on `/integrations` |
 | `GET /api/v1/feeds/{name}/diff?from=<version>` | ✅ | list feeds only (txt, hosts, rpz, adblock): `+domain` added and `-domain` removed since that version; `X-Feed-Version` = the latest |
 | `GET /api/v1/changes?since=<time>&limit=` | ✅ | pull feed of changes, oldest first, at most 30 days back: `category` (published domain's main category; `old` null = newly categorised), `threat_added`, `threat_removed` (`reason` withdrawn/expired; same records as the threat feeds). Pass `until` as the next `since` and repeat while `more`; a page never ends inside one instant. Webhooks are not offered yet (outbound calls need the egress proxy and signing). The `/changes` page shows the last 7 days |
 | `POST /api/v1/community/report` | ✅ P6 | false positive / negative, correction |

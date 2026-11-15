@@ -28,6 +28,8 @@ function reasonText(t: T, reason: string, lookalikeOf?: string | null) {
     conflicts_with_human_decision: t("conflicts with a human decision", "bir insan kararıyla çelişiyor"),
     threat_returned: t("was flagged, went offline and is back — check again", "işaretlenmişti, kapanıp geri geldi — yeniden bakın"),
     threat_page_changed: t("flagged, and the page changed — cleaned?", "işaretli, sayfası değişti — temizlendi mi?"),
+    robots_blocked: t("closed to bots (robots.txt): the model's suggestion from the name only — page not visited",
+                      "botlara kapalı (robots.txt): sayfa açılmadı, modelin yalnız alan adından önerisi"),
   };
   const target = reason.startsWith("lookalike_of:") ? reason.slice(13) : reason === "brand_lookalike" ? lookalikeOf : null;
   if (target) return t(`looks like ${target} — check for phishing`, `${target} taklidi gibi — oltalama mı bakın`);

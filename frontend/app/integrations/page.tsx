@@ -7,7 +7,7 @@ import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
 
-const FAMILY = ["adult-content", "gambling", "illegal-drugs", "violence", "weapons", "hate-and-discrimination", "proxy-services"];
+const FAMILY = ["adult-content", "gambling", "illegal-gambling", "illegal-drugs", "violence", "weapons", "hate-and-discrimination", "proxy-services"];
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();

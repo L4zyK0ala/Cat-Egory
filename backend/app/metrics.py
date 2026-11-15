@@ -74,6 +74,16 @@ class DatabaseCollector(Collector):
                                        .where(AIPrediction.created_at >= since).group_by(AIPrediction.validation_status)):
                 g.add_metric([str(status)], n)
             families.append(g)
+            from common.timeutil import local_midnight
+
+            from .discovery import tokens_since
+
+            settings = get_settings()
+            families.append(GaugeMetricFamily(
+                "category_ai_tokens_today", "AI tokens (in + out) used today, Türkiye time",
+                value=tokens_since(s, local_midnight(datetime.now(UTC), settings.app_utc_offset_hours))))
+            families.append(GaugeMetricFamily("category_ai_daily_token_cap", "Daily AI token cap for discovery (0 = none)",
+                                              value=settings.ai_daily_token_cap))
             newest = s.scalar(select(func.max(FeedRelease.generated_at)))
             families.append(GaugeMetricFamily("category_feed_age_seconds", "Seconds since the newest feed release",
                                               value=(datetime.now(UTC) - newest).total_seconds() if newest else -1))

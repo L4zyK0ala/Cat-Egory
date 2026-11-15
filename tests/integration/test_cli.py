@@ -1,4 +1,6 @@
 import pytest
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from backend import cli
 
@@ -81,3 +83,25 @@ def test_reclassify_provider(engine, clean):
         assert s.scalar(select(ReviewTask.status).where(ReviewTask.domain_id == later.id)) == "open"
     with sessionmaker(bind=engine)() as s, s.begin():
         assert reclassify_provider(s, "mock") == (1, 0)  # idempotent: no second job (open-job index)
+
+
+def test_reclassify_category(engine, clean, client, admin):
+    from backend.cli import reclassify_category
+    from classification.engine import apply_categories
+    from classification.taxonomy import default_taxonomy
+    from database.models import AssignmentOrigin, ClassificationStatus, Domain, ScanJob
+
+    client.post("/api/v1/admin/domains", headers=admin,
+                json={"domains": ["casino.example.com", "news.example.com"], "scan": "none"})
+    with Session(engine) as s, s.begin():
+        for name, primary in (("casino.example.com", "gambling"), ("news.example.com", "news")):
+            apply_categories(s, s.scalar(select(Domain).where(Domain.normalized_domain == name)), primary=primary,
+                             secondary=[], confidence=0.9, origin=AssignmentOrigin.AI, taxonomy=default_taxonomy(),
+                             status=ClassificationStatus.CLASSIFIED)
+    with Session(engine) as s, s.begin():
+        assert reclassify_category(s, "gambling", dry_run=True) == ["casino.example.com"]
+        assert s.scalar(select(func.count()).select_from(ScanJob)) == 0
+        assert reclassify_category(s, "gambling") == ["casino.example.com"]
+    with Session(engine) as s:
+        jobs = s.scalars(select(ScanJob)).all()
+        assert [(str(j.reason), j.priority) for j in jobs] == [("rescan", 3)]

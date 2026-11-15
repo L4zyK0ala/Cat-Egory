@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ai_providers.base import AIProvider
 from ai_providers.registry import get_provider, get_second_opinion
+from ai_providers.schemas import ClassificationInput
 from classification.confidence import ConfidencePolicy
 from classification.engine import (
     Outcome,
@@ -15,8 +16,10 @@ from classification.engine import (
     decide,
     is_lookalike_reason,
     lookalike_verdict,
+    name_suggestion_due,
     settle_parked_lookalike,
     settle_with_second_opinion,
+    suggest_from_name,
 )
 from classification.taxonomy import default_taxonomy, load_taxonomy
 from common.config import Settings, get_settings
@@ -109,3 +112,25 @@ def scan_result_for_job(session: Session, job_id: str) -> int | None:
     import uuid
 
     return session.scalar(select(ScanResult.id).where(ScanResult.scan_job_id == uuid.UUID(job_id)))
+
+
+def suggest_by_name(session: Session, domain_id: int, settings: Settings, *, provider: AIProvider) -> str:
+    """robots.txt closes this site to bots: ask the model what it knows about the name; a person decides."""
+    domain = session.get(Domain, domain_id, with_for_update=True)
+    if domain is None or not domain.is_active or not name_suggestion_due(session, domain):
+        return "skipped"
+    name = domain.normalized_domain
+    data = ClassificationInput(url=f"https://{name}/", domain=name, not_fetched="robots_disallowed")
+    return suggest_from_name(session, domain, provider.classify(data))
+
+
+@celery_app.task(name="category.classify.name_only", bind=True, ignore_result=True, max_retries=3,
+                 soft_time_limit=600, time_limit=660)
+def name_only(self, domain_id: int) -> str:
+    settings = get_settings()
+    with session_factory()() as session, session.begin():
+        outcome = suggest_by_name(session, domain_id, settings, provider=get_provider(settings=settings))
+    log.info("name-only suggestion", extra={"domain_id": domain_id, "action": outcome})
+    if outcome == "retry":
+        raise self.retry(countdown=300 * (self.request.retries + 1))
+    return outcome
