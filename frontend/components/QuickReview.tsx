@@ -96,8 +96,13 @@ function Quick({ api }: { api: string }) {
     if (!current || busy) return;
     let primary: string | undefined = preset;
     if (action === "set" && !primary) {
-      const typed = choice.trim().toLowerCase();
-      primary = content.find((c) => c.id === typed || c.name.toLowerCase() === typed || name(c.id).toLocaleLowerCase(intl(locale)) === typed)?.id;
+      // Both sides through the same rule: a plain toLowerCase() turns Turkish "İ" into "i" + a combining dot, so
+      // "İş Dünyası" typed in the box never matched the Turkish-lowercased name. Both rules are tried, so an English
+      // name typed in lower case ("it" for "IT") still matches on a Turkish panel.
+      const folds = (s: string) => { const v = s.normalize("NFC").trim(); return [v.toLocaleLowerCase(intl(locale)), v.toLowerCase()]; };
+      const [typedLocal, typedPlain] = folds(choice);
+      const same = (s: string) => { const [l, p] = folds(s); return l === typedLocal || p === typedPlain; };
+      primary = content.find((c) => same(c.id) || same(c.name) || same(name(c.id)))?.id;
       if (!primary) { setMsg({ ok: false, text: t("Choose a category from the list first (press S).", "Önce listeden bir kategori seçin (S tuşu).") }); picker.current?.focus(); return; }
     }
     if (action === "approve" && !current.prediction?.primary_category) {
