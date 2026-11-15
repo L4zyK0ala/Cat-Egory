@@ -121,6 +121,12 @@ class Settings(BaseSettings):
     abuse_drafts_batch: int = Field(default=10, ge=1, le=100)
     abuse_report_repeat_days: int = Field(default=30, ge=1, description="draft again for a domain after this long")
     public_site_url: str = "https://cat-egory.org"
+    # Daily summary in Turkish on Telegram (backend/app/report_tasks.py), one message a day, from the worker. Same bot
+    # and chat as the alerts (CATEGORY_ALERT_TELEGRAM_*); both empty = nothing is sent.
+    alert_telegram_token: SecretStr | None = None
+    alert_telegram_chat_id: str | None = None
+    daily_report_enabled: bool = True
+    daily_report_hour: int = Field(default=9, ge=0, le=23, description="hour of the day (Türkiye time) it is sent")
     threat_change_cooldown_days: int = Field(default=7, ge=1, description="a flagged page that changed goes to a "
                                                                           "person at most this often (cloaking flips)")
     scan_interval_unreachable_days: int = 7 # broken domains are re-checked weekly

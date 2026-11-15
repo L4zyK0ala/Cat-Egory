@@ -16,6 +16,11 @@ receivers:
     telegram_configs:
       - bot_token_file: /tmp/telegram-token
         chat_id: __CHAT_ID__
-        parse_mode: ""   # plain text: alert summaries are not escaped for HTML
+        parse_mode: ""   # plain text: alert texts are not escaped for HTML
         send_resolved: true
-        message: '{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} Cat-egory{{ range .Alerts }} · {{ .Annotations.summary }}{{ end }}'
+        # In Turkish: the `telegram` annotation of each rule (prometheus/alerts.yml), else its English summary.
+        message: |-
+          {{ if eq .Status "firing" }}🔴 Cat-egory · sorun var{{ else }}✅ Cat-egory · düzeldi{{ end }}
+          {{- range .Alerts }}
+          • {{ or .Annotations.telegram .Annotations.summary }}
+          {{- end }}

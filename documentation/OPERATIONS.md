@@ -336,8 +336,16 @@ For that case, copy a backup to a disk kept elsewhere every few months.
 
 **Telegram alerts.** Set `CATEGORY_ALERT_TELEGRAM_TOKEN` (from @BotFather) and `CATEGORY_ALERT_TELEGRAM_CHAT_ID` in
 `.env`, then `$DC up -d alertmanager prometheus`. Only critical alerts are sent, grouped, at most once a day per alert
-while it lasts, plus a message when it ends. Send a test:
-`$DC exec alertmanager amtool alert add alertname=Test severity=critical --annotation=summary="test" --alertmanager.url=http://127.0.0.1:9093`.
+while it lasts, plus a message when it ends. Messages are in Turkish: each rule's `telegram` annotation
+(`deployment/prometheus/alerts.yml`), falling back to its English `summary`. Send a test:
+`$DC exec alertmanager amtool alert add alertname=Test severity=critical --annotation=telegram="deneme" --alertmanager.url=http://127.0.0.1:9093`.
+
+**Daily summary.** With the same two settings, the main worker sends one Turkish message a day at 09:00 Türkiye time:
+yesterday's newly categorised sites, scans, AI answers and tokens against the cap, the
+review queue, threats added and removed, abuse drafts and community reports waiting, the newest feed build and the
+age of the backups. It only reads the database. Preview it, or send it now:
+`$DC exec worker python -m backend.cli daily-report [--send]`. Turn it off with `CATEGORY_DAILY_REPORT_ENABLED=false`.
+The token reaches the alertmanager and the main worker only.
 
 `/metrics` on the API exports HTTP metrics and database-derived gauges (cached 30 s):
 `category_domains{status}`, `category_scan_jobs{status}`, `category_open_reviews`,

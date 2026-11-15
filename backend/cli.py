@@ -9,6 +9,7 @@
     python -m backend.cli reclassify-category --category gambling [--yes]
     python -m backend.cli suggest-robots-blocked [--yes]
     python -m backend.cli apply-registry-rules [--yes]
+    python -m backend.cli daily-report [--send]
 
 In Docker: ``docker compose ... exec api python -m backend.cli ...`` (add ``-it`` for --password prompts).
 API keys are printed exactly once and stored only as hashes.
@@ -403,7 +404,24 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("set-password", help="set or change a user's password (admin UI sign-in)")
     p.add_argument("--email", required=True)
 
+    p = sub.add_parser("daily-report", help="print the daily Telegram summary (yesterday, Türkiye time)")
+    p.add_argument("--send", action="store_true", help="also send it to Telegram now (run in the worker)")
+
     args = parser.parse_args(argv)
+    if args.command == "daily-report":  # read-only; the optional send is a network call
+        from backend.app.report_tasks import build, read_heartbeats, send_telegram
+
+        with session_factory()() as session:
+            text = build(session, datetime.now(UTC), read_heartbeats())
+        print(text)
+        if args.send:
+            settings = get_settings()
+            if not (settings.alert_telegram_token and settings.alert_telegram_chat_id):
+                print("CATEGORY_ALERT_TELEGRAM_TOKEN / _CHAT_ID are not set in this container (use the worker)")
+                return 1
+            send_telegram(text, settings.alert_telegram_token.get_secret_value(), settings.alert_telegram_chat_id)
+            print("-> sent")
+        return 0
     if args.command == "sgb-check":  # network lookups: outside the CLI transaction, committed as it goes
         from backend.app.threat_tasks import run_sgb_check
 

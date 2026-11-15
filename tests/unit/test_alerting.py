@@ -30,6 +30,16 @@ def test_only_critical_alerts_reach_telegram():
     assert telegram["bot_token_file"].startswith("/tmp/") and "bot_token" not in telegram  # noqa: S108
 
 
+def test_telegram_messages_are_in_turkish():
+    for rule in rules():
+        text = rule["annotations"].get("telegram", "")
+        assert text and text != rule["annotations"]["summary"], rule["alert"]
+    conf = yaml.safe_load((ROOT / "alertmanager/telegram.yml").read_text())
+    message = next(r for r in conf["receivers"] if r["name"] == "telegram")["telegram_configs"][0]["message"]
+    assert "or .Annotations.telegram .Annotations.summary" in message
+    assert "sorun var" in message and "düzeldi" in message
+
+
 def test_silent_config_has_no_receiver_settings():
     conf = yaml.safe_load((ROOT / "alertmanager/silent.yml").read_text())
     assert conf["receivers"] == [{"name": "nobody"}]
