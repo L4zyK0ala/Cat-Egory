@@ -222,9 +222,9 @@ def test_compare_report(engine, clean):
                                       set_name="test.yaml", prompt_version=PROMPT_VERSION)
     lines = report.splitlines()
     qwen = next(line for line in lines if line.startswith(f"| {QWEN} | text + screenshot |"))
-    assert "| 3 | 3/3 (100 %) | 1/3 (33 %) | 2/3 (67 %) | 2/2 (100 %) | 1 |" in qwen
+    assert "| 3 | 3/3 (100 %) | 1/3 (33 %) | 2/3 (67 %) | 1/2 (50 %) | 2/2 (100 %) | 1 |" in qwen
     glm = next(line for line in lines if line.startswith(f"| {GLM} | text only (no image input) |"))
-    assert "| 3 | 2/3 (67 %) | 2/2 (100 %) | 2/2 (100 %) | 2/2 (100 %) | 0 |" in glm
+    assert "| 3 | 2/3 (67 %) | 2/2 (100 %) | 2/2 (100 %) | 2/2 (100 %) | 2/2 (100 %) | 0 |" in glm
     assert f"| {QWEN} | 1/2 (50 %) | 1/1 (100 %) | - | - |" in report  # bands: news 0.95 ok, food 0.92 wrong
     assert f"| {GLM} | 1/1 (100 %) | - | 1/1 (100 %) | - |" in report
     assert f"| {QWEN} | {GLM} | 2 | 1/2 (50 %) |" in report  # news agree, bank differs

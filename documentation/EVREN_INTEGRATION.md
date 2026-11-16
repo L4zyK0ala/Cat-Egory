@@ -130,8 +130,8 @@ $DC exec -T worker python -m classification.evaluation compare-report --models $
   37-78 s an answer, a full five-model run on the 36-site set takes a few hours; other models' latency is unknown.
 * **Images.** `glm-5.3` takes no images (`KNOWN_MODELS` in `ai_providers/evren.py`): it gets the text only and the
   report says so in its *input* column. Sites without a stored screenshot are noted there too.
-* **Report.** One row per model: answers, valid-answer rate, strict and lenient accuracy, lenient accuracy on the
-  sites every model answered validly (the like-for-like figure), wrong answers at >= 0.90, median / p95 latency,
+* **Report.** One row per model: answers, valid-answer rate, strict and lenient accuracy, strict and lenient
+  accuracy on the sites every model answered validly (the like-for-like figures), wrong answers at >= 0.90, median / p95 latency,
   output tokens (median / total), prompt version; accuracy per confidence band (>= 0.90, 0.70-0.89, 0.50-0.69,
   < 0.50); how often each pair of models picks the same primary category; the confident wrong answers; and a
   per-site table with each model's primary category and confidence.

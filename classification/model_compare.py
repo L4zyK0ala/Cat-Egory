@@ -276,9 +276,9 @@ def render(sites: list[Site], models: list[str], answers: dict[tuple[str, str], 
            f"fairest like-for-like figure ({len(answered_by_all)} sites).", ""]
 
     out += ["## Models", "",
-            "| model | input | answers | valid answers | strict | lenient | lenient, common sites | wrong at >= 0.90 "
-            "| latency median / p95 | output tokens median / total | prompt version |",
-            "|---|---|---|---|---|---|---|---|---|---|---|"]
+            "| model | input | answers | valid answers | strict | lenient | strict, common sites | lenient, common sites "
+            "| wrong at >= 0.90 | latency median / p95 | output tokens median / total | prompt version |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for m in models:
         rows = per_model[m]
         valid = [a for a in rows if a.answered]
@@ -290,6 +290,7 @@ def render(sites: list[Site], models: list[str], answers: dict[tuple[str, str], 
         versions = ", ".join(sorted({a.prompt_version for a in rows if a.prompt_version})) or "-"
         out.append(f"| {m} | {_input_label(m, rows)} | {len(rows)} | {_pct(len(valid), len(rows))} "
                    f"| {_pct(sum(a.strict for a in valid), len(valid))} | {_pct(sum(a.lenient for a in valid), len(valid))} "
+                   f"| {_pct(sum(a.strict for a in common), len(common))} "
                    f"| {_pct(sum(a.lenient for a in common), len(common))} | {sum(a.confident_wrong for a in valid)} "
                    f"| {latency} | {tokens} | {versions} |")
 
