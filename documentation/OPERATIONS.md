@@ -196,7 +196,7 @@ the report's contents: [EVREN_INTEGRATION.md](EVREN_INTEGRATION.md#comparing-mod
 
 A CPU-only classifier (`classification/local.py`) learns the main category from the labels we already have:
 people's decisions (weighted ×3) and AI answers that were published at ≥ 0.90 (unless
-`CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false`, e.g. if the provider's terms forbid training on its answers). Domains
+`CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false`; EVREN allows training on its answers, confirmed 2026-11-16). Domains
 with an active threat and registry-rule labels are left out. In **shadow mode** (`CATEGORY_LOCAL_SHADOW=true`) it
 guesses after every AI answer and stores the guess in `local_predictions`. It never publishes, never opens a
 review and never says anything about threats; a failure in it never affects the classification.

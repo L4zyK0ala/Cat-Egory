@@ -54,8 +54,9 @@ These came up when reviewing the EVREN LLM terms (v1) for another project; they 
    allowed and what the quota is.
 5. **Free period** — announced to end on **2026-12-01**; pricing after that is unknown.
 6. **Publishing outputs** — confirm that model outputs may be published under CC BY 4.0.
-7. **Training on outputs** — confirm that published answers may be used to train Cat-egory's own local classifier
-   (Yaş Mama below). Until confirmed, `CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false` limits it to people's decisions.
+7. **Training on outputs** — answered: training Cat-egory's own local classifier (Yaş Mama below) on EVREN's answers is
+   allowed (confirmed by the owner, 2026-11-16). `CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false` would limit it to
+   people's decisions should that change.
 
 Until these are answered, run with `CATEGORY_AI_PROVIDER=mock` or limit EVREN to a small, manually
 reviewed sample.
