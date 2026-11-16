@@ -1,5 +1,7 @@
 # The crawler needs its AppArmor profile loaded first (make sandbox-profile). NOSANDBOX=1 = weaker fallback.
-COMPOSE = docker compose -f deployment/docker-compose.yml $(if $(NOSANDBOX),-f deployment/docker-compose.nosandbox.yml) --env-file .env
+# The `public` profile (cloudflared) is on once .env has a tunnel token, so every `make up` keeps the tunnel running.
+PUBLIC ?= $(shell grep -qsE '^CATEGORY_TUNNEL_TOKEN=.+' .env && echo 1)
+COMPOSE = docker compose -f deployment/docker-compose.yml $(if $(NOSANDBOX),-f deployment/docker-compose.nosandbox.yml) --env-file .env $(if $(PUBLIC),--profile public)
 PY ?= .venv/bin/python
 
 .PHONY: env up down logs ps test test-unit lint migrate seed sandbox-profile selftest backup backup-timer restore-test docker-after-vpn offsite-init offsite-check

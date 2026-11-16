@@ -499,7 +499,8 @@ either network.
    (`CATEGORY_ADMIN_BIND=<LAN address>`, reachable from home only) or the VPN: `make docker-after-vpn`, then
    `CATEGORY_ADMIN_BIND=<VPN address>`, `CATEGORY_ADMIN_API_URL=http://<VPN address>:8111`,
    `CATEGORY_ADMIN_CORS_ORIGINS=["http://<VPN address>:3012"]`.
-4. `$DC --profile public up -d --build`, then `$DC restart prometheus` (new scrape jobs and alerts).
+4. `$DC --profile public up -d --build`, then `$DC restart prometheus` (new scrape jobs and alerts). `make up` adds
+   `--profile public` by itself once `.env` has a tunnel token (`make up PUBLIC=` leaves it out).
 5. Once the public address works, take the public containers off the `edge` network:
    `$DC -f deployment/docker-compose.public.yml --profile public up -d`. From then on `:3010` and `:8110` no longer
    answer on the server's own address (use the public one), and a compromised public container has no route to the
