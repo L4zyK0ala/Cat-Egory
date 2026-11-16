@@ -410,3 +410,33 @@ details summary { cursor: pointer; font-size: 14px; }
   .feed-row { grid-template-columns: minmax(0, 1fr) auto; }
   .feed-row .fmt-chips { grid-column: 1 / -1; }
 }
+
+/* Charts (components/YasMama.tsx): plain SVG. Two series colours, checked for colour-blind separation and contrast
+   against the panel in both themes; text stays in text colours, identity comes from the key beside it. */
+:root { --series-a: #C8352B; --series-b: #2F6DB0; --series-n: #858C97; }
+@media (prefers-color-scheme: dark) { :root { --series-a: #E2574B; --series-b: #5E92D4; --series-n: #8F96A1; } }
+.small { font-size: 13px; }
+.chart { position: relative; margin: 6px 0 14px; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .axis { fill: var(--muted); font: 11px var(--sans); }
+.chart .mark-line { stroke: var(--muted); stroke-width: 1; opacity: .5; }
+.chart .crosshair { stroke: var(--muted); stroke-width: 1; }
+.chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .dot { stroke: var(--panel); stroke-width: 2; }
+.chart .series-a .line { stroke: var(--series-a); } .chart .series-a .dot { fill: var(--series-a); }
+.chart .series-b .line { stroke: var(--series-b); } .chart .series-b .dot { fill: var(--series-b); }
+.chart .column { fill: var(--series-n); } .chart .column.on { fill: var(--series-b); }
+.chart .hit { fill: transparent; }
+.chart-tip { position: absolute; top: 8px; pointer-events: none; z-index: 2; min-width: 190px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+  padding: 8px 10px; font-size: 13px; line-height: 1.5; white-space: nowrap; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--text); }
+.chart-legend span, .chart-tip div { display: inline-flex; align-items: center; gap: 6px; }
+.chart-tip div { display: flex; }
+.chart-tip.right { transform: translateX(12px); } .chart-tip.left { transform: translateX(calc(-100% - 12px)); }
+.key { display: inline-block; width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.key-a { background: var(--series-a); } .key-b { background: var(--series-b); }
+.meter-cell { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.meter { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: var(--beige); overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--series-n); border-radius: 3px; }

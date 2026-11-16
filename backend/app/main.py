@@ -27,7 +27,7 @@ from common.logging import configure_logging
 from database.session import get_engine
 
 from . import errors
-from .api import abuse, admin, changes, community, developer, feeds, reviews, session, threats, trends, v1
+from .api import abuse, admin, changes, community, developer, feeds, reviews, session, threats, trends, v1, yasmama
 from .body_limit import BodyLimitMiddleware, request_limit
 from .deps import get_redis
 
@@ -168,6 +168,7 @@ def create_app() -> FastAPI:
         app.include_router(threats.router)
         app.include_router(abuse.router)
         app.include_router(trends.router)
+        app.include_router(yasmama.router)
         app.include_router(session.router)
     return app
 

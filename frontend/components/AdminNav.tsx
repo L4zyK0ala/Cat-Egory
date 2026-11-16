@@ -6,7 +6,7 @@ import { useT } from "./LocaleProvider";
 const LINKS = [
   ["/admin", "Overview", "Genel Bakış"], ["/admin/reviews", "Review", "İnceleme"], ["/admin/moderation", "Moderation", "Moderasyon"],
   ["/admin/threats", "Confirmed Threats", "Onaylanmış Tehditler"], ["/admin/abuse", "Abuse Reports", "Kötüye Kullanım Bildirimleri"],
-  ["/admin/trends", "Trends", "Yönelim"],
+  ["/admin/trends", "Trends", "Yönelim"], ["/admin/yasmama", "Yaş Mama", "Yaş Mama"],
 ] as const;
 
 /** One navigation bar for every admin page (admin UI only). */

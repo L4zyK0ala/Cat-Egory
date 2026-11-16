@@ -30,7 +30,7 @@ import time
 import warnings
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import numpy as np
@@ -39,6 +39,7 @@ from sqlalchemy import delete, exists, func, select, true, update
 from sqlalchemy.orm import Session
 
 from common.config import Settings
+from common.timeutil import local_midnight
 from database.models import (
     AIPrediction,
     AssignmentOrigin,
@@ -399,31 +400,77 @@ def report(session: Session, settings: Settings, now: datetime | None = None, da
     if m.get("too_small"):
         out += [f"Too few pages to learn (< {settings.local_min_examples}): " + ", ".join(m["too_small"]), ""]
 
-    since = now - timedelta(days=days)
-    pairs = session.execute(
-        select(LocalPrediction.primary_category_id, LocalPrediction.confidence, AIPrediction.primary_category_id)
-        .join(AIPrediction, AIPrediction.id == LocalPrediction.ai_prediction_id)
-        .where(LocalPrediction.created_at >= since, AIPrediction.validation_status == ValidationStatus.VALID,
-               AIPrediction.confidence >= settings.confidence_auto_approve)).all()
-    out += [f"## Live, last {days} days: agreement with confident AI answers ({len(pairs)} pages)", ""]
-    if pairs:
+    s = live(session, settings, now=now, days=days)
+    out += [f"## Live, last {days} days: agreement with confident AI answers ({s['compared']} pages)", ""]
+    if s["compared"]:
         out += ["| local confidence ≥ | would answer alone | agrees with the AI |", "|---|---|---|"]
-        for t in (0.0, *THRESHOLDS):
-            answered = [(mine, ai) for mine, p, ai in pairs if float(p) >= t]
-            agree = sum(mine == ai for mine, ai in answered)
-            out.append(f"| {t} | {len(answered)} ({_pct(len(answered), len(pairs))}) | "
-                       f"{agree}/{len(answered)} ({_pct(agree, len(answered))}) |")
+        for row in s["thresholds"]:
+            out.append(f"| {row['threshold']} | {row['answered']} ({_pct(row['answered'], s['compared'])}) | "
+                       f"{row['agree']}/{row['answered']} ({_pct(row['agree'], row['answered'])}) |")
         out.append("")
+        out += [f"### Per day (Türkiye time; alone = local confidence ≥ {ALONE})", "",
+                "| day | model | guesses | compared | agrees | alone | right alone |", "|---|---|---|---|---|---|---|"]
+        for d in reversed(s["daily"]):
+            out.append(f"| {d['day']} | {', '.join(d['models'])} | {d['guesses']} | {d['compared']} | "
+                       f"{d['agree']} ({_pct(d['agree'], d['compared'])}) | {d['alone']} | "
+                       f"{d['alone_agree']} ({_pct(d['alone_agree'], d['alone'])}) |")
+        out.append("")
+    p = s["people"]
+    out += [f"## Live: pages a person decided after the guess: {p['agree']}/{p['decided']} agree "
+            f"({_pct(p['agree'], p['decided'])})", ""]
+    return "\n".join(out)
+
+
+ALONE = 0.8  # the confidence the daily view follows: above it the model could one day answer without the AI
+
+
+def live(session: Session, settings: Settings, *, now: datetime | None = None, days: int = 30) -> dict:
+    """Shadow guesses of the last ``days`` days (Türkiye days, today included) against the AI and against people.
+
+    ``compared`` counts guesses next to a valid AI answer at or above the auto-approve confidence (the answers that
+    are published without a person); only those count as agreement. ``daily`` lists every day with a guess."""
+    now = now or datetime.now(UTC)
+    zone = timezone(timedelta(hours=settings.app_utc_offset_hours))
+    since = local_midnight(now, settings.app_utc_offset_hours) - timedelta(days=days - 1)
+    rows = session.execute(
+        select(LocalPrediction.created_at, LocalPrediction.model_version, LocalPrediction.primary_category_id,
+               LocalPrediction.confidence, AIPrediction.primary_category_id.label("ai"),
+               (AIPrediction.validation_status == ValidationStatus.VALID)
+               & (AIPrediction.confidence >= settings.confidence_auto_approve))
+        .outerjoin(AIPrediction, AIPrediction.id == LocalPrediction.ai_prediction_id)
+        .where(LocalPrediction.created_at >= since).order_by(LocalPrediction.created_at)).all()
+    days_out: dict[str, dict] = {}
+    pairs: list[tuple[str, float, str]] = []
+    for created, version, mine, p, ai, confident in rows:
+        day = created.astimezone(zone).date().isoformat()  # the driver may hand back any offset
+        d = days_out.setdefault(day, {"day": day, "models": [], "guesses": 0, "compared": 0, "agree": 0,
+                                      "alone": 0, "alone_agree": 0})
+        d["guesses"] += 1
+        if version not in d["models"]:
+            d["models"].append(version)
+        if not confident:
+            continue
+        p = float(p)
+        pairs.append((mine, p, ai))
+        d["compared"] += 1
+        d["agree"] += mine == ai
+        if p >= ALONE:
+            d["alone"] += 1
+            d["alone_agree"] += mine == ai
+    thresholds = []
+    for t in (0.0, *THRESHOLDS):
+        answered = [(mine, ai) for mine, p, ai in pairs if p >= t]
+        thresholds.append({"threshold": t, "answered": len(answered),
+                           "agree": sum(mine == ai for mine, ai in answered)})
     decided = session.execute(
         select(LocalPrediction.primary_category_id, DomainCategory.category_id)
         .join(DomainCategory, DomainCategory.domain_id == LocalPrediction.domain_id)
         .where(LocalPrediction.created_at >= since, DomainCategory.is_primary, DomainCategory.valid_to.is_(None),
                DomainCategory.origin.in_([AssignmentOrigin(o) for o in TRUSTED]),
                DomainCategory.valid_from > LocalPrediction.created_at)).all()
-    agree = sum(mine == final for mine, final in decided)
-    out += [f"## Live: pages a person decided after the guess: {agree}/{len(decided)} agree "
-            f"({_pct(agree, len(decided))})", ""]
-    return "\n".join(out)
+    return {"since": since.date().isoformat(), "compared": len(pairs), "thresholds": thresholds,
+            "daily": list(days_out.values()),
+            "people": {"decided": len(decided), "agree": sum(mine == final for mine, final in decided)}}
 
 
 # --------------------------------------------------------------------------- command line

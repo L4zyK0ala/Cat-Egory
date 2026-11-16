@@ -51,6 +51,7 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | `POST /api/v1/admin/scans`, `GET /api/v1/admin/scans`, `GET /api/v1/admin/scans/stats` | ✅ P2 | queue a scan, list (keyset), counts |
 | `POST /api/v1/admin/scans/{id}/cancel` | ✅ P2 | cancel a queued scan |
 | `GET /api/v1/admin/trends?days=&limit=` | ✅ | admin "Yönelim" tab: most looked-up known and unknown domains, feed downloads, per-day totals (finished days; scope `scans:read`) |
+| `GET /api/v1/admin/yasmama?days=` | ✅ | admin "Yaş Mama" tab: trained models with held-out scores, live agreement with the AI per threshold and per day, people's later decisions (scope `scans:read`) |
 | retry a failed scan = `POST /api/v1/admin/scans` again | ✅ P3 | |
 | `GET /api/v1/admin/providers`, `GET /api/v1/admin/calibration` | ✅ P4 | provider status, accuracy per band |
 | `GET /api/v1/admin/reviews`, `POST /api/v1/admin/reviews/{id}/decision`, `GET /api/v1/admin/domains/{d}/screenshot` | ✅ P4 | human review |

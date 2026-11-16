@@ -250,3 +250,60 @@ def test_the_report_without_a_model(engine, clean):
 def test_weekly_training_does_nothing_while_shadow_mode_is_off(monkeypatch):
     monkeypatch.setattr(classify_tasks, "get_settings", lambda: Settings(_env_file=None, local_shadow=False))
     assert classify_tasks.yasmama_train.run() == "off"
+
+
+# --------------------------------------------------------------------------- over time (admin tab, report)
+
+def shadowed(engine, store, names):
+    for name in names:
+        scan_id = make_scan(engine, name=name, text="son dakika gündem manşet haber", title="Daily News")
+        with Session(engine) as s, s.begin():
+            classify_tasks.classify_scan(s, scan_id, S, provider=Scripted(), store=store)
+
+
+def test_live_counts_per_turkish_day_and_only_confident_ai_answers(engine, clean):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+
+    store = trained(engine)
+    shadowed(engine, store, ["a.example.com", "b.example.com", "c.example.com"])
+    now = datetime.now(UTC)
+    with Session(engine) as s, s.begin():
+        ids = sorted(s.scalars(select(LocalPrediction.id)))
+        s.execute(update(LocalPrediction).where(LocalPrediction.id == ids[0]).values(created_at=now - timedelta(days=1)))
+        s.execute(update(LocalPrediction).where(LocalPrediction.id == ids[1]).values(ai_prediction_id=None))
+        version = s.scalar(select(LocalModel.version))
+    with Session(engine) as s:
+        out = yasmama.live(s, S, now=now, days=7)
+    days = {d["day"]: d for d in out["daily"]}
+    today = (now + timedelta(hours=S.app_utc_offset_hours)).date()
+    assert sorted(days) == [str(today - timedelta(days=1)), str(today)]
+    assert days[str(today)]["guesses"] == 2 and days[str(today)]["compared"] == 1  # one guess has no AI answer
+    assert days[str(today)]["models"] == [version]
+    assert out["compared"] == 2 and out["thresholds"][0] == {"threshold": 0.0, "answered": 2, "agree": 2}
+    with Session(engine) as s:
+        assert [d["day"] for d in yasmama.live(s, S, now=now, days=1)["daily"]] == [str(today)]
+        assert "### Per day" in yasmama.report(s, S)
+
+
+def test_the_admin_tab_shows_models_and_days(engine, clean, client, admin):
+    from datetime import UTC, datetime, timedelta
+
+    assert client.get("/api/v1/admin/yasmama").status_code == 401
+    empty = client.get("/api/v1/admin/yasmama", headers=admin).json()
+    assert empty["current"] is None and empty["models"] == [] and empty["daily"] == []
+    store = trained(engine)
+    with Session(engine) as s, s.begin():
+        train(s, store, S, now=datetime.now(UTC) + timedelta(minutes=1))  # a second model: history oldest first
+    yasmama._loaded.clear()
+    shadowed(engine, store, ["a.example.com"])
+    body = client.get("/api/v1/admin/yasmama?days=7", headers=admin).json()
+    assert [m["current"] for m in body["models"]] == [False, True]
+    assert body["current"]["version"] == body["models"][-1]["version"]
+    held = body["current"]["human"] or body["current"]["ai"]
+    assert [t["threshold"] for t in held["thresholds"]] == [0.5, 0.7, 0.8, 0.9, 0.95]
+    assert body["alone_threshold"] == 0.8 and body["compared"] == 1
+    assert body["daily"][-1]["guesses"] == 1 and body["daily"][-1]["agree"] == 1
+    assert {c["category"] for c in body["categories"]} <= set(WORDS)
+    assert client.get("/api/v1/admin/yasmama?days=91", headers=admin).status_code == 422

@@ -221,8 +221,11 @@ $DC exec -T worker python -m classification.yasmama report      # any time; --da
   those pages and separately for people's and AI labels, how often the model is right and, per confidence threshold,
   how many pages it would answer alone and how many of those correctly; then recall and precision per category,
   and the categories with too few pages to learn.
-- **Live:** agreement with confident AI answers over the last 30 days, per threshold, and with people's later
-  decisions on the same domains.
+- **Live:** agreement with confident AI answers over the last 30 days (Türkiye days, today included), per threshold
+  and per day (with the model each day used), and with people's later decisions on the same domains.
+- **Admin tab "Yaş Mama"** (admin UI, `scans:read`): the same numbers as charts: agreement per day with new models
+  marked, pages compared per day, held-out accuracy of every weekly model, and the current model per threshold and
+  category. The admin API serves them at `GET /api/v1/admin/yasmama?days=`; the public API has no such route.
 - **Model:** hashed word and character n-grams, TF-IDF, logistic regression; ~15 MB of weights per version in the
   object store (`models/yasmama/`, the last 4 kept), loaded without pickle. Training uses the newest
   `CATEGORY_LOCAL_MAX_TRAIN` pages (20,000; ~450 MB of extra memory for ~5 minutes, which is why the worker's limit
