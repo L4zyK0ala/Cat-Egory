@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     confidence_extra_validation: float = 0.70
     confidence_human_review: float = 0.50
     reanalyze_days: int = 1
+    # Demand (backend/app/demand.py): looked-up domains and list downloads as daily totals, never who asked.
+    demand_counting: bool = Field(default=True, description="count looked-up domains and feed downloads")
+    demand_min_callers: int = Field(default=3, ge=1, description="distinct visitors a day before an unknown domain "
+                                    "joins discovery")
+    demand_daily_cap: int = Field(default=100, ge=0, description="unknown domains added from demand per day (0 = none)")
+    demand_max_names_per_day: int = Field(default=50_000, ge=100, description="distinct names counted a day (Redis "
+                                          "memory bound; later names that day are not counted)")
+    demand_keep_days: int = Field(default=90, ge=7, description="daily domain totals kept this long")
     # Local classifier (Yaş Mama, classification/local.py): learns from published labels; shadow mode only, it never
     # publishes. Off until switched on; the weekly training runs only while it is on.
     local_shadow: bool = Field(default=False, description="record the local classifier's guess next to every AI answer")

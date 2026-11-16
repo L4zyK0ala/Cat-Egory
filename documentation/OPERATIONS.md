@@ -43,13 +43,18 @@ leaked admin key cannot be used through the public address. The admin UI is the 
 SSH tunnel, a LAN address, or the VPN address); when the site goes public only `CATEGORY_PUBLIC_BIND` (behind the
 TLS proxy) faces the internet. Admin CLI commands are unaffected (`$DC exec api python -m backend.cli ...`).
 
-Optional: a service key for the UI so server-side renders are not limited like one anonymous visitor:
+Optional: a service key for the UI so server-side renders are not limited like one anonymous visitor. Its scope
+`visitors:forward` lets the site state the visitor's address for the demand counts (below); no other key has it unless
+it is named:
 
 ```bash
 $DC exec -T api python -m backend.cli create-user --email ui@localhost.invalid --name "web ui" --role contributor
-$DC exec -T api python -m backend.cli create-key --email ui@localhost.invalid --name web-ui --scopes community:write --rate-limit 6000
+$DC exec -T api python -m backend.cli create-key --email ui@localhost.invalid --name web-ui --scopes community:write,visitors:forward --rate-limit 6000
 # put the printed key into .env as CATEGORY_FRONTEND_API_KEY=..., then: $DC up -d frontend
 ```
+
+A key made before 2026-11-16 lacks `visitors:forward`: create a new one as above (the user exists, skip
+`create-user`), put it in `.env`, `$DC up -d frontend`, then `revoke-key --prefix <old prefix>` (`list-keys` shows it).
 
 ### Chromium sandbox (crawler) — required before the first start
 
@@ -224,6 +229,24 @@ $DC exec -T worker python -m classification.local report      # any time; --days
   is 1.5 GB) and runs on the `classify` queue every `CATEGORY_LOCAL_TRAIN_HOURS` (168).
 
 Letting it answer on its own is a later, separate decision, per category and threshold, taken from these numbers.
+
+### Demand: what visitors look up (admin "Yönelim" tab)
+
+The public API counts which registrable domains are looked up (`/domain`, `/url`, `/lookup`) and which feeds are
+downloaded, as daily totals with an approximate number of distinct callers; nothing records who asked
+(`backend/app/demand.py`). Site visitors are told apart only when the UI's key has `visitors:forward` (above);
+otherwise every site visitor counts as one caller. During the day the counts live in Redis (at most
+`CATEGORY_DEMAND_MAX_NAMES_PER_DAY` = 50,000 names a day); `category.maintenance.demand_rollup` (00:20 Türkiye time)
+moves finished days into `demand_daily` / `feed_downloads_daily`, deletes the Redis keys, and drops domain rows older
+than `CATEGORY_DEMAND_KEEP_DAYS` (90; feed totals stay).
+
+Unknown names that at least `CATEGORY_DEMAND_MIN_CALLERS` (3) distinct callers looked up on one day are added with the
+`demand` data source, at most `CATEGORY_DEMAND_DAILY_CAP` (100) a day, most wanted first; discovery scans them before
+the popularity lists, within its own budget and token cap. One firewall or one script is one caller and can never
+push a name in. The admin tab "Yönelim" shows the most looked-up known and unknown domains (with *Add and Scan*), list
+downloads (requests include the "not modified" checks of polling firewalls; visitors is the better measure) and
+per-day totals. Cloudflare may answer some feed downloads from its cache; those are not counted.
+`CATEGORY_DEMAND_COUNTING=false` switches counting off. These settings are code defaults, not passed through compose.
 
 ### Two review queues
 

@@ -66,7 +66,8 @@ def clean(engine):
     """Remove everything except reference data (categories, sources, licences)."""
     with engine.begin() as conn:
         # TRUNCATE ... CASCADE on users would also wipe source_licenses (reviewed_by FK), so users are deleted.
-        conn.execute(text("TRUNCATE domains, audit_logs, api_keys, feed_releases, local_models RESTART IDENTITY CASCADE"))
+        conn.execute(text("TRUNCATE domains, audit_logs, api_keys, feed_releases, local_models, demand_daily, "
+                          "feed_downloads_daily RESTART IDENTITY CASCADE"))
         conn.execute(text("DELETE FROM data_sources WHERE slug LIKE 'test-%'"))
         conn.execute(text("DELETE FROM source_licenses WHERE slug LIKE 'test-%'"))
         conn.execute(text("DELETE FROM users"))

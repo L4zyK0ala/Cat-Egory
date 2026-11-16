@@ -25,7 +25,7 @@ from database.session import get_session
 from .. import audit
 from ..deps import Principal, get_principal, get_redis, rate_limit
 from ..errors import ApiError
-from ..security import ROLE_SCOPES, generate_api_key, hash_password, verify_password
+from ..security import EXPLICIT_SCOPES, ROLE_SCOPES, generate_api_key, hash_password, verify_password
 
 router = APIRouter(prefix="/api/v1/admin/session", tags=["admin"], dependencies=[Depends(rate_limit("write"))])
 
@@ -93,7 +93,7 @@ def sign_in(body: SignIn, request: Request, principal: Principal = Depends(get_p
     new = generate_api_key()
     expires = datetime.now(UTC) + (LONG if body.remember else SHORT)
     key = ApiKey(user_id=user.id, name=SESSION_KEY_NAME, prefix=new.prefix, key_hash=new.key_hash,
-                 scopes=sorted(ROLE_SCOPES[Role(user.role)]), expires_at=expires)
+                 scopes=sorted(ROLE_SCOPES[Role(user.role)] - EXPLICIT_SCOPES), expires_at=expires)
     session.add(key)
     session.flush()
     audit.record(session, action="session.create", target_type="api_key", target_id=key.id,

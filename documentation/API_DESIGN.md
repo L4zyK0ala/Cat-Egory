@@ -16,6 +16,7 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | Auth | Public reads need nothing. Admin endpoints: `Authorization: Bearer cat_<prefix>_<secret>` (header only, never query string). Effective scopes = key scopes ∩ the user's current role. Keys are created with `python -m backend.cli` (see ADMIN_GUIDE.md); password login arrives with the web UI (Phase 5). |
 | Errors | `{"error": {"code": "invalid_domain", "message": "…", "request_id": "…"}}` |
 | Licensing | Every data response includes `license` and `attribution`; third-party-derived items carry their own. |
+| Demand counts | `GET /domain/{d}`, `GET /url` and `POST /lookup` count the registrable domain looked up, feed downloads count the feed: daily totals plus an approximate number of distinct callers (HyperLogLog of the keyed IP hash or the key id), never who asked (`backend/app/demand.py`). `X-Category-Demand: skip` = not counted (a further request of the same page view). `X-Category-Visitor: <ip>` is honoured only from a key with the explicit scope `visitors:forward` (the web UI's key), so site visitors are told apart. |
 | Security headers | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, strict CSP; `X-Request-ID` echoed. |
 
 ## Endpoints
@@ -49,6 +50,7 @@ The OpenAPI document is generated from code at `/api/v1/openapi.json`; Swagger U
 | `GET /api/v1/admin/me`, `GET /api/v1/admin/scopes` | ✅ P2 | key check, scope list |
 | `POST /api/v1/admin/scans`, `GET /api/v1/admin/scans`, `GET /api/v1/admin/scans/stats` | ✅ P2 | queue a scan, list (keyset), counts |
 | `POST /api/v1/admin/scans/{id}/cancel` | ✅ P2 | cancel a queued scan |
+| `GET /api/v1/admin/trends?days=&limit=` | ✅ | admin "Yönelim" tab: most looked-up known and unknown domains, feed downloads, per-day totals (finished days; scope `scans:read`) |
 | retry a failed scan = `POST /api/v1/admin/scans` again | ✅ P3 | |
 | `GET /api/v1/admin/providers`, `GET /api/v1/admin/calibration` | ✅ P4 | provider status, accuracy per band |
 | `GET /api/v1/admin/reviews`, `POST /api/v1/admin/reviews/{id}/decision`, `GET /api/v1/admin/domains/{d}/screenshot` | ✅ P4 | human review |

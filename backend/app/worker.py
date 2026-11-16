@@ -30,7 +30,7 @@ settings = get_settings()
 celery_app = Celery("category", broker=settings.redis_url, backend=settings.redis_url,
                     include=["backend.app.scan_tasks", "backend.app.classify_tasks", "backend.app.feed_tasks",
                              "backend.app.ingest_tasks", "backend.app.discovery", "backend.app.threat_tasks",
-                             "backend.app.report_tasks"])
+                             "backend.app.report_tasks", "backend.app.demand_tasks"])
 celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
@@ -61,6 +61,9 @@ celery_app.conf.update(
                              "options": {"expires": 800}},
         "abuse-drafts": {"task": "category.threats.abuse_drafts", "schedule": 3600.0, "options": {"expires": 3000}},
         # once a day, in Türkiye time (beat runs in UTC)
+        "demand-rollup": {"task": "category.maintenance.demand_rollup",
+                          "schedule": crontab(minute=20, hour=(0 - settings.app_utc_offset_hours) % 24),
+                          "options": {"expires": 6 * 3600}},  # 00:20, just after the day ended
         "daily-report": {"task": "category.maintenance.daily_report",
                          "schedule": crontab(minute=0, hour=(settings.daily_report_hour - settings.app_utc_offset_hours) % 24),
                          "options": {"expires": 3 * 3600}},

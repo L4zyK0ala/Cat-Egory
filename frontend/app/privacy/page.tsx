@@ -11,7 +11,7 @@ export default function Privacy() {
   return (
     <div className="about" lang="tr">
       <h1>Gizlilik ve KVKK Aydınlatma Metni</h1>
-      <p className="muted">Son güncelleme: 10 Kasım 2026 · <span lang="en">An English summary is at the end of this page.</span></p>
+      <p className="muted">Son güncelleme: 16 Kasım 2026 · <span lang="en">An English summary is at the end of this page.</span></p>
 
       <h2>Veri Sorumlusu</h2>
       <div className="panel stack">
@@ -22,10 +22,16 @@ export default function Privacy() {
 
       <h2>Hangi Verileri, Neden İşliyoruz?</h2>
       <div className="panel stack">
-        <p><b>Siteyi ziyaret ettiğinizde:</b> Hesap açmanız gerekmez; analiz aracı kullanmıyoruz. Yalnızca dil seçiminizi
+        <p><b>Siteyi ziyaret ettiğinizde:</b> Hesap açmanız gerekmez; üçüncü taraf analiz aracı kullanmıyoruz. Yalnızca dil seçiminizi
           (Türkçe/İngilizce) hatırlayan, kişisel veri içermeyen tek bir çerez kullanılır. IP adresiniz
           veritabanına yazılmaz. Hız sınırı ve kötüye kullanımın önlenmesi için IP adresinizin geri döndürülemeyen, anahtarlı
           bir özeti kullanılır. Teknik sunucu günlükleri sınırlı boyutta tutulur ve otomatik olarak silinir.</p>
+        <p><b>Sorguladığınız alan adları ve indirdiğiniz listeler:</b> Hangi sitelerin taranacağına öncelik vermek için
+          sorgulanan alan adlarını ve indirilen listeleri günlük toplamlar olarak sayarız: her alan adı ve liste için o gün
+          kaç sorgu yapıldığı ve bunların yaklaşık kaç farklı ziyaretçiden geldiği. Farklı ziyaretçileri ayırt etmek için
+          IP adresinizin anahtarlı özeti, içinden tek tek değerlerin geri okunamadığı bir sayaca eklenir. Kimin neyi
+          sorguladığı hiçbir yerde kaydedilmez. Günlük toplamlar 90 gün sonra silinir. Birkaç farklı ziyaretçinin
+          sorguladığı ama veritabanımızda olmayan bir alan adı taranıp kategorilendirilebilir.</p>
         <p><b>Öneri veya düzeltme gönderdiğinizde:</b> Alan adı, seçtiğiniz kategori, yazdığınız açıklama ve kanıt
           bağlantıları ile IP adresinizin anahtarlı özeti saklanır. Ad veya e-posta istemiyoruz; lütfen açıklamaya kişisel
           bilgi yazmayın. Açıklamaları yalnızca moderatörler görür.</p>
@@ -69,8 +75,8 @@ export default function Privacy() {
 
       <h2 lang="en">English Summary</h2>
       <div className="panel stack" lang="en">
-        <p>No account and no analytics; one cookie remembers your language choice and nothing else. Your IP address is not stored in our database: a keyed, irreversible hash limits
-          abuse. Reports keep what you type, so please leave out personal details. Developer keys need no name or e-mail. Page content from scanned sites is private
+        <p>No account and no third-party analytics; one cookie remembers your language choice and nothing else. Your IP address is not stored in our database: a keyed, irreversible hash limits
+          abuse. Looked-up domains and list downloads are counted as daily totals (how many lookups, roughly how many different visitors), never who asked; the totals are deleted after 90 days. Reports keep what you type, so please leave out personal details. Developer keys need no name or e-mail. Page content from scanned sites is private
           and deleted after 180 days. Cloudflare carries the traffic and Evren reads scanned pages; neither receives your
           reports. For requests about your data, use the address above.</p>
       </div>

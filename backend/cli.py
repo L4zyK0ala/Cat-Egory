@@ -25,7 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app import audit
-from backend.app.security import ROLE_SCOPES, generate_api_key, hash_password, validate_scopes
+from backend.app.security import EXPLICIT_SCOPES, ROLE_SCOPES, generate_api_key, hash_password, validate_scopes
 from common.config import get_settings
 from database.models import ApiKey, Role, User
 from database.session import session_factory
@@ -60,7 +60,7 @@ def create_user(session: Session, *, email: str, name: str, role: Role, password
 def create_key(session: Session, user: User, *, name: str, scopes: list[str] | None = None,
                rate_limit: int | None = None, expires_days: int | None = None) -> tuple[ApiKey, str]:
     role = Role(user.role)
-    scopes = validate_scopes(role, scopes if scopes is not None else sorted(ROLE_SCOPES[role]))
+    scopes = validate_scopes(role, scopes if scopes is not None else sorted(ROLE_SCOPES[role] - EXPLICIT_SCOPES))
     new = generate_api_key()
     key = ApiKey(user_id=user.id, name=name[:100], prefix=new.prefix, key_hash=new.key_hash, scopes=scopes,
                  rate_limit_per_minute=rate_limit,

@@ -14,7 +14,8 @@ from database.models import FeedRelease
 from database.session import get_session
 from feeds.builder import FEED_NAME_RE, MEDIA_TYPES
 
-from ..deps import rate_limit
+from ..demand import record_feed
+from ..deps import Principal, get_principal, get_redis, rate_limit
 from ..errors import ApiError
 
 router = APIRouter(prefix="/api/v1/feeds", tags=["feeds"], dependencies=[Depends(rate_limit("read"))])
@@ -54,13 +55,15 @@ def index(response: Response, session: Session = Depends(get_session)) -> list[F
 @router.get("/{name}", summary="Download a feed (txt, hosts, rpz, csv, json). `rpz` = all security threats.",
             responses={200: {"content": {"text/plain": {}, "text/csv": {}, "application/json": {}}}})
 def download(name: str, request: Request, session: Session = Depends(get_session),
-             store=Depends(get_feed_store)) -> Response:
+             store=Depends(get_feed_store), principal: Principal = Depends(get_principal),
+             client=Depends(get_redis)) -> Response:
     name = ALIASES.get(name, name)
     if not FEED_NAME_RE.match(name):
         raise ApiError(404, "not_found", "unknown feed name")
     release = session.scalar(select(FeedRelease).where(FeedRelease.feed == name).order_by(FeedRelease.id.desc()).limit(1))
     if release is None:
         raise ApiError(404, "not_found", "feed not built yet (or unknown category)")
+    record_feed(client, request, principal, name)  # a real feed only (unknown names are 404 above)
     etag = f'"{release.sha256}"'
     headers = {"ETag": etag, "Cache-Control": "public, max-age=900", "X-Feed-Version": release.version,
                "Last-Modified": format_datetime(release.generated_at.astimezone(UTC), usegmt=True),

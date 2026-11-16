@@ -11,6 +11,8 @@ under a daily budget so that crawling and the AI provider's quota grow slowly an
 * nothing while ``discovery_max_queued`` scans are already waiting, so manual and scheduled work goes first,
 * nothing once today's EVREN tokens (all work, Türkiye time) reach ``ai_daily_token_cap``, so discovery never eats
   into the share of the account's quota that other projects need,
+* first the names several visitors looked up while we did not know them (``demand`` source, added nightly by
+  ``backend/app/demand.py``),
 * each domain once, most popular first (``domain_source_records.source_rank``, the row in the source file); later
   scans are scheduled by ``category.scan.schedule`` like any other domain,
 * a quarter of each batch goes to names that hint at restricted content (``RESTRICTED_HINT``: casino, bahis, porn,
@@ -24,7 +26,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, select, true
 from sqlalchemy.orm import Session
 
 from common.config import Settings, get_settings
@@ -45,6 +47,7 @@ from database.session import session_factory
 from .services.domains import queue_scans
 from .worker import celery_app
 
+DEMAND_SOURCE = "demand"  # backend/app/demand.py (kept apart: that module is imported by the API)
 PRIORITY = 8  # after manual (5), evaluation (4) and scheduled re-scans (7)
 # Names that hint at restricted content (PostgreSQL regex, case-insensitive, on the ASCII name). Kept narrow: "gun"
 # would catch every "gunes" (güneş), "sex" every "essex".
@@ -95,7 +98,9 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
     if settings.discovery_daily_budget <= 0:
         return 0
     source_ids = discovery_source_ids(session, entries)
-    if not source_ids:
+    # names several visitors looked up while we did not know them (backend/app/demand.py): before the lists
+    demand_id = session.scalar(select(DataSource.id).where(DataSource.slug == DEMAND_SOURCE, DataSource.enabled))
+    if not source_ids and demand_id is None:
         return 0
     now = now or datetime.now(UTC)
     day_start = local_midnight(now, settings.app_utc_offset_hours)
@@ -115,14 +120,21 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
     ever_queued = exists(select(ScanJob.id).where(ScanJob.domain_id == Domain.id,
                                                   ScanJob.status != JobStatus.CANCELLED))
     rank = func.min(DomainSourceRecord.source_rank)
-    candidates = (select(Domain.id).join(DomainSourceRecord, DomainSourceRecord.domain_id == Domain.id)
-                  .where(DomainSourceRecord.source_id.in_(source_ids), DomainSourceRecord.is_listed, Domain.is_active,
-                         Domain.last_scanned.is_(None), ~ever_queued)
-                  .group_by(Domain.id).order_by(rank.asc().nulls_last(), Domain.id))
-    hinted = list(session.scalars(candidates.where(Domain.normalized_domain.op("~*")(RESTRICTED_HINT))
-                                  .limit(max(1, n // RESTRICTED_SHARE))))
-    ids = hinted + list(session.scalars(candidates.where(Domain.id.not_in(hinted) if hinted else True)
-                                        .limit(n - len(hinted))))
+
+    def candidates(ids: list[int]):
+        return (select(Domain.id).join(DomainSourceRecord, DomainSourceRecord.domain_id == Domain.id)
+                .where(DomainSourceRecord.source_id.in_(ids), DomainSourceRecord.is_listed, Domain.is_active,
+                       Domain.last_scanned.is_(None), ~ever_queued)
+                .group_by(Domain.id).order_by(rank.asc().nulls_last(), Domain.id))
+
+    ids = list(session.scalars(candidates([demand_id]).limit(n))) if demand_id is not None else []
+    if source_ids and len(ids) < n:
+        listed = candidates(source_ids).where(Domain.id.not_in(ids) if ids else true())
+        room = n - len(ids)
+        hinted = list(session.scalars(listed.where(Domain.normalized_domain.op("~*")(RESTRICTED_HINT))
+                                      .limit(max(1, room // RESTRICTED_SHARE))))
+        ids += hinted + list(session.scalars(listed.where(Domain.id.not_in(hinted) if hinted else true())
+                                             .limit(room - len(hinted))))
     return queue_scans(session, ids, reason=ScanReason.DISCOVERY, priority=PRIORITY, requested_by_id=None) if ids else 0
 
 

@@ -50,6 +50,9 @@ BUILTIN_SOURCES = [
     # Our sister project's own findings, proven on the page (threats/octryx.py). Never another list's verdict.
     {"slug": "octryx", "name": "Octryx brand impersonation findings", "kind": SourceKind.DATASET,
      "license": "CC-BY-4.0", "attribution": "Octryx"},
+    # Names several different visitors looked up while we did not know them (backend/app/demand.py). Names only.
+    {"slug": "demand", "name": "Visitor demand", "kind": SourceKind.COMMUNITY, "license": "CC-BY-4.0",
+     "attribution": "Cat-egory visitors"},
 ]
 
 

@@ -35,6 +35,7 @@ from database.publication import publishable
 from database.session import get_session
 from threats.records import domain_scoped, listed, public, url_scoped
 
+from ..demand import record_lookups
 from ..deps import Principal, consume_quota, get_principal, get_redis, rate_limit
 from ..errors import ApiError
 
@@ -285,8 +286,10 @@ def category_domains(category_id: str, response: Response,
 @router.get("/domain/{domain}", response_model=DomainOut, summary="Classification of a domain",
             responses={304: {"description": "Not modified (ETag match)"}, 404: {"description": "Unknown domain"}})
 def get_domain(domain: str, request: Request, response: Response, principal: Principal = Depends(get_principal),
-               session: Session = Depends(get_session)) -> DomainOut | Response:
-    row = _find(session, _normalize(domain), principal)
+               client: redis.Redis = Depends(get_redis), session: Session = Depends(get_session)) -> DomainOut | Response:
+    name = _normalize(domain)
+    record_lookups(client, request, principal, [name])  # also (especially) names we do not know yet
+    row = _find(session, name, principal)
     if row is None:
         raise _not_found()
     out, tag = domain_view(session, row)
@@ -295,11 +298,12 @@ def get_domain(domain: str, request: Request, response: Response, principal: Pri
 
 @router.get("/url", response_model=UrlOut, summary="Classification for a URL (falls back to its registrable domain)")
 def get_url(url: str, request: Request, response: Response, principal: Principal = Depends(get_principal),
-            session: Session = Depends(get_session)) -> UrlOut | Response:
+            client: redis.Redis = Depends(get_redis), session: Session = Depends(get_session)) -> UrlOut | Response:
     try:
         normalized = normalize_url(url)
     except DomainError as exc:
         raise ApiError(422, "invalid_url", str(exc), details={"code": exc.code}) from exc
+    record_lookups(client, request, principal, [normalized.domain.ascii])
     match = "host"
     row = _find(session, normalized.domain.ascii, principal)
     if row is None and normalized.domain.registrable != normalized.domain.ascii:
@@ -349,8 +353,8 @@ def _lookup_name(raw: str) -> tuple[str, str] | None:
 
 
 @router.post("/lookup", response_model=LookupOut, summary="Look up many domains or URLs at once")
-def bulk_lookup(body: LookupIn, principal: Principal = Depends(get_principal), client: redis.Redis = Depends(get_redis),
-                session: Session = Depends(get_session)) -> LookupOut:
+def bulk_lookup(body: LookupIn, request: Request, principal: Principal = Depends(get_principal),
+                client: redis.Redis = Depends(get_redis), session: Session = Depends(get_session)) -> LookupOut:
     settings = get_settings()
     limit = settings.bulk_lookup_max_with_key if principal.authenticated else settings.bulk_lookup_max_anonymous
     if len(body.domains) > limit:
@@ -358,6 +362,7 @@ def bulk_lookup(body: LookupIn, principal: Principal = Depends(get_principal), c
                        + ("" if principal.authenticated else "; a free developer key allows more"))
     consume_quota(client, principal, len(body.domains) - 1)  # the request itself already counted once
     parsed = [(raw[:300], _lookup_name(raw[:300])) for raw in body.domains]
+    record_lookups(client, request, principal, [p[0] for _, p in parsed if p])
     wanted = {n for _, p in parsed if p for n in p}
     stmt = select(Domain).where(Domain.normalized_domain.in_(wanted), Domain.is_active)
     if not sees_private(principal):

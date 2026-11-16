@@ -30,12 +30,15 @@ SCOPES = {
     "scans:write": "create and cancel scans",
     "community:write": "submit reports and suggestions (Phase 6)",
     "reviews:write": "decide human-review tasks (Phase 4)",
+    "visitors:forward": "state the site visitor's address so demand counts see distinct visitors (the web UI's key)",
 }
 ROLE_SCOPES: dict[Role, frozenset[str]] = {
     Role.ADMIN: frozenset(SCOPES),
     Role.MODERATOR: frozenset({"domains:write", "scans:read", "scans:write", "community:write", "reviews:write"}),
-    Role.CONTRIBUTOR: frozenset({"community:write"}),
+    Role.CONTRIBUTOR: frozenset({"community:write", "visitors:forward"}),
 }
+# Never part of a key's default scopes: only given when named (the web UI's service key).
+EXPLICIT_SCOPES = frozenset({"visitors:forward"})
 
 _hasher = PasswordHasher()  # Argon2id with library defaults (RFC 9106 low-memory profile)
 

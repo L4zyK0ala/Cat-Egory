@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -574,6 +575,39 @@ class ModelComparison(Base):
         Index("ix_model_comparisons_domain_model", "domain_id", "model", "created_at"),
         Index("ix_model_comparisons_created_at", "created_at"),
     )
+
+
+# --------------------------------------------------------------------------- demand (backend/app/demand.py)
+
+
+class DemandDaily(Base):
+    """How often a registrable domain was looked up on one day (Türkiye time) and by how many distinct visitors
+    (approximate). Totals only: nothing says who asked. Kept ``demand_keep_days``."""
+
+    __tablename__ = "demand_daily"
+
+    id: Mapped[int] = _pk()
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    domain: Mapped[str] = mapped_column(String(253), nullable=False)
+    known: Mapped[bool] = mapped_column(Boolean, nullable=False)  # in the database when the day was rolled up
+    lookups: Mapped[int] = mapped_column(Integer, nullable=False)
+    callers: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (UniqueConstraint("day", "domain"), Index("ix_demand_daily_domain", "domain"))
+
+
+class FeedDownloadDaily(Base):
+    """Downloads of one feed on one day, and by how many distinct callers (approximate)."""
+
+    __tablename__ = "feed_downloads_daily"
+
+    id: Mapped[int] = _pk()
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    feed: Mapped[str] = mapped_column(String(100), nullable=False)
+    downloads: Mapped[int] = mapped_column(Integer, nullable=False)
+    callers: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (UniqueConstraint("day", "feed"),)
 
 
 # --------------------------------------------------------------------------- local classifier (classification/local.py)
