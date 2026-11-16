@@ -450,9 +450,17 @@ class ScanResult(Base):
     robots_allowed: Mapped[bool | None] = mapped_column(Boolean)
     blocked_reason: Mapped[str | None] = mapped_column(String(64))
     timings: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    # hash of the normalised visible text (crawler.result.content_fingerprint); None for older scans
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    # The page had not changed since the scan behind this AI answer, so the model was not asked again
+    # (classification/unchanged.py). The domain kept its categories.
+    reused_prediction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ai_predictions.id", ondelete="SET NULL", use_alter=True))  # ai_predictions points back here
     created_at: Mapped[datetime] = _now()
 
-    __table_args__ = (Index("ix_scan_results_domain_created", "domain_id", "created_at"),)
+    __table_args__ = (Index("ix_scan_results_domain_created", "domain_id", "created_at"),
+                      Index("ix_scan_results_reused_created", "created_at",
+                            postgresql_where=text("reused_prediction_id IS NOT NULL")))
 
 
 class Screenshot(Base):

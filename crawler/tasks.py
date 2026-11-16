@@ -15,7 +15,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from backend.app.worker import celery_app
 from common.config import Settings, get_settings
 
-from .result import CrawlResult
+from .result import CrawlResult, content_fingerprint
 from .robots import RobotsDecision, fetch_robots
 from .storage import ArtifactStore, S3Store, StorageError, save
 
@@ -76,6 +76,7 @@ def crawl(payload: dict, settings: Settings, store: ArtifactStore, *,
                                compress=True)
             result.text_excerpt = page.text[: settings.max_text_chars]
             result.word_count = len(page.text.split())
+            result.content_fingerprint = content_fingerprint(page.text)
     except SoftTimeLimitExceeded:
         result.error_code, result.error_detail = "timeout", "job time limit exceeded"
     except StorageError as exc:

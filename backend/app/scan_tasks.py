@@ -190,6 +190,7 @@ def store_result(session: Session, result: CrawlResult, job_id: str, settings: S
         content_length=result.content_length, page_title=result.page_title, meta_description=result.meta_description,
         open_graph=result.open_graph, language_hint=result.language_hint, robots_allowed=result.robots_allowed,
         blocked_reason=result.blocked_reason, timings=result.timings | {"sandboxed": result.sandboxed},
+        content_fingerprint=result.content_fingerprint if result.ok else None,
     )
     session.add(scan)
     session.flush()
@@ -303,6 +304,24 @@ def prepare(job_id: str, fast: bool = False) -> None:
         celery_app.send_task("category.crawl.run", args=[payload], queue="crawl", link=persist.s(job_id))
 
 
+def keep_unchanged_answer(session: Session, scan_result_id: int, job_id: str, settings: Settings) -> bool:
+    """True when the page has not changed since the AI last answered (classification/unchanged.py): the scan is
+    marked with that answer and the model is not asked again."""
+    from classification.unchanged import kept_answer
+
+    from .classify_tasks import policy_from
+
+    scan = session.get(ScanResult, scan_result_id)
+    domain = session.get(Domain, scan.domain_id)
+    kept = kept_answer(session, scan, session.get(ScanJob, uuid.UUID(job_id)), domain, policy=policy_from(settings),
+                       every_days=settings.reclassify_unchanged_days, now=datetime.now(UTC))
+    if kept is None:
+        return False
+    scan.reused_prediction_id = kept.id
+    log.info("page unchanged, AI answer kept", extra={"domain": domain.normalized_domain, "ai_prediction_id": kept.id})
+    return True
+
+
 @celery_app.task(name="category.scan.persist", ignore_result=True)
 def persist(result: dict, job_id: str, fast: bool = False) -> str:
     settings = get_settings()
@@ -316,6 +335,8 @@ def persist(result: dict, job_id: str, fast: bool = False) -> str:
             if scan_result_id is not None and not ai_answer_needed(
                     session, session.get(ScanResult, scan_result_id).domain_id,
                     every_days=settings.threat_reclassify_days, now=datetime.now(UTC)):
+                scan_result_id = None
+            if scan_result_id is not None and keep_unchanged_answer(session, scan_result_id, job_id, settings):
                 scan_result_id = None
         elif outcome == "blocked" and result.get("blocked_reason") == "robots_disallowed":
             from classification.engine import name_suggestion_due

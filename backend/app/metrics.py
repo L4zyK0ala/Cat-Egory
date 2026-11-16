@@ -25,6 +25,7 @@ from database.models import (
     ReviewStatus,
     ReviewTask,
     ScanJob,
+    ScanResult,
     ThreatIntelligence,
 )
 from database.session import session_factory
@@ -74,6 +75,11 @@ class DatabaseCollector(Collector):
                                        .where(AIPrediction.created_at >= since).group_by(AIPrediction.validation_status)):
                 g.add_metric([str(status)], n)
             families.append(g)
+            families.append(GaugeMetricFamily(
+                "category_ai_answers_kept_24h",
+                "Re-scans in the last 24 h whose page had not changed, so the AI answer was kept without asking",
+                value=s.scalar(select(func.count()).select_from(ScanResult).where(
+                    ScanResult.reused_prediction_id.is_not(None), ScanResult.created_at >= since)) or 0))
             from common.timeutil import local_midnight
 
             from .discovery import tokens_since

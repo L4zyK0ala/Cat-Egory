@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     confidence_extra_validation: float = 0.70
     confidence_human_review: float = 0.50
     reanalyze_days: int = 1
+    reclassify_unchanged_days: int = Field(
+        default=180, ge=0, description="a scheduled re-scan whose page has not changed keeps the AI answer instead of "
+        "asking the model again, until the answer is this many days old (0 = always ask)")
     # Community reputation (backend/app/api/community.py): an account's corrections apply at once after this record.
     community_trust_min_accepted: int = Field(default=10, ge=1, description="moderator-accepted submissions needed")
     community_trust_min_share: float = Field(default=0.9, ge=0, le=1, description="accepted / all moderated")

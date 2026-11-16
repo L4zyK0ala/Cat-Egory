@@ -32,6 +32,7 @@ from database.models import (
     ReviewTask,
     ScanJob,
     ScanReason,
+    ScanResult,
     ThreatIntelligence,
     ValidationStatus,
 )
@@ -127,6 +128,8 @@ def build(session: Session, now: datetime, heartbeats: dict[str, float] | None =
     asked = sum(answers.values())
     invalid = asked - answers.get(ValidationStatus.VALID.value, 0)
     used = tokens_since(session, start) - tokens_since(session, end)
+    kept = count(select(func.count()).select_from(ScanResult).where(ScanResult.reused_prediction_id.is_not(None),
+                                                                    in_day(ScanResult.created_at)))
 
     # ---- reviews
     open_ = ReviewTask.status == ReviewStatus.OPEN
@@ -167,6 +170,7 @@ def build(session: Session, now: datetime, heartbeats: dict[str, float] | None =
     token_line = f"• Token: {tokens(used)}" + (f" / {tokens(cap)} sınır ({share(used, cap)})" if cap else "")
     lines += ["🤖 Yapay zekâ (dün)",
               f"• Yanıt: {num(asked)} · geçersiz ya da hatalı: {num(invalid)} ({share(invalid, asked)})",
+              f"• Sayfası değişmediği için sorulmayan: {num(kept)}",
               token_line,
               ""]
     lines += ["🧑‍⚖️ İnceleme",

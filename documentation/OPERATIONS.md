@@ -108,6 +108,18 @@ Re-scan interval, chosen after every scan (settings `CATEGORY_SCAN_INTERVAL_*`):
 | blocked (robots.txt or SSRF policy) | 30 days |
 | human-verified, unchanged | 60 days |
 
+**Unchanged pages keep their answer.** A scheduled re-scan does not ask the model again when the page is the same
+as the one behind the domain's current AI answer: same text fingerprint (visible text with numbers, case and spacing
+ignored; `crawler.result.content_fingerprint`), same title and same final host. The answer must also be valid,
+confident (≥ the auto-publish level), free of risk claims, injection signs and review requests, agree with the
+domain's main category, and be younger than `CATEGORY_RECLASSIFY_UNCHANGED_DAYS` (default 180; 0 always asks), so
+prompt and model improvements still reach old answers. Manual, community, import and admin re-scans, domains with
+an active threat, look-alike candidates and domains waiting for re-analysis always reach the model
+(`classification/unchanged.py`). The scan records the kept answer (`scan_results.reused_prediction_id`); the
+number shows as `category_ai_answers_kept_24h` and in the daily summary ("Sayfası değişmediği için sorulmayan").
+The setting is a code default and is not passed through compose; add it to the `worker` environment to change it.
+Scans made by a crawler older than this feature carry no fingerprint and always reach the model.
+
 Classification runs right after every successful crawl (`category.classify.scan`). Domains crawled before the
 classifier existed are classified on their next scan (Admin → queue → *Rescan*). Feeds can be rebuilt at once
 from Admin → *Rebuild feeds now* (`POST /api/v1/admin/feeds/build`).

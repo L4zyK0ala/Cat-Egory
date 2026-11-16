@@ -19,6 +19,7 @@ from database.models import (
     ReviewTask,
     ScanJob,
     ScanReason,
+    ScanResult,
     ThreatIntelligence,
     ThreatType,
     ValidationStatus,
@@ -68,6 +69,15 @@ def test_the_summary_counts_yesterday_in_turkiye_time(clean, session, monkeypatc
     prediction(s, news, ValidationStatus.INVALID_JSON, 500, 0, YESTERDAY)
     prediction(s, news, ValidationStatus.VALID, 9000, 999, NOW - timedelta(hours=1))  # today: tomorrow's report
     prediction(s, news, ValidationStatus.VALID, 0, 0, YESTERDAY, provider="mock")    # the offline model: not counted
+    s.flush()
+    answer = s.scalar(select(AIPrediction.id).limit(1))
+    for at in (YESTERDAY, YESTERDAY, EARLIER):  # re-scans of an unchanged page (their jobs finished another day)
+        earlier = ScanJob(domain_id=news.id, reason=ScanReason.SCHEDULED, status=JobStatus.SUCCEEDED,
+                          queued_at=EARLIER, finished_at=EARLIER)
+        s.add(earlier)
+        s.flush()
+        s.add(ScanResult(scan_job_id=earlier.id, domain_id=news.id, requested_url="https://news.example/",
+                         reused_prediction_id=answer, created_at=at))
 
     s.add_all([ReviewTask(domain_id=news.id, reason="low_confidence", created_at=YESTERDAY),
                ReviewTask(domain_id=casino.id, reason="low_confidence", created_at=EARLIER),
@@ -92,6 +102,7 @@ def test_the_summary_counts_yesterday_in_turkiye_time(clean, session, monkeypatc
                      "• Biten: 4 · başarılı 2, engelli 1, hatalı 1",
                      "• Keşiften gelen yeni site: 1 · şu an sırada: 1",
                      "• Yanıt: 4 · geçersiz ya da hatalı: 1 (%25)",
+                     "• Sayfası değişmediği için sorulmayan: 2",
                      "• Token: 4 bin / 10 bin sınır (%41)",
                      "• Bekleyen: 3 (tehdit sorusu 1)",
                      "• Dün açılan 1, karara bağlanan 1",
@@ -108,5 +119,6 @@ def test_an_empty_system_still_reads_well(clean, session):
     text = report_tasks.build(session, NOW, {"backup.nightly": NOW.timestamp() - 31 * 3600})
     assert "• Kategorili: 0 / 0 (dün +0)" in text
     assert "• Henüz liste derlenmedi" in text
+    assert "• Sayfası değişmediği için sorulmayan: 0" in text
     assert "• Yedek: 31 saat önce ⚠️" in text
     assert "En çok" not in text and "None" not in text
