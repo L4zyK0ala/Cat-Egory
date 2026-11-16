@@ -85,3 +85,23 @@ jobs:
           done
           docker compose -f deployment/docker-compose.yml --env-file .env config -q
           docker compose -f deployment/docker-compose.yml -f deployment/docker-compose.nosandbox.yml --env-file .env config -q
+
+  images:
+    name: Docker images build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # The tests run on the runner's Python and Node, not in the images, so a dependency update that breaks an image
+    # build (Playwright 1.65 needing libatomic1, 2026-11-16) would otherwise pass CI. Built, never pushed.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: backend, context: ., file: deployment/docker/Dockerfile.backend}
+          - {name: crawler, context: ., file: deployment/docker/Dockerfile.crawler}
+          - {name: frontend, context: frontend, file: deployment/docker/Dockerfile.frontend}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build ${{ matrix.name }}
+        run: docker build --file "${{ matrix.file }}" --tag "cat-egory/${{ matrix.name }}:ci" "${{ matrix.context }}"
