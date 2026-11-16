@@ -236,6 +236,10 @@ def test_the_report_compares_with_the_ai_and_with_people(engine, clean):
         text = local.report(s, S)
     assert "Local classifier" in text and "agreement with confident AI answers (1 pages)" in text
     assert "| 0.0 | 1 (100 %) | 1/1 (100 %) |" in text
+    # a stable order although JSONB reorders keys: people first, thresholds rising, categories alphabetical
+    assert text.index("people's labels") < text.index("confident AI labels")
+    thresholds = [line.split(" | ")[0][2:] for line in text.splitlines() if line.startswith("| 0.") and "(" in line]
+    assert thresholds[:5] == ["0.5", "0.7", "0.8", "0.9", "0.95"]
 
 
 def test_the_report_without_a_model(engine, clean):

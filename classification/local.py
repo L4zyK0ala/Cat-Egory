@@ -380,18 +380,20 @@ def report(session: Session, settings: Settings, now: datetime | None = None, da
             f"({'people and confident AI answers' if m.get('ai_labels') else 'people only'}); "
             f"{model.test_examples} held-out pages; {m.get('seconds')} s, peak memory {m.get('peak_memory_mb')} MB.", ""]
     names = {"human": "people's labels", "ai": "confident AI labels"}
-    for group, s in m.get("groups", {}).items():
+    # JSONB does not keep key order (it sorts keys by length), so the order is set here
+    groups = m.get("groups", {})
+    for group, s in ((g, groups[g]) for g in names if g in groups):
         out += [f"## Held-out pages with {names[group]}: {s['correct']}/{s['pages']} right "
                 f"({_pct(s['correct'], s['pages'])})", "",
                 "| model confidence ≥ | answers alone | right when it answers |", "|---|---|---|"]
-        for t, v in s["thresholds"].items():
+        for t, v in sorted(s["thresholds"].items(), key=lambda kv: float(kv[0])):
             out.append(f"| {t} | {v['answered']} ({_pct(v['answered'], s['pages'])}) | "
                        f"{v['correct']}/{v['answered']} ({_pct(v['correct'], v['answered'])}) |")
         out.append("")
     if m.get("categories"):
         out += [f"## Per category (held-out, ≥ {MIN_PER_CATEGORY_REPORT} pages)", "",
                 "| category | pages | recall | precision |", "|---|---|---|---|"]
-        for c, v in m["categories"].items():
+        for c, v in sorted(m["categories"].items()):
             out.append(f"| {c} | {v['pages']} | {_pct(v['correct'], v['pages'])} | {_pct(v['correct'], v['guessed'])} |")
         out.append("")
     if m.get("too_small"):
