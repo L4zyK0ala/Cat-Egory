@@ -25,7 +25,7 @@ x-backend: &backend
     CATEGORY_AI_DAILY_TOKEN_CAP: ${CATEGORY_AI_DAILY_TOKEN_CAP:-0}
     CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
     CATEGORY_AI_PROVIDER: ${CATEGORY_AI_PROVIDER:-mock}
-    # Yaş Mama, the local classifier in shadow mode (classification/local.py); beat reads it for the weekly training
+    # Yaş Mama, the local classifier, in shadow mode (classification/yasmama.py); beat reads it for the weekly training
     CATEGORY_LOCAL_SHADOW: ${CATEGORY_LOCAL_SHADOW:-false}
     CATEGORY_LOCAL_TRAIN_ON_AI_LABELS: ${CATEGORY_LOCAL_TRAIN_ON_AI_LABELS:-true}
     CATEGORY_FINGERPRINT_SECRET: ${CATEGORY_FINGERPRINT_SECRET:?set CATEGORY_FINGERPRINT_SECRET in .env}
@@ -197,7 +197,7 @@ services:
     depends_on:
       migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
-    # 1.5 GB: the weekly training of the local classifier (classification/local.py) needs ~450 MB more for a while
+    # 1.5 GB: the weekly training of Yaş Mama (classification/yasmama.py) needs ~450 MB more for a while
     deploy: {resources: {limits: {cpus: "2", memory: 1536m}}}
 
   # The scan pipeline's short steps (dispatch every 10 s, DNS pre-check, storing results, scheduling, reaping) on a

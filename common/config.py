@@ -61,8 +61,8 @@ class Settings(BaseSettings):
     demand_max_names_per_day: int = Field(default=50_000, ge=100, description="distinct names counted a day (Redis "
                                           "memory bound; later names that day are not counted)")
     demand_keep_days: int = Field(default=90, ge=7, description="daily domain totals kept this long")
-    # Local classifier (Yaş Mama, classification/local.py): learns from published labels; shadow mode only, it never
-    # publishes. Off until switched on; the weekly training runs only while it is on.
+    # Yaş Mama, the local classifier (classification/yasmama.py): learns from published labels. Shadow mode only: it
+    # never publishes. Off until switched on; the weekly training runs only while it is on.
     local_shadow: bool = Field(default=False, description="record the local classifier's guess next to every AI answer")
     local_train_on_ai_labels: bool = Field(default=True, description="learn from confident AI labels too, not only "
                                            "from people's (turn off if the AI provider's terms forbid it)")

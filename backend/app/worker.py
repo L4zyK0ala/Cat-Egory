@@ -70,8 +70,8 @@ celery_app.conf.update(
     },
     timezone="UTC",
 )
-if settings.local_shadow:  # Yaş Mama: retrain the local classifier while it runs in shadow mode (classification/local.py)
-    celery_app.conf.beat_schedule["local-train"] = {"task": "category.classify.local_train",
+if settings.local_shadow:  # retrain Yaş Mama, the local classifier, while in shadow mode (classification/yasmama.py)
+    celery_app.conf.beat_schedule["yasmama-train"] = {"task": "category.classify.yasmama_train",
                                                     "schedule": settings.local_train_hours * 3600.0,
                                                     "options": {"expires": 3600}}
 

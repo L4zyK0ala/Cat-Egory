@@ -1,6 +1,6 @@
-"""local classifier (Yaş Mama)
+"""Yaş Mama, the local classifier
 
-Training snapshot, trained models and shadow-mode guesses of the local classifier (classification/local.py).
+Training snapshot, trained models and shadow-mode guesses of the local classifier (classification/yasmama.py).
 Internal only: nothing that publishes, reviews or measures public accuracy reads these tables.
 
 Revision ID: 0011

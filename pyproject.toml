@@ -31,7 +31,7 @@ dependencies = [
     "defusedxml>=0.7",
     "dnspython>=2.7",
     "boto3>=1.35",
-    "scikit-learn>=1.6",  # the local classifier (classification/local.py); brings numpy and scipy
+    "scikit-learn>=1.6",  # Yaş Mama, the local classifier (classification/yasmama.py); brings numpy and scipy
 ]
 
 [project.optional-dependencies]

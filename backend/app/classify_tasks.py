@@ -55,9 +55,9 @@ def classify_scan(session: Session, scan_result_id: int, settings: Settings, *, 
 
 
 def shadow_guess(session: Session, scan: ScanResult, ai_prediction_id: int | None, store) -> None:
-    """The local classifier's guess next to the AI answer (classification/local.py). It publishes nothing, and a
+    """The local classifier's guess next to the AI answer (Yaş Mama, classification/yasmama.py). It publishes nothing, and a
     failure here (no model yet, storage down) never affects the classification it runs beside."""
-    from classification.local import shadow
+    from classification.yasmama import shadow
 
     try:
         with session.begin_nested():
@@ -66,10 +66,10 @@ def shadow_guess(session: Session, scan: ScanResult, ai_prediction_id: int | Non
         log.warning("local shadow guess failed", extra={"scan_result_id": scan.id}, exc_info=True)
 
 
-@celery_app.task(name="category.classify.local_train", ignore_result=True, soft_time_limit=1800, time_limit=1900)
-def local_train() -> str:
-    """Weekly retraining of the local classifier while shadow mode is on (no AI calls)."""
-    from classification.local import train
+@celery_app.task(name="category.classify.yasmama_train", ignore_result=True, soft_time_limit=1800, time_limit=1900)
+def yasmama_train() -> str:
+    """Weekly retraining of Yaş Mama while shadow mode is on (no AI calls)."""
+    from classification.yasmama import train
     from crawler.storage import S3Store
 
     settings = get_settings()

@@ -197,9 +197,9 @@ The dry run prints how many EVREN calls a real run makes; pairs with a valid ans
 an interrupted run resumes). Calls are sequential and count towards `CATEGORY_AI_DAILY_TOKEN_CAP`. Details and
 the report's contents: [EVREN_INTEGRATION.md](EVREN_INTEGRATION.md#comparing-models-on-the-same-sites).
 
-### Local classifier (Yaş Mama, shadow mode)
+### Yaş Mama, the local classifier (shadow mode)
 
-A CPU-only classifier (`classification/local.py`) learns the main category from the labels we already have:
+Yaş Mama, a CPU-only classifier (`classification/yasmama.py`), learns the main category from the labels we already have:
 people's decisions (weighted ×3) and AI answers that were published at ≥ 0.90 (unless
 `CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false`; EVREN allows training on its answers, confirmed 2026-11-16). Domains
 with an active threat and registry-rule labels are left out. In **shadow mode** (`CATEGORY_LOCAL_SHADOW=true`) it
@@ -210,8 +210,8 @@ Switch on: set `CATEGORY_LOCAL_SHADOW=true` in `.env`, `$DC up -d` (migration `0
 retraining), then train once by hand, since the first scheduled run comes a week later:
 
 ```bash
-$DC exec -T worker python -m classification.local train       # snapshot + train + report (~5 min at 20,000 pages)
-$DC exec -T worker python -m classification.local report      # any time; --days 7 for a shorter live window
+$DC exec -T worker python -m classification.yasmama train       # snapshot + train + report (~5 min at 20,000 pages)
+$DC exec -T worker python -m classification.yasmama report      # any time; --days 7 for a shorter live window
 ```
 
 - **Training data** lives in `training_examples`: label, origin, title, description and the first 2,000 characters
@@ -224,7 +224,7 @@ $DC exec -T worker python -m classification.local report      # any time; --days
 - **Live:** agreement with confident AI answers over the last 30 days, per threshold, and with people's later
   decisions on the same domains.
 - **Model:** hashed word and character n-grams, TF-IDF, logistic regression; ~15 MB of weights per version in the
-  object store (`models/local/`, the last 4 kept), loaded without pickle. Training uses the newest
+  object store (`models/yasmama/`, the last 4 kept), loaded without pickle. Training uses the newest
   `CATEGORY_LOCAL_MAX_TRAIN` pages (20,000; ~450 MB of extra memory for ~5 minutes, which is why the worker's limit
   is 1.5 GB) and runs on the `classify` queue every `CATEGORY_LOCAL_TRAIN_HOURS` (168).
 

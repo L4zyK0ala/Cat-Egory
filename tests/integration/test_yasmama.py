@@ -1,4 +1,4 @@
-"""Yaş Mama: the local classifier learns from published labels and guesses in shadow mode only."""
+"""Yaş Mama, the local classifier, learns from published labels and guesses in shadow mode only."""
 import random
 
 import pytest
@@ -6,9 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app import classify_tasks
-from classification import local
+from classification import yasmama
 from classification.engine import record_threats
-from classification.local import Page, Weights, fit, held_out, snapshot, train
+from classification.yasmama import Page, Weights, fit, held_out, snapshot, train
 from common.config import Settings
 from crawler.storage import MemoryStore
 from database.models import (
@@ -74,7 +74,7 @@ def test_two_categories_still_give_probabilities():
 
 
 def test_turkish_capital_i_is_folded_like_a_person_would():
-    assert local._clean("İSTANBUL İl Müdürlüğü") == local._clean("istanbul il müdürlüğü")
+    assert yasmama._clean("İSTANBUL İl Müdürlüğü") == yasmama._clean("istanbul il müdürlüğü")
 
 
 def test_a_fifth_of_domains_is_held_out_for_good():
@@ -188,7 +188,7 @@ def trained(engine):
     store = MemoryStore()
     with Session(engine) as s, s.begin():
         train(s, store, S)
-    local._loaded.clear()
+    yasmama._loaded.clear()
     return store
 
 
@@ -218,7 +218,7 @@ def test_no_guess_when_off_or_without_a_model_and_a_broken_store_is_harmless(eng
     with Session(engine) as s:
         assert s.scalar(select(func.count()).select_from(LocalPrediction)) == 0
 
-    local._loaded.clear()
+    yasmama._loaded.clear()
     scan_id = make_scan(engine, name="third.example.com")
     with Session(engine) as s, s.begin():  # weights missing from storage: classification goes on
         out = classify_tasks.classify_scan(s, scan_id, S, provider=Scripted(), store=MemoryStore())
@@ -233,8 +233,8 @@ def test_the_report_compares_with_the_ai_and_with_people(engine, clean):
     scan_id = make_scan(engine, text="son dakika gündem manşet haber")
     with Session(engine) as s, s.begin():
         classify_tasks.classify_scan(s, scan_id, S, provider=Scripted(), store=store)
-        text = local.report(s, S)
-    assert "Local classifier" in text and "agreement with confident AI answers (1 pages)" in text
+        text = yasmama.report(s, S)
+    assert "Yaş Mama" in text and "agreement with confident AI answers (1 pages)" in text
     assert "| 0.0 | 1 (100 %) | 1/1 (100 %) |" in text
     # a stable order although JSONB reorders keys: people first, thresholds rising, categories alphabetical
     assert text.index("people's labels") < text.index("confident AI labels")
@@ -244,9 +244,9 @@ def test_the_report_compares_with_the_ai_and_with_people(engine, clean):
 
 def test_the_report_without_a_model(engine, clean):
     with Session(engine) as s:
-        assert "No model trained yet" in local.report(s, S)
+        assert "No model trained yet" in yasmama.report(s, S)
 
 
 def test_weekly_training_does_nothing_while_shadow_mode_is_off(monkeypatch):
     monkeypatch.setattr(classify_tasks, "get_settings", lambda: Settings(_env_file=None, local_shadow=False))
-    assert classify_tasks.local_train.run() == "off"
+    assert classify_tasks.yasmama_train.run() == "off"

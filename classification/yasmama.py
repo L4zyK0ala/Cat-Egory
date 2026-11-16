@@ -1,4 +1,4 @@
-"""Yaş Mama: a local category classifier that learns from the labels Cat-egory already has.
+"""Yaş Mama: Cat-egory's own category classifier, which learns from the labels Cat-egory already has.
 
 The AI provider may stop being free. This model is trained on the domains' current main categories: people's
 decisions (weighted higher) and, unless ``local_train_on_ai_labels`` is off, confident AI answers. It runs on the
@@ -9,8 +9,8 @@ in ``local_predictions`` and compared, by ``report``, with the AI and with peopl
 never opens a review and never says anything about threats. Whether it may answer on its own one day is decided
 from those numbers, per category and confidence threshold.
 
-    python -m classification.local train     # snapshot the labels, train, store the model (runs in the worker)
-    python -m classification.local report    # held-out scores and live shadow agreement (Markdown)
+    python -m classification.yasmama train     # snapshot the labels, train, store the model (runs in the worker)
+    python -m classification.yasmama report    # held-out scores and live shadow agreement (Markdown)
 
 Model: hashed word 1-2-grams of the title, description and visible text plus hashed character 3-5-grams of the
 host, title and description (Turkish and English mixed, no vocabulary to store), sublinear TF-IDF, multinomial
@@ -53,7 +53,7 @@ from database.models import (
     ValidationStatus,
 )
 
-log = logging.getLogger("category.local")
+log = logging.getLogger("category.yasmama")
 
 HASH_FEATURES = 2 ** 17          # words and characters together
 THRESHOLDS = (0.5, 0.7, 0.8, 0.9, 0.95)
@@ -312,7 +312,7 @@ def train(session: Session, store, settings: Settings, now: datetime | None = No
         "too_small": sorted(c for c in per_category if c not in classes),
         "ai_labels": settings.local_train_on_ai_labels, "seconds": round(time.monotonic() - started, 1),
         "peak_memory_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)}
-    key = f"models/local/{version}.npz"
+    key = f"models/yasmama/{version}.npz"
     store.put(key, model.to_bytes(), "application/octet-stream")
     session.execute(update(LocalModel).where(LocalModel.is_current).values(is_current=False))
     row = LocalModel(version=version, object_key=key, is_current=True, train_examples=len(learn),
@@ -323,7 +323,7 @@ def train(session: Session, store, settings: Settings, now: datetime | None = No
                                .order_by(LocalModel.trained_at.desc()).offset(settings.local_keep_models)):
         store.delete(old.object_key)
         old.object_key = None
-    log.info("local model trained", extra={"version": version, "train": len(learn), "test": len(test),
+    log.info("Yaş Mama trained", extra={"version": version, "train": len(learn), "test": len(test),
                                            "seconds": metrics["seconds"]})
     return row
 
@@ -372,9 +372,9 @@ def _pct(part: int, whole: int) -> str:
 def report(session: Session, settings: Settings, now: datetime | None = None, days: int = 30) -> str:
     now = now or datetime.now(UTC)
     model = session.scalar(select(LocalModel).where(LocalModel.is_current))
-    out = ["# Local classifier (shadow mode)", ""]
+    out = ["# Yaş Mama (local classifier, shadow mode)", ""]
     if model is None:
-        return "\n".join(out + ["No model trained yet: `python -m classification.local train` in the worker.", ""])
+        return "\n".join(out + ["No model trained yet: `python -m classification.yasmama train` in the worker.", ""])
     m = model.metrics
     out += [f"Model `{model.version}`, trained {model.trained_at:%Y-%m-%d %H:%M} UTC on {model.train_examples} pages "
             f"({'people and confident AI answers' if m.get('ai_labels') else 'people only'}); "
@@ -430,7 +430,7 @@ def report(session: Session, settings: Settings, now: datetime | None = None, da
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m classification.local", description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(prog="python -m classification.yasmama", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("train", help="snapshot the labels, train and store a model (no AI calls)")
     p = sub.add_parser("report", help="held-out scores and live shadow agreement (Markdown)")

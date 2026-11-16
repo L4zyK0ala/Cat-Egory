@@ -610,7 +610,7 @@ class FeedDownloadDaily(Base):
     __table_args__ = (UniqueConstraint("day", "feed"),)
 
 
-# --------------------------------------------------------------------------- local classifier (classification/local.py)
+# --------------------------------------------------------------------------- Yaş Mama (classification/yasmama.py)
 
 
 class TrainingExample(Base):
