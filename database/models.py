@@ -576,6 +576,67 @@ class ModelComparison(Base):
     )
 
 
+# --------------------------------------------------------------------------- local classifier (classification/local.py)
+
+
+class TrainingExample(Base):
+    """One labelled page for the local classifier: the domain's current main category and the words it was read from.
+
+    A compact copy (title, description, the first characters of the visible text) so that labels outlive the
+    180-day retention of crawl artefacts. Internal only: never in the API, feeds or exports."""
+
+    __tablename__ = "training_examples"
+
+    id: Mapped[int] = _pk()
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, unique=True)
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False)  # assignment origin: ai | human | community
+    confidence: Mapped[Decimal | None] = mapped_column(CONFIDENCE)
+    scan_result_id: Mapped[int | None] = mapped_column(ForeignKey("scan_results.id", ondelete="SET NULL"))
+    host: Mapped[str] = mapped_column(String(253), nullable=False)
+    title: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    text: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = _now()
+
+    __table_args__ = (_confidence_check("confidence"),)
+
+
+class LocalModel(Base):
+    """A trained local classifier: where its weights are and how it scored on pages it never saw."""
+
+    __tablename__ = "local_models"
+
+    id: Mapped[int] = _pk()
+    version: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    object_key: Mapped[str | None] = mapped_column(Text)  # None once old weights were deleted
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    train_examples: Mapped[int] = mapped_column(Integer, nullable=False)
+    test_examples: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    trained_at: Mapped[datetime] = _now()
+
+
+class LocalPrediction(Base):
+    """What the local classifier would have said about a scan, next to the AI answer (shadow mode). Never published,
+    never opens a review, never touches threats; only the report reads it."""
+
+    __tablename__ = "local_predictions"
+
+    id: Mapped[int] = _pk()
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
+    scan_result_id: Mapped[int | None] = mapped_column(ForeignKey("scan_results.id", ondelete="SET NULL"))
+    ai_prediction_id: Mapped[int | None] = mapped_column(ForeignKey("ai_predictions.id", ondelete="SET NULL"),
+                                                         index=True)
+    model_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    primary_category_id: Mapped[str] = mapped_column(String(64), nullable=False)  # a guess; not a foreign key
+    confidence: Mapped[Decimal] = mapped_column(CONFIDENCE, nullable=False)
+    top: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))  # [[category, p], ...]
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (_confidence_check("confidence"), Index("ix_local_predictions_created_at", "created_at"))
+
+
 class DomainCategory(Base):
     """Temporal category assignment. Current rows: ``valid_to IS NULL``; the rest is history."""
 

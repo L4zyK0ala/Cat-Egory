@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     confidence_extra_validation: float = 0.70
     confidence_human_review: float = 0.50
     reanalyze_days: int = 1
+    # Local classifier (Yaş Mama, classification/local.py): learns from published labels; shadow mode only, it never
+    # publishes. Off until switched on; the weekly training runs only while it is on.
+    local_shadow: bool = Field(default=False, description="record the local classifier's guess next to every AI answer")
+    local_train_on_ai_labels: bool = Field(default=True, description="learn from confident AI labels too, not only "
+                                           "from people's (turn off if the AI provider's terms forbid it)")
+    local_train_hours: int = Field(default=168, ge=1, description="retrain this often while shadow mode is on")
+    local_min_examples: int = Field(default=5, ge=2, description="categories with fewer training pages are left out")
+    local_min_train: int = Field(default=200, ge=10, description="do not train on fewer pages than this")
+    local_max_train: int = Field(default=20_000, ge=100,
+                                 description="newest pages used for training (worker memory: ~450 MB at 20,000)")
+    local_text_chars: int = Field(default=2000, ge=200, description="characters of visible text kept per page")
+    local_keep_models: int = Field(default=4, ge=1, description="trained models whose weights are kept")
     reclassify_unchanged_days: int = Field(
         default=180, ge=0, description="a scheduled re-scan whose page has not changed keeps the AI answer instead of "
         "asking the model again, until the answer is this many days old (0 = always ask)")

@@ -46,9 +46,41 @@ def classify_scan(session: Session, scan_result_id: int, settings: Settings, *, 
     taxonomy = load_taxonomy(settings.taxonomy_path) if settings.taxonomy_path else default_taxonomy()
     data = build_input(session, scan, store, use_screenshot=settings.classify_use_screenshot)
     result = provider.classify(data)
-    return decide(session, domain, scan, result, taxonomy=taxonomy, policy=policy_from(settings), data=data,
-                  second_provider=second, reanalyze_days=settings.reanalyze_days,
-                  lookalike_recheck_days=settings.lookalike_recheck_days)
+    outcome = decide(session, domain, scan, result, taxonomy=taxonomy, policy=policy_from(settings), data=data,
+                     second_provider=second, reanalyze_days=settings.reanalyze_days,
+                     lookalike_recheck_days=settings.lookalike_recheck_days)
+    if settings.local_shadow and store is not None and outcome.action != "retry":
+        shadow_guess(session, scan, outcome.prediction_ids[0] if outcome.prediction_ids else None, store)
+    return outcome
+
+
+def shadow_guess(session: Session, scan: ScanResult, ai_prediction_id: int | None, store) -> None:
+    """The local classifier's guess next to the AI answer (classification/local.py). It publishes nothing, and a
+    failure here (no model yet, storage down) never affects the classification it runs beside."""
+    from classification.local import shadow
+
+    try:
+        with session.begin_nested():
+            shadow(session, scan, ai_prediction_id, store)
+    except Exception:  # noqa: BLE001 - shadow mode must never break classification
+        log.warning("local shadow guess failed", extra={"scan_result_id": scan.id}, exc_info=True)
+
+
+@celery_app.task(name="category.classify.local_train", ignore_result=True, soft_time_limit=1800, time_limit=1900)
+def local_train() -> str:
+    """Weekly retraining of the local classifier while shadow mode is on (no AI calls)."""
+    from classification.local import train
+    from crawler.storage import S3Store
+
+    settings = get_settings()
+    if not settings.local_shadow:
+        return "off"
+    with session_factory()() as session, session.begin():
+        result = train(session, S3Store(settings), settings)
+    if isinstance(result, str):
+        log.info("local model not trained", extra={"reason": result})
+        return "skipped"
+    return result.version
 
 
 @celery_app.task(name="category.classify.scan", bind=True, ignore_result=True, max_retries=3,

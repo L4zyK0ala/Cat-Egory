@@ -54,9 +54,22 @@ These came up when reviewing the EVREN LLM terms (v1) for another project; they 
    allowed and what the quota is.
 5. **Free period** — announced to end on **2026-12-01**; pricing after that is unknown.
 6. **Publishing outputs** — confirm that model outputs may be published under CC BY 4.0.
+7. **Training on outputs** — confirm that published answers may be used to train Cat-egory's own local classifier
+   (Yaş Mama below). Until confirmed, `CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false` limits it to people's decisions.
 
 Until these are answered, run with `CATEGORY_AI_PROVIDER=mock` or limit EVREN to a small, manually
 reviewed sample.
+
+## Yaş Mama: a local classifier
+
+If EVREN becomes too expensive after the free period, most pages should not need it. `classification/local.py`
+trains a CPU-only classifier on the labels Cat-egory already has (people's decisions and confident published
+answers) and runs it in **shadow mode**: it guesses next to every EVREN answer, publishes nothing, and its report
+shows how often it would have been right, per category and confidence threshold, on pages it never saw and against
+live EVREN answers. Only with those numbers would a later change let it answer the easy pages alone and keep EVREN
+for the hard ones (low local confidence, rare categories, image-only pages); threat flags stay with people.
+Re-scans of unchanged pages already skip the model (`classification/unchanged.py`). Operation:
+[OPERATIONS.md](OPERATIONS.md#local-classifier-yaş-mama-shadow-mode).
 
 ## Where the key lives
 
