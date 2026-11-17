@@ -1,0 +1,11 @@
+# Installed by `make cleanup-timer`, which fills in the repository path.
+[Unit]
+Description=Docker housekeeping (build cache above 20 GB, dangling images)
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=@ROOT@/deployment/scripts/docker-cleanup.sh
+Nice=10
+IOSchedulingClass=idle

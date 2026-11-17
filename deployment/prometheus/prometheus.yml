@@ -24,3 +24,12 @@ scrape_configs:
     metrics_path: /healthz
     static_configs:
       - targets: ["frontend:3000"]
+  # The host (node-exporter runs in the host's network namespace, on the hostmetrics gateway address).
+  - job_name: node
+    static_configs:
+      - targets: ["10.250.62.1:9101"]
+        labels: {instance: server}
+  - job_name: processes
+    static_configs:
+      - targets: ["process-exporter:9256"]
+        labels: {instance: server}

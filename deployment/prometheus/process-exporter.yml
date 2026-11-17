@@ -1,0 +1,17 @@
+# Groups for process-exporter (deployment/docker-compose.yml). The first rule that matches names the process.
+# Many programs are just "python"; the ones worth telling apart get their own name from the command line.
+process_names:
+  - name: certstream
+    cmdline: ['certstream-server']
+  - name: ct_watch (Cat-egory)
+    cmdline: ['integrations\.ct_watch']
+  - name: ct_hunt (Octryx)
+    cmdline: ['app\.services\.ct_hunt']
+  - name: celery
+    cmdline: ['celery']
+  - name: uvicorn
+    cmdline: ['uvicorn']
+  - name: chromium
+    cmdline: ['chrome|chromium|headless_shell']
+  - name: "{{.Comm}}"
+    cmdline: ['.+']

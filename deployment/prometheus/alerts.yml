@@ -129,3 +129,41 @@ groups:
         annotations:
           summary: "No successful off-site backup for more than 36 hours (sudo ./deployment/scripts/offsite-backup.sh snapshots)"
           telegram: "36 saattir sunucu dışına yedek gönderilmedi (sudo ./deployment/scripts/offsite-backup.sh snapshots)."
+      # --- the host (node-exporter, docker-cleanup.sh) ---------------------------------------------------------------
+      - alert: HostMetricsDown
+        expr: up{job=~"node|processes"} == 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Host metrics are not being scraped ({{ $labels.job }})"
+          telegram: "Sunucu metrikleri 10 dakikadır alınamıyor. node-exporter / process-exporter kapsayıcılarına bakın."
+      - alert: HostDiskFilling
+        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint=~"/|/mnt/yedek"} / node_filesystem_size_bytes{mountpoint=~"/|/mnt/yedek"}) > 80
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.mountpoint }} is more than 80 % full"
+          telegram: "{{ $labels.mountpoint }} diskinin %80'inden fazlası dolu."
+      # A full system disk stops PostgreSQL and every container (the build cache once reached 85 %, 2026-11-17).
+      - alert: HostDiskFull
+        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 90
+        for: 15m
+        labels: {severity: critical}
+        annotations:
+          summary: "The system disk is more than 90 % full"
+          telegram: "Sistem diskinin %90'ından fazlası dolu; dolarsa veritabanı durur. sudo docker system df ile bakın, sudo ./deployment/scripts/docker-cleanup.sh çalıştırın."
+      - alert: HostMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Less than 10 % of memory available for 15 minutes"
+          telegram: "15 dakikadır kullanılabilir bellek %10'un altında."
+      # Only once the timer has run (the metric exists from its first run on).
+      - alert: DockerCleanupStale
+        expr: time() - category_docker_cleanup_last_success_timestamp_seconds > 8 * 86400
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "The weekly Docker cleanup has not succeeded for 8 days (systemctl status docker-cleanup.service)"
+          telegram: "Haftalık Docker temizliği 8 gündür başarılı olmadı (systemctl status docker-cleanup.service)."

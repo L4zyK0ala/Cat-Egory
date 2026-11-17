@@ -33,7 +33,7 @@ Addresses (set `CATEGORY_PUBLIC_BIND` / `CATEGORY_ADMIN_BIND` in `.env`):
 | API + Swagger (public) | `:8110` on `CATEGORY_PUBLIC_BIND` (`/api/docs`) | lookups, categories, feeds, community reports only: no `/api/v1/admin/*`, no `/metrics` |
 | **Admin UI** | `:3012` on `CATEGORY_ADMIN_BIND` | admin console, review and moderation; talks to the admin API (`CATEGORY_ADMIN_API_URL`, `CATEGORY_ADMIN_CORS_ORIGINS`) |
 | **Admin API** | `:8111` on `CATEGORY_ADMIN_BIND` | everything incl. `/api/v1/admin/*` and `/metrics` (Prometheus scrapes this one) |
-| Grafana | `:3011` on `CATEGORY_ADMIN_BIND` | dashboard "Cat-egory overview" is provisioned |
+| Grafana | `:3011` on `CATEGORY_ADMIN_BIND` | dashboards "Cat-egory overview" and "Server" (the host) are provisioned |
 | Prometheus | `:9091` | alert rules in `deployment/prometheus/alerts.yml`; `severity: critical` ones go to Telegram through Alertmanager |
 
 **Public and admin are separate.** The admin pages and endpoints are not hidden behind a link: they do not
@@ -457,6 +457,23 @@ with `category_heartbeats_up`. Alerts: API down, public API down, site down, DB 
 answers, API 5xx, **scheduler stopped** (no scan dispatch for 5 minutes: beat or the worker is down), scheduler
 never ran, discovery stopped for an hour, heartbeats unreadable, **fast lane stuck** (a suspected threat waited
 over 20 minutes).
+
+**The host.** Grafana's **Server** dashboard shows the machine every project shares: CPU by kind and load, memory and
+swap, used space and days until the system disk is full at the current pace, disk throughput and busy time, network
+per interface, temperatures, out-of-memory kills, clock sync, Linux pressure (PSI: time tasks waited for CPU, memory
+or disk), and the top ten programs by CPU and by memory. Sources: `node-exporter` (in the host's network namespace,
+listening only on 10.250.62.1:9101, the gateway of the internal `hostmetrics` network; nothing published) and
+`process-exporter` (the host's `/proc` read-only, no Docker socket, so it names programs, not containers; groups in
+`deployment/prometheus/process-exporter.yml`). Alerts: **HostDiskFull** (system disk > 90 %, critical), disk > 80 %
+(system or backup disk), memory < 10 % available, host metrics not scraped, and a stale Docker cleanup (warnings).
+
+**Docker housekeeping.** Every rebuild leaves build cache behind; on 2026-11-17 it had reached ~130 GB and the system
+disk 85 %. `deployment/scripts/docker-cleanup.sh` keeps the build cache to 20 GB (most recently used layers) and
+removes dangling images; it never touches containers, volumes, networks or tagged images. `make cleanup-timer` installs
+it as a weekly timer (Sunday 04:00) and creates `/var/lib/node_exporter/textfile`, where each run records its time and
+the space it freed (the Server dashboard; **DockerCleanupStale** after 8 days). Run it now:
+`sudo ./deployment/scripts/docker-cleanup.sh`. Images a stopped project no longer needs stay until removed by hand
+(`sudo docker image prune -a --filter until=168h`).
 
 **Threat fast lane.** Scan jobs at priority 0–2 (`CATEGORY_FAST_LANE_MAX_PRIORITY`): CT look-alikes, Octryx
 findings, and scans a person queues at that priority. They may use one crawl slot above

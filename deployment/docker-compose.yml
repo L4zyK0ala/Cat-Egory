@@ -418,9 +418,50 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - promdata:/prometheus
-    networks: [core, edge, alerts]
+    networks: [core, edge, alerts, hostmetrics]
     ports: ["${CATEGORY_ADMIN_BIND:-127.0.0.1}:${PROMETHEUS_PORT:-9091}:9090"]
     security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    logging: *logging
+
+  # The host itself, for the Grafana "Server" dashboard: CPU, memory, disks, network, temperatures, pressure. It has to
+  # share the host's network namespace to see the real interfaces, so it listens only on the gateway address of the
+  # internal `hostmetrics` network: Prometheus reaches it there, the LAN does not (nothing is published). Read-only
+  # view of the host file system, no capabilities. Also reads the textfile directory (docker-cleanup.sh's results).
+  node-exporter:
+    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=10.250.62.1:9101
+      - --collector.textfile.directory=/host/var/lib/node_exporter/textfile
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|run|sys|snap|var/snap|var/lib/docker/.+|var/lib/containerd/.+)($$|/)
+      - --collector.netdev.device-exclude=^(lo|veth.*|br-.*|docker0)$$
+    network_mode: host
+    pid: host
+    volumes: ["/:/host:ro,rslave"]
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    deploy: {resources: {limits: {cpus: "0.25", memory: 128m}}}
+    depends_on: [prometheus]   # the hostmetrics network, and with it the address to listen on, exists by then
+    restart: unless-stopped    # until it does (e.g. right after boot), starting fails and is retried
+    logging: *logging
+
+  # CPU and memory per program (certstream, ct_hunt, postgres, chromium ...), read from the host's /proc. No
+  # Docker socket: it names processes, not containers. Only on the internal hostmetrics network.
+  process-exporter:
+    image: ncabatoff/process-exporter:0.8.7@sha256:bc2363ff7e05ada1b2a694f06c43dc824dc26cd6e487b5d36b66b1a40df4e842
+    command: ["--procfs=/host/proc", "--config.path=/config/process-exporter.yml"]
+    volumes:
+      - /proc:/host/proc:ro
+      - ./prometheus/process-exporter.yml:/config/process-exporter.yml:ro
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [hostmetrics]
+    deploy: {resources: {limits: {cpus: "0.25", memory: 128m}}}
     restart: unless-stopped
     logging: *logging
 
@@ -477,6 +518,9 @@ networks:
     internal: true   # cloudflared <-> the public site and API only
     ipam: {config: [{subnet: 10.250.61.0/24}]}
   tunnelout: {}      # cloudflared's outbound connection to Cloudflare, nothing else on it
+  hostmetrics:
+    internal: true   # prometheus <-> process-exporter, and node-exporter on the host at the gateway 10.250.62.1
+    ipam: {config: [{subnet: 10.250.62.0/29, gateway: 10.250.62.1}]}
   edge: {}
 
 volumes:

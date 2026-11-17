@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Docker housekeeping
+
+[Timer]
+# Sunday morning, after the nightly backup (02:30)
+OnCalendar=Sun *-*-* 04:00:00
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

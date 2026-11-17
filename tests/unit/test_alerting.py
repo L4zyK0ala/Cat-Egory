@@ -19,7 +19,47 @@ def test_every_alert_has_a_severity_and_a_summary():
 def test_only_outages_are_critical():
     critical = {r["alert"] for r in rules() if r["labels"]["severity"] == "critical"}
     assert critical == {"ApiDown", "PublicApiDown", "SiteDown", "DatabaseMetricsDown", "ApiErrors", "SchedulerStopped",
-                        "SchedulerNeverRan", "CrawlerOutage", "BackupStale", "FeedsStale"}
+                        "SchedulerNeverRan", "CrawlerOutage", "BackupStale", "FeedsStale",
+                        "HostDiskFull"}  # a full system disk stops PostgreSQL: the outage just before it happens
+
+
+def test_host_metrics_stay_private():
+    """node-exporter shares the host's network, so it must listen only on the internal hostmetrics gateway."""
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    gateway = compose["networks"]["hostmetrics"]["ipam"]["config"][0]["gateway"]
+    assert compose["networks"]["hostmetrics"]["internal"] is True
+    node = compose["services"]["node-exporter"]
+    assert node["network_mode"] == "host" and "ports" not in node
+    assert f"--web.listen-address={gateway}:9101" in node["command"]
+    assert node["read_only"] and node["cap_drop"] == ["ALL"] and node["volumes"] == ["/:/host:ro,rslave"]
+    procs = compose["services"]["process-exporter"]
+    assert procs["networks"] == ["hostmetrics"] and "ports" not in procs
+    assert all(v.endswith(":ro") for v in procs["volumes"]) and "docker.sock" not in str(procs["volumes"])
+    assert "hostmetrics" in compose["services"]["prometheus"]["networks"]
+    jobs = {j["job_name"]: j["static_configs"][0]["targets"] for j in
+            yaml.safe_load((ROOT / "prometheus/prometheus.yml").read_text())["scrape_configs"]}
+    assert jobs["node"] == [f"{gateway}:9101"] and jobs["processes"] == ["process-exporter:9256"]
+    groups = yaml.safe_load((ROOT / "prometheus/process-exporter.yml").read_text())["process_names"]
+    assert groups[-1] == {"name": "{{.Comm}}", "cmdline": [".+"]}  # everything else under its own name
+
+
+def test_docker_cleanup_only_removes_what_can_be_rebuilt():
+    script = (ROOT / "scripts/docker-cleanup.sh").read_text()
+    commands = [line.strip() for line in script.splitlines() if line.strip().startswith("docker ")]
+    assert commands == ['docker builder prune -f --keep-storage "$KEEP_BUILD_CACHE" | tail -n 1',
+                        "docker image prune -f | tail -n 1"]  # never volumes, containers, or tagged images (no -a)
+
+
+def test_dashboards_load_and_use_the_provisioned_datasource():
+    import json
+
+    for path in (ROOT / "grafana/dashboards").glob("*.json"):
+        dash = json.loads(path.read_text())
+        assert dash["uid"] and dash["title"], path.name
+        for panel in dash["panels"]:
+            if panel["type"] != "row":
+                assert panel["datasource"] == {"type": "prometheus", "uid": "prometheus"}, (path.name, panel["title"])
+                assert panel["targets"] and all(t["expr"] for t in panel["targets"]), (path.name, panel["title"])
 
 
 def test_what_visitors_use_is_watched():
