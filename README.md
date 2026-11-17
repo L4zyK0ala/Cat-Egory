@@ -7,7 +7,7 @@
 **An open, AI-assisted categorisation of the world's websites.** Cat-egory visits websites in a sandboxed
 real browser, classifies them against an open, versioned taxonomy with a language model, checks every answer
 (confidence policy, second model, human review) and publishes the result as an open database, a REST API and
-downloadable feeds (TXT, hosts, CSV, JSON, DNS RPZ).
+downloadable feeds (TXT, hosts, AdGuard / uBlock, CSV, JSON, DNS RPZ).
 
 Commercial web-categorisation databases are closed and paid. Cat-egory's aim is an open alternative whose
 data anyone can use, check and correct, with a clear record of where every label came from.
@@ -26,14 +26,15 @@ domains ──► scan queue ──► sandboxed Chromium ──► page text, H
                      confidence ≥ 0.90 ─────────► published │ 0.70–0.89 ──► second model agrees?
                      injection / risk claim / < 0.70 ──► human review queue
                                                              ▼
-                      open database ──► REST API, web UI, feeds (TXT / hosts / CSV / JSON / RPZ)
+                      open database ──► REST API, web UI, feeds (TXT / hosts / adblock / CSV / JSON / RPZ)
 ```
 
-- **Taxonomy:** 58 content categories and 8 security-risk categories (incl. look-alike domains), versioned and never renumbered
-  ([TAXONOMY.md](documentation/TAXONOMY.md)).
-- **Trust rules:** the AI never overrides a human decision. Security-risk flags come only from people or from
-  licensed threat feeds, never from a model's claim. Pages that try to instruct the model ("ignore previous
-  instructions…") always go to a person.
+- **Taxonomy (2.0.0):** 66 content categories and 9 security-risk categories (incl. look-alike domains),
+  versioned and never renumbered ([TAXONOMY.md](documentation/TAXONOMY.md)).
+- **Trust rules:** the AI never overrides a human decision. Security-risk flags come only from people, from
+  licensed threat sources, or from the sister project Octryx when it proved an imitation on the page; never from
+  a model's claim, which only opens a review task ([THREATS.md](documentation/THREATS.md)). Pages that try to
+  instruct the model ("ignore previous instructions…") always go to a person.
 - **Provenance:** every label records whether it came from the AI, a reviewer, the community or a third-party
   source. Third-party data keeps its own licence and is never relicensed.
 - **Safety of the crawler:** Chromium runs with its own sandbox inside a container without capabilities, on a
@@ -47,14 +48,21 @@ domains ──► scan queue ──► sandboxed Chromium ──► page text, H
 | Domain add / bulk import (CSV, TXT/hosts, JSON, XLSX), API keys, roles, rate limits, audit log | ✅ |
 | Crawler: sandboxed Chromium, SSRF-enforcing egress proxy, robots.txt, screenshots / HTML / text | ✅ |
 | AI classification with [EVREN](https://evren.ssyz.org.tr/), confidence policy, second opinion, human review, calibration | ✅ live since 2026-11-08 |
-| Automatic re-scans (daily for threats, weekly for changed or unreachable sites, monthly otherwise) | ✅ |
-| Public API: domain, URL, history, categories, stats; feeds TXT / hosts / RPZ / CSV / JSON | ✅ |
-| Community: misclassification reports, category suggestions, votes, moderation | ✅ |
-| Web UI (Next.js): search, category explorer, feeds, admin console, review and moderation queues | ✅ |
-| Third-party sources with licence approval and provenance | ✅ engine; no source approved yet |
-| Monitoring (Prometheus, Grafana, alert rules), backup / restore scripts | ✅ |
+| Automatic re-scans (daily for threats, weekly for changed or unreachable sites, monthly otherwise); an unchanged page keeps its AI answer instead of asking again | ✅ |
+| Discovery: first scans of popular sites, slowly and under a daily AI-token cap ([Majestic Million](https://majestic.com/reports/majestic-million), CC BY 3.0), names visitors looked up first | ✅ |
+| Public API: domain, URL, history, categories, stats, bulk lookup, change feed (`/changes`) | ✅ |
+| Feeds: TXT / hosts / AdGuard-uBlock / RPZ / CSV / JSON, ready-made router profiles (security, family), diffs between versions | ✅ |
+| Self-service read-only API keys for developers (no account, daily quota) | ✅ |
+| Accuracy measured against people on a public page (random verification sample, 95 % interval) | ✅ |
+| Community: misclassification reports, category suggestions, votes, moderation; corrections from trusted contributors apply at once | ✅ |
+| Phishing early warning: certificate-transparency watch for look-alike domains, always reviewed by a person | ✅ |
+| Web UI (Next.js): search, bulk lookup, category explorer, feeds and router guides, accuracy, admin console with review and moderation queues | ✅ |
+| Third-party sources with licence approval and provenance | ✅ |
+| Demand: daily totals of what is looked up and downloaded, never who asked (admin "Yönelim" tab) | ✅ |
+| Yaş Mama: a local classifier that learns from published labels and is compared with the AI in shadow mode (admin tab with charts); it publishes nothing yet | 🧪 shadow |
+| Monitoring (Prometheus, Grafana, alert rules), backup / restore scripts, Turkish alerts and a daily summary on Telegram | ✅ |
 | Quality measurement on known sites (`python -m classification.evaluation`) | ✅ |
-| Public instance (Cloudflare Tunnel, TLS), alerts to Telegram | ✅ [cat-egory.org](https://cat-egory.org) |
+| Public instance (Cloudflare Tunnel, TLS; the admin console is never published) | ✅ [cat-egory.org](https://cat-egory.org) |
 
 ## Quick start (Docker)
 
@@ -143,5 +151,9 @@ Cat-egory, dünyadaki web sitelerini açık ve herkesin kullanıp düzeltebilece
 amaçlayan açık kaynak bir platformdur. Siteleri yalıtılmış gerçek bir tarayıcıyla ziyaret eder, yerli yapay zekâ
 platformu EVREN'in modelleriyle sürümlü bir kategori ağacına göre sınıflandırır, her cevabı güven eşikleri,
 ikinci model ve insan incelemesiyle denetler; sonuçları açık veritabanı, REST API ve indirilebilir listeler
-(TXT, hosts, CSV, JSON, DNS RPZ) olarak yayımlar. Proje alfa aşamasındadır; tüm bileşenler tek makinede
-Docker üzerinde, gerçek tarama ve gerçek yapay zekâ sınıflandırmasıyla çalışmaktadır.
+(TXT, hosts, AdGuard / uBlock, CSV, JSON, DNS RPZ) olarak yayımlar. Router'lar için hazır güvenlik ve aile
+profilleri, toplu sorgu, geliştirici anahtarları ve insan kontrolüyle ölçülen doğruluk sayfası vardır. Taklit
+alan adları sertifika şeffaflığı kayıtlarından erken yakalanır; tehdit işaretini yalnız insan, lisanslı
+kaynak ya da taklidi sayfada kanıtlayan kardeş proje Octryx koyar. Yerel sınıflandırıcı "Yaş Mama" şimdilik gölge modda yapay zekâyla karşılaştırılmaktadır. Proje
+alfa aşamasındadır; tüm bileşenler tek makinede Docker üzerinde, gerçek tarama ve gerçek yapay zekâ
+sınıflandırmasıyla çalışmaktadır ([cat-egory.org](https://cat-egory.org)).
