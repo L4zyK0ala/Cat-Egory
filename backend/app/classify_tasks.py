@@ -51,7 +51,21 @@ def classify_scan(session: Session, scan_result_id: int, settings: Settings, *, 
                      lookalike_recheck_days=settings.lookalike_recheck_days)
     if settings.local_shadow and store is not None and outcome.action != "retry":
         shadow_guess(session, scan, outcome.prediction_ids[0] if outcome.prediction_ids else None, store)
+    if outcome.action != "retry":
+        detector_check(session, domain, scan, data, settings)
     return outcome
+
+
+def detector_check(session: Session, domain: Domain, scan: ScanResult, data, settings: Settings) -> None:
+    """Our page-proof threat detector (threats/detector.py): shadow verdicts, and flags once proven and allowed.
+    A failure in it never affects the classification it runs after."""
+    from threats.detector import check
+
+    try:
+        with session.begin_nested():
+            check(session, domain, scan, data, settings)
+    except Exception:  # noqa: BLE001 - the detector must never break classification
+        log.warning("threat detector failed", extra={"scan_result_id": scan.id}, exc_info=True)
 
 
 def shadow_guess(session: Session, scan: ScanResult, ai_prediction_id: int | None, store) -> None:

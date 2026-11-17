@@ -86,45 +86,58 @@ sources:
     license_status: unverified
     notes: Redistribution terms unknown; ask the maintainer. No feed URL recorded on purpose.
 
+  # Threat lists below are CANDIDATES ONLY (candidates_only: true, threats/feeds.py): their hosts go to
+  # threat_feed_entries, a few an hour are scanned (Türkiye-related first) and a person or our own proven detector
+  # decides. Their verdicts are never published as threat records, so approve them with --redistribution no.
   - slug: urlhaus
-    name: URLhaus hostfile (abuse.ch)
+    name: URLhaus recent malware URLs (abuse.ch)
     homepage: https://urlhaus.abuse.ch/
-    feed_url: https://urlhaus.abuse.ch/downloads/hostfile/
+    terms_url: https://abuse.ch/terms-of-use/
+    # {abusech_key} is filled in from CATEGORY_ABUSECH_AUTH_KEY at download time (never stored, never logged)
+    feed_url: https://urlhaus-api.abuse.ch/v2/files/exports/{abusech_key}/recent.csv
     kind: threat_feed
     threat_type: malware
-    format: hosts
+    format: csv
+    column_index: 2      # id,dateadded,url,url_status,... after a commented header
+    candidates_only: true
+    update_interval_seconds: 21600
     believed_license: abuse.ch Terms of Use (not an open licence; CC0 covers only Feodo Tracker, SSL Blacklist, YARAify)
     license_status: unverified
     notes: >-
-      Checked 2026-11-08. Downloads now need an abuse.ch Auth-Key (the old URL above answers 410). Terms: free for
-      not-for-profit authenticated users (3.1); commercial use may need a paid Spamhaus subscription (4.1); no
-      derivative works or AI training without written consent (7.3). So at most internal-only use
-      (redistribution_allowed false: never on the public site, stats or feeds) until abuse.ch/Spamhaus agree in
-      writing. Download code does not send an Auth-Key header yet.
+      Checked 2026-11-08. Needs an abuse.ch Auth-Key. Terms: free for not-for-profit authenticated users (3.1);
+      commercial use may need a paid Spamhaus subscription (4.1); no derivative works or AI training without
+      written consent (7.3). Candidates only: a host is scanned and judged by us; nothing of the list is published.
+      Mostly malware on IP addresses (skipped: not a domain). Dumps refresh every 5 minutes; we take them 4x a day.
 
   - slug: phishing-database
     name: Phishing.Database active phishing domains
     homepage: https://github.com/Phishing-Database/Phishing.Database
-    feed_url: https://phish.co.za/latest/phishing-domains-ACTIVE.txt
+    feed_url: https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-domains-ACTIVE.txt
     kind: threat_feed
     threat_type: phishing
     format: domains
+    candidates_only: true
+    update_interval_seconds: 86400
     believed_license: MIT (repository licence, copyright Mitchell Krog, Nissar Chababy and contributors)
     license_status: unverified
     notes: >-
-      Candidate checked 2026-11-08. MIT allows redistribution with the copyright notice, but the list aggregates
-      community reports and other feeds; confirm with the maintainers that MIT covers the data itself before
-      publishing flags. Entries should still go to human review (false positives are reported there as issues).
+      Candidate checked 2026-11-08, terms read by the operator 2026-11-17. ~390,000 names (11 MB); ~500 are .tr and
+      a few hundred resemble watched Turkish brands. Aggregates community reports: candidates only.
 
   - slug: openphish
     name: OpenPhish community feed
     homepage: https://openphish.com/
-    feed_url: https://openphish.com/feed.txt
+    terms_url: https://openphish.com/terms.html
+    # openphish.com/feed.txt redirects here; downloads do not follow redirects
+    feed_url: https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt
     kind: threat_feed
     threat_type: phishing
     format: url-list
+    candidates_only: true
+    update_interval_seconds: 21600
     believed_license: free community feed with usage restrictions (commercial use may need a licence)
     license_status: unverified
+    notes: Terms read by the operator 2026-11-17. ~300 links, refreshed often; candidates only.
 
   - slug: phishtank
     name: PhishTank

@@ -134,3 +134,18 @@ def run_abuse_drafts(limit: int | None = None) -> dict:
 @celery_app.task(name="category.threats.abuse_drafts", ignore_result=True, soft_time_limit=240, time_limit=300)
 def abuse_drafts() -> dict | None:
     return run_abuse_drafts() if get_settings().abuse_drafts_enabled else None
+
+
+@celery_app.task(name="category.threats.feed_candidates", ignore_result=True, soft_time_limit=120, time_limit=180)
+def feed_candidates() -> list[str]:
+    """Queue this quarter-hour's share of threat-list hosts for a scan (threats/feeds.py). Candidates only."""
+    from threats import feeds
+
+    settings = get_settings()
+    if settings.threat_feed_candidates_per_hour <= 0:
+        return []
+    with session_factory()() as session, session.begin():
+        queued = feeds.pick(session, settings)
+    if queued:
+        log.info("threat-list candidates queued", extra={"count": len(queued)})
+    return queued

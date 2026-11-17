@@ -143,6 +143,7 @@ def download_latest(url: str, *, client: httpx.Client | None = None, resolver=No
                     today: datetime | None = None) -> bytes:
     """``{yyyymm}`` in a feed URL: the newest monthly file, this month's or one of the three before (a month's list
     appears some days into the next month)."""
+    url = _with_key(url)
     if "{yyyymm}" not in url:
         return download(url, client=client, resolver=resolver)
     year, month = (today or datetime.now(UTC)).year, (today or datetime.now(UTC)).month
@@ -154,6 +155,19 @@ def download_latest(url: str, *, client: httpx.Client | None = None, resolver=No
                 raise
         year, month = (year, month - 1) if month > 1 else (year - 1, 12)
     raise SourceError("http_status", "no monthly file found for the last four months")
+
+
+def _with_key(url: str) -> str:
+    """``{abusech_key}`` in a feed URL: abuse.ch wants its Auth-Key in the path. The key comes from the worker's
+    settings at download time, so it is never stored with the source (data_sources.feed_url) or logged."""
+    if "{abusech_key}" not in url:
+        return url
+    from common.config import get_settings
+
+    key = get_settings().abusech_auth_key
+    if key is None or not key.get_secret_value().strip():
+        raise SourceError("no_key", "this feed needs CATEGORY_ABUSECH_AUTH_KEY in the worker")
+    return url.replace("{abusech_key}", key.get_secret_value().strip())
 
 
 def _gunzip(data: bytes) -> bytes:
@@ -169,7 +183,8 @@ def _gunzip(data: bytes) -> bytes:
     return bytes(out)
 
 
-def _csv_rows(data: bytes, column_name: str | None = None, rank_column: str | None = None) -> Iterator[tuple[int, str]]:
+def _csv_rows(data: bytes, column_name: str | None = None, rank_column: str | None = None,
+              column_index: int | None = None) -> Iterator[tuple[int, str]]:
     """Stream (line number, value) from a CSV feed, keeping only the domain column. Large lists (a top-1M CSV is
     ~80 MB with 12 columns) would not fit in a worker's memory if every cell were kept. ``column_name`` picks the
     domain column by its header; with ``rank_column`` the number yielded is that column's value (a list that gives
@@ -181,11 +196,11 @@ def _csv_rows(data: bytes, column_name: str | None = None, rank_column: str | No
         delimiter = ","
     # Decode while reading: one decoded copy of a 100 MB file would cost several hundred MB.
     stream = io.TextIOWrapper(io.BytesIO(data), encoding="utf-8-sig", errors="replace", newline="")
-    column, ranked, first = 0, None, True
+    column, ranked, first = column_index or 0, None, column_index is None
     names = {column_name.lower()} if column_name else HEADER_NAMES
     for n, cells in enumerate(csv.reader(stream, delimiter=delimiter), start=1):
-        if not any(c.strip() for c in cells):
-            continue
+        if not any(c.strip() for c in cells) or cells[0].lstrip().startswith("#"):
+            continue  # a comment line (URLhaus starts with a commented header)
         if first:
             first = False
             header = [c.strip().lower() for c in cells]
@@ -226,7 +241,8 @@ def parse(data: bytes, data_format: str | None, entry: dict[str, Any] | None = N
     entry = entry or {}
     data = _gunzip(data)
     if data_format == "csv":
-        rows = select_rows(_csv_rows(data, entry.get("column"), entry.get("rank_column")), entry)
+        rows = select_rows(_csv_rows(data, entry.get("column"), entry.get("rank_column"), entry.get("column_index")),
+                           entry)
     else:  # hosts, domains, url-list (a URL's host is extracted when normalising)
         rows = select_rows(parse_text(data, MAX_ENTRIES), entry)
     if entry.get("registrable_only"):
@@ -277,6 +293,17 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
     except SourceError as exc:
         source.last_error = f"{exc.code}: {exc}"[:500]
         result.errors.append(source.last_error)
+        return result
+
+    if entry.get("candidates_only"):  # a threat list we only take candidates from (threats/feeds.py)
+        from threats.feeds import sync as sync_candidates
+
+        counts = sync_candidates(session, source, rows, now=now)
+        result.entries, result.valid, result.invalid = counts["entries"], counts["hosts"], counts["invalid"]
+        result.delisted = counts["delisted"]
+        source.last_success_at, source.last_error, source.record_count = now, None, counts["hosts"]
+        source.quality_score = round(result.valid / result.entries, 3) if result.entries else None
+        audit.record(session, action="source.sync", target_type="data_source", target_id=slug, after=counts)
         return result
 
     domains, invalid, _ = normalize_rows(rows)

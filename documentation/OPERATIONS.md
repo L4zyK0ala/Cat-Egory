@@ -388,6 +388,26 @@ $DC exec -T worker python -m integrations.cli approve crux-top-tr --license-slug
 $DC exec -T worker python -m integrations.cli sync crux-top-tr
 ```
 
+**Threat lists as candidates** (THREATS.md, phase 1). Phishing.Database, OpenPhish and URLhaus are
+`candidates_only`: their hosts go to `threat_feed_entries`, a few an hour are scanned and judged by us. URLhaus needs
+the abuse.ch Auth-Key in the worker (`CATEGORY_ABUSECH_AUTH_KEY`; `.env` may call it `URLHAUS_AUTH_KEY` or
+`ABUSECH_AUTH_KEY`); it is put into the download path at run time and never stored. After reading each list's terms:
+
+```bash
+for s in phishing-database openphish urlhaus; do
+  $DC exec -T worker python -m integrations.cli register $s
+  $DC exec -T worker python -m integrations.cli approve $s --license-slug "terms-$s" --license-name "$s terms" \
+      --redistribution no --commercial no --attribution-required yes --reviewer you@example.org \
+      --notes "candidates only: hosts are scanned and judged by us; nothing of the list is published"
+  $DC exec -T worker python -m integrations.cli sync $s
+done
+```
+
+Then `category.threats.feed_candidates` (every 15 minutes) queues `CATEGORY_THREAT_FEED_CANDIDATES_PER_HOUR` (6)
+an hour: names resembling a watched Turkish brand first, then .tr names (`CATEGORY_THREAT_FEED_MIN_RELEVANCE`, 1;
+0 = any name). Phishing.Database is ~390,000 names (11 MB, synced daily); the table keeps them all so the detector
+can say which of its positives a list also names.
+
 Sources with `--redistribution no` are used internally only: their threat flags are not shown by the API and
 never enter feeds.
 

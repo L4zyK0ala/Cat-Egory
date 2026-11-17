@@ -60,6 +60,8 @@ celery_app.conf.update(
         "virustotal-check": {"task": "category.threats.virustotal_check", "schedule": 900.0,
                              "options": {"expires": 800}},
         "abuse-drafts": {"task": "category.threats.abuse_drafts", "schedule": 3600.0, "options": {"expires": 3000}},
+        "threat-feed-candidates": {"task": "category.threats.feed_candidates", "schedule": 900.0,
+                                   "options": {"expires": 800}},
         # once a day, in Türkiye time (beat runs in UTC)
         "demand-rollup": {"task": "category.maintenance.demand_rollup",
                           "schedule": crontab(minute=20, hour=(0 - settings.app_utc_offset_hours) % 24),

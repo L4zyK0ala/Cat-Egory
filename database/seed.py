@@ -50,6 +50,9 @@ BUILTIN_SOURCES = [
     # Our sister project's own findings, proven on the page (threats/octryx.py). Never another list's verdict.
     {"slug": "octryx", "name": "Octryx brand impersonation findings", "kind": SourceKind.DATASET,
      "license": "CC-BY-4.0", "attribution": "Octryx"},
+    # Our own page-proof threat detector (threats/detector.py): flags only once measured against people's decisions.
+    {"slug": "cat-egory-detector", "name": "Cat-egory page-proof threat detector", "kind": SourceKind.RULE,
+     "license": "CC-BY-4.0", "attribution": "Cat-egory contributors"},
     # Names several different visitors looked up while we did not know them (backend/app/demand.py). Names only.
     {"slug": "demand", "name": "Visitor demand", "kind": SourceKind.COMMUNITY, "license": "CC-BY-4.0",
      "attribution": "Cat-egory visitors"},

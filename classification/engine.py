@@ -49,7 +49,8 @@ log = logging.getLogger("category.classify")
 AI_SOURCE = "cat-egory-ai"
 REVIEW_SOURCE = "cat-egory-review"
 OCTRYX_SOURCE = "octryx"  # the sister project's own findings (threats/octryx.py)
-OWN_THREAT_SOURCES = (REVIEW_SOURCE, OCTRYX_SOURCE)  # our own verdicts: we may publish, expire and withdraw them
+DETECTOR_SOURCE = "cat-egory-detector"  # our own page-proof rule, once proven (threats/detector.py)
+OWN_THREAT_SOURCES = (REVIEW_SOURCE, OCTRYX_SOURCE, DETECTOR_SOURCE)  # our own verdicts: publish, expire, withdraw
 
 
 # ----------------------------------------------------------------------------- input
@@ -237,16 +238,22 @@ STICKY_REASONS = (THREAT_RETURNED, THREAT_PAGE_CHANGED)  # stay the question wha
 PARKED = "parked-domains"
 
 
+FEED_LISTED = "feed_listed:"  # + slug: a third-party threat list named it and we scanned it (threats/feeds.py)
+
+
 def is_threat_candidate(reason: str) -> bool:
-    return reason in THREAT_CANDIDATE_REASONS or reason.startswith("lookalike_of:")
+    return reason in THREAT_CANDIDATE_REASONS or reason.startswith(("lookalike_of:", FEED_LISTED))
 
 
 def threat_candidate() -> ColumnElement[bool]:
-    return or_(ReviewTask.reason.in_(THREAT_CANDIDATE_REASONS), ReviewTask.reason.like("lookalike\\_of:%", escape="\\"))
+    return or_(ReviewTask.reason.in_(THREAT_CANDIDATE_REASONS), ReviewTask.reason.like("lookalike\\_of:%", escape="\\"),
+               ReviewTask.reason.like("feed\\_listed:%", escape="\\"))
 
 
 def is_lookalike_reason(reason: str) -> bool:
-    return reason == "brand_lookalike" or reason.startswith("lookalike_of:")
+    """A name that may imitate something (CT watch, a top site's typo) or that a threat list names: the page goes to
+    a person unless it is plainly parked."""
+    return reason == "brand_lookalike" or reason.startswith(("lookalike_of:", FEED_LISTED))
 
 
 # A model looking at a look-alike often adds "lookalike-domain", or the vaguer "suspicious", because of the name
@@ -299,7 +306,8 @@ def close_lookalike_reviews(session: Session, domain: Domain, note: str) -> int:
 
 
 def lookalike_reason(session: Session, domain: Domain) -> str | None:
-    """Why this domain may imitate a brand or a popular site, or None. Such domains always go to a person."""
+    """Why this domain may imitate a brand or a popular site, or why a threat list named it, or None. Such domains
+    always go to a person (or, once proven, to our own detector: threats/detector.py)."""
     from common.config import get_settings
     from database.models import DataSource, DomainSourceRecord
 
@@ -313,7 +321,9 @@ def lookalike_reason(session: Session, domain: Domain) -> str | None:
 
         if hit := top_index(session, top_n).check(domain.normalized_domain):
             return f"lookalike_of:{hit.target}"[:64]
-    return None
+    from threats.feeds import picked_reason
+
+    return picked_reason(session, domain)
 
 
 # ----------------------------------------------------------------------------- decision

@@ -27,6 +27,7 @@ from database.models import (
     AssignmentOrigin,
     ClassificationStatus,
     DataSource,
+    DetectorVerdict,
     Domain,
     DomainCategory,
     DomainSourceRecord,
@@ -82,6 +83,19 @@ class PredictionOut(BaseModel):
     evidence: list[EvidenceOut]
 
 
+class FeedListingOut(BaseModel):
+    source: str
+    brand: str | None
+    url: str | None = Field(description="the listed link: can carry a victim's address, never shown publicly")
+
+
+class DetectorOut(BaseModel):
+    rule: str
+    positive: bool
+    signals: dict
+    created_at: datetime
+
+
 class ReviewOut(BaseModel):
     id: int
     domain: str
@@ -98,6 +112,9 @@ class ReviewOut(BaseModel):
     lookalike_of: str | None = Field(default=None, description="what the CT watch thinks it imitates")
     sgb: SgbOut | None = Field(default=None, description="national SGB/USOM list, last check (None = not checked)")
     vt: VtOut | None = Field(default=None, description="VirusTotal, last check (None = not checked or no key)")
+    feeds: list[FeedListingOut] = Field(default_factory=list, description="threat lists that name the host now "
+                                        "(candidates only, threats/feeds.py); internal")
+    detector: DetectorOut | None = Field(default=None, description="our page-proof detector's newest verdict")
 
 
 class ReviewPage(BaseModel):
@@ -153,7 +170,21 @@ def _review_out(session: Session, task: ReviewTask) -> ReviewOut:
         has_screenshot=shot is not None, prediction=_prediction(session, task.ai_prediction_id),
         lookalike_of=label.removeprefix("look-alike: ") if label else None,
         sgb=sgb_out(sgb_listings(session, {domain.id}).get(domain.id)),
-        vt=vt_out(vt_listings(session, {domain.id}).get(domain.id), domain.normalized_domain))
+        vt=vt_out(vt_listings(session, {domain.id}).get(domain.id), domain.normalized_domain),
+        feeds=_feeds(session, domain.normalized_domain), detector=_detector(session, domain.id))
+
+
+def _feeds(session: Session, host: str) -> list[FeedListingOut]:
+    from threats.feeds import listing
+
+    slugs = dict(session.execute(select(DataSource.id, DataSource.slug)).all())
+    return [FeedListingOut(source=slugs.get(e.source_id, "?"), brand=e.brand, url=e.url) for e in listing(session, host)]
+
+
+def _detector(session: Session, domain_id: int) -> DetectorOut | None:
+    row = session.scalar(select(DetectorVerdict).where(DetectorVerdict.domain_id == domain_id)
+                         .order_by(DetectorVerdict.created_at.desc(), DetectorVerdict.id.desc()).limit(1))
+    return DetectorOut(rule=row.rule, positive=row.positive, signals=row.signals, created_at=row.created_at) if row else None
 
 
 @router.get("/reviews", response_model=ReviewPage, summary="Review queue (oldest first)")

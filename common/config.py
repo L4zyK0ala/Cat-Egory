@@ -184,6 +184,22 @@ class Settings(BaseSettings):
     octryx_url: str | None = None
     octryx_token: SecretStr | None = None
     octryx_auto_flag_max_per_run: int = Field(default=20, ge=0, description="the rest of a run goes to a person")
+    # Third-party threat lists as candidates only (threats/feeds.py): hosts are scanned and a person decides.
+    abusech_auth_key: SecretStr | None = Field(default=None, description="abuse.ch Auth-Key (URLhaus export); "
+                                               "goes into the download path, never into the database. Worker only")
+    threat_feed_candidates_per_hour: int = Field(default=6, ge=0, description="hosts from threat lists queued for "
+                                                 "a scan per hour, Türkiye-related first; 0 = off")
+    threat_feed_min_relevance: int = Field(default=1, ge=0, le=2, description="pick only hosts this related to "
+                                           "Türkiye: 2 = resembles a watched brand, 1 = also .tr names, 0 = any")
+    # Our own page-proof detector (threats/detector.py): measured in shadow mode, flags only when allowed AND proven.
+    threat_detector_auto: bool = Field(default=False, description="let the detector flag by itself once its measured "
+                                       "precision qualifies (threat_detector_min_*)")
+    threat_detector_min_decisions: int = Field(default=200, ge=20, description="people's decisions on its positive "
+                                               "verdicts needed before it may flag")
+    threat_detector_min_precision: float = Field(default=0.99, ge=0.9, le=1.0)
+    threat_detector_max_per_day: int = Field(default=20, ge=0, description="flags it may add a day, Türkiye time")
+    threat_detector_sample_every: int = Field(default=10, ge=2, description="every Nth flag it adds still goes to a "
+                                              "person, so its precision keeps being measured")
     virustotal_api_key: SecretStr | None = Field(default=None, description="VirusTotal API key; empty = off")
     virustotal_check_batch: int = Field(default=4, ge=1, le=40, description="domains asked per run (every 15 minutes)")
     virustotal_check_max_age_hours: int = Field(default=72, ge=1)

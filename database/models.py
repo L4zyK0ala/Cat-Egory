@@ -851,6 +851,48 @@ class ExternalListing(Base):
     __table_args__ = (UniqueConstraint("domain_id", "source"), Index("ix_external_listings_checked", "source", "checked_at"))
 
 
+class ThreatFeedEntry(Base):
+    """A host a third-party threat list names (threats/feeds.py). Only a candidate: it is scanned when picked and a
+    person (or our own page-proof detector) decides; the list's verdict is never republished as ours. Internal:
+    ``url`` can carry a victim's address and is shown to reviewers only."""
+
+    __tablename__ = "threat_feed_entries"
+
+    id: Mapped[int] = _pk()
+    source_id: Mapped[int] = mapped_column(ForeignKey("data_sources.id", ondelete="CASCADE"), nullable=False)
+    host: Mapped[str] = mapped_column(String(253), nullable=False)  # normalised ASCII
+    url: Mapped[str | None] = mapped_column(Text)  # one listed link on the host, if the list gives links
+    relevance: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default=text("0"))  # 2 brand, 1 .tr
+    brand: Mapped[str | None] = mapped_column(String(100))  # the watched Turkish brand the name resembles
+    is_listed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    first_seen: Mapped[datetime] = _now()
+    last_seen: Mapped[datetime] = _now()
+    picked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # queued for a scan
+    domain_id: Mapped[int | None] = mapped_column(ForeignKey("domains.id", ondelete="SET NULL"))
+
+    __table_args__ = (UniqueConstraint("source_id", "host"), Index("ix_threat_feed_entries_host", "host"),
+                      Index("ix_threat_feed_entries_pick", "is_listed", "picked_at", "relevance"))
+
+
+class DetectorVerdict(Base):
+    """What our own page-proof threat detector (threats/detector.py) said about a scanned page, kept to measure it
+    against people's decisions before it may flag anything by itself."""
+
+    __tablename__ = "detector_verdicts"
+
+    id: Mapped[int] = _pk()
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
+    scan_result_id: Mapped[int | None] = mapped_column(ForeignKey("scan_results.id", ondelete="SET NULL"))
+    rule: Mapped[str] = mapped_column(String(64), nullable=False)
+    positive: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    signals: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    action: Mapped[str | None] = mapped_column(String(16))  # "flagged" when it flagged the domain itself
+    created_at: Mapped[datetime] = _now()
+
+    __table_args__ = (Index("ix_detector_verdicts_domain", "domain_id", "created_at"),
+                      Index("ix_detector_verdicts_rule", "rule", "created_at"))
+
+
 class AbuseReport(Base):
     """A prepared abuse report about one of our confirmed threats, for one recipient: the registrar's or the hosting
     network's abuse contact, as their public RDAP records give it (threats/abuse.py). Nothing sends it: a person

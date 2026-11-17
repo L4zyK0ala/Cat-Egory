@@ -41,7 +41,29 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
 | Admin threats API (`POST /api/v1/admin/threats`) | domain or URL | evidence note required (10–2000 chars) |
 | Community report (`false_negative` + threat category) | domain | becomes a record only when a moderator accepts it |
 | Octryx sync (`threats/octryx.py`, hourly) | domain | proven on the page: listed at once as phishing + look-alike, without review. Public only through a third-party list, protected names, or over the per-run cap: threat-candidate queue |
-| Licensed threat feed (`integrations/sources.yaml`, `kind: threat_feed`) | domain | none approved yet; URLhaus internal-only at most |
+| Threat lists as **candidates** (`candidates_only: true`: Phishing.Database, OpenPhish, URLhaus; `threats/feeds.py`) | domain | hosts kept in `threat_feed_entries`, never published; `CATEGORY_THREAT_FEED_CANDIDATES_PER_HOUR` (6) scanned an hour, names resembling a watched Turkish brand first, then .tr names, never popular / official / restricted hosts; the page goes to the threat-candidate queue (`feed_listed:<slug>`, parked pages only watched). The listed link is shown to the reviewer only |
+| Our page-proof detector (`threats/detector.py`) | domain | shadow mode by default; flags by itself only when switched on **and** measured (below) |
+| Licensed threat feed published as is (`kind: threat_feed` without `candidates_only`) | domain | none approved |
+
+## From lists to our own detector (phases)
+
+1. **Candidates (semi-dependent).** Outside threat lists only nominate hosts; we scan them and a person decides, so
+   every record is ours (CC BY) and a list's mistake is never republished. Approve each list with
+   `--redistribution no` (OPERATIONS.md). The review card shows which lists name the host and the listed link.
+2. **Shadow detector (hybrid).** After every classification, `threats/detector.py` judges the page with one
+   deterministic rule, `page_proven_v1`: it asks for a secret (password, card number / CVV, SMS or one-time code,
+   Turkish ID number) **and** claims a watched Turkish brand in its title, description or first lines **and** is not
+   that brand's site nor a popular / official / restricted host **and** the host is suspect by itself (its name
+   imitates a brand or a top site, a threat list names it, or its certificate is under 30 days old). Verdicts on
+   threat candidates and all positive ones go to `detector_verdicts`; `measure` compares each domain's newest verdict
+   with people: a reviewer flag = right, a closed threat review without one = wrong, a detector flag a person
+   withdrew = wrong. The admin tab **Dedektör** shows precision, recall, the confusion table and the lists.
+3. **On its own (independent).** With `CATEGORY_THREAT_DETECTOR_AUTO=true`, a positive verdict flags the domain
+   (phishing, plus look-alike when the name imitates a brand) from the source `cat-egory-detector` — but only while
+   at least `CATEGORY_THREAT_DETECTOR_MIN_DECISIONS` (200) people's decisions on its positives exist and at least
+   `..._MIN_PRECISION` (0.99) of them were right, at most `..._MAX_PER_DAY` (20) a day. Its open threat review is
+   closed, except every `..._SAMPLE_EVERY`-th (10) flag, which stays with a person so the measurement goes on.
+   Detector records are our own: they expire with a dead site and can be withdrawn like a reviewer's.
 
 A threat flag on a popular site (Majestic top list), a watched brand's official domain or a restricted suffix
 (.gov.tr, .edu.tr, ...) — or any subdomain of these — is refused with 409 `protected_domain` until the reviewer
