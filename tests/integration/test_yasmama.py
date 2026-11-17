@@ -53,6 +53,18 @@ def toy(n=20, seed=1):
     return pages, labels
 
 
+def test_small_categories_weigh_more_but_not_as_much_as_the_big_ones_together():
+    from collections import Counter
+
+    sizes = Counter({"news": 400, "tobacco": 4})
+    assert yasmama.class_weights(sizes, 0) == {"news": 1.0, "tobacco": 1.0}
+    full, half = yasmama.class_weights(sizes, 1), yasmama.class_weights(sizes, 0.5)
+    assert full["news"] * 400 == pytest.approx(full["tobacco"] * 4)  # 1: every category weighs the same in total
+    assert half["tobacco"] / half["news"] == pytest.approx(10)  # 0.5: a 100x gap becomes 10x
+    weights = [half[c] for c, n in sizes.items() for _ in range(n)]
+    assert 0.5 < sum(weights) / len(weights) < 1.5  # a page still weighs about 1 on average
+
+
 def test_the_model_learns_and_survives_a_round_trip_without_pickle():
     pages, labels = toy()
     model = fit(pages, labels, [1.0] * len(pages), version="v1", text_chars=2000)
@@ -158,6 +170,8 @@ def test_training_stores_a_scored_model_and_keeps_only_recent_weights(engine, cl
         assert first.is_current and first.train_examples + first.test_examples == 36
         assert set(first.metrics["train_by_category"]) == set(WORDS) and first.metrics["peak_memory_mb"] > 0
         assert sum(g["pages"] for g in first.metrics["groups"].values()) == first.test_examples
+        assert first.metrics["class_balance"] == S.local_class_balance
+        assert first.metrics["macro_recall"] is None or 0 <= first.metrics["macro_recall"] <= 1
         assert Weights.from_bytes(store.get(first.object_key)).classes == sorted(WORDS)
         first_version, first_key = first.version, first.object_key
 
@@ -300,6 +314,7 @@ def test_the_admin_tab_shows_models_and_days(engine, clean, client, admin):
     shadowed(engine, store, ["a.example.com"])
     body = client.get("/api/v1/admin/yasmama?days=7", headers=admin).json()
     assert [m["current"] for m in body["models"]] == [False, True]
+    assert all("macro_recall" in m and "class_balance" in m for m in body["models"])
     assert body["current"]["version"] == body["models"][-1]["version"]
     held = body["current"]["human"] or body["current"]["ai"]
     assert [t["threshold"] for t in held["thresholds"]] == [0.5, 0.7, 0.8, 0.9, 0.95]

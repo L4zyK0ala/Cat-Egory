@@ -4,8 +4,34 @@
 # Feed URLs are believed correct as of 2026-11; verify them too. Third-party data is never relicensed.
 #
 # Discovery sources (discover: true) only bring domains in; backend/app/discovery.py scans them slowly under a
-# daily budget. Filters: include_suffixes (e.g. [tr]) and max_entries (the first N, in the source's order).
+# daily budget, lowest discover_priority first (default 100), then by rank within the source. Filters:
+# include_suffixes (e.g. [tr]), max_rank (rows ranked at most N) and max_entries (the first N, in the source's order).
+# CSV options: column (the domain column's header), rank_column (the source's own rank instead of the row number),
+# registrable_only (www.x.com and m.x.com count as x.com). A feed URL may contain {yyyymm}: the newest monthly file.
 sources:
+  # What people in Türkiye actually open, from Chrome's real-user data: scanned first.
+  - slug: crux-top-tr
+    name: Chrome UX Report top sites, Türkiye (top 50,000 origins)
+    homepage: https://developer.chrome.com/docs/crux
+    terms_url: https://developer.chrome.com/docs/crux/methodology
+    feed_url: https://raw.githubusercontent.com/zakird/crux-top-lists/main/data/country/tr/{yyyymm}.csv.gz
+    kind: dataset
+    format: csv          # gzip; header "origin,rank"; rank is a bucket (1000, 5000, 10000, 50000), random within it
+    column: origin
+    rank_column: rank
+    max_rank: 50000
+    registrable_only: true
+    discover: true
+    discover_priority: 1
+    update_interval_seconds: 604800
+    attribution: "Chrome UX Report (CrUX) by Google, CC BY 4.0"
+    believed_license: >-
+      CC BY 4.0 - "CrUX datasets by Google are licensed under a Creative Commons Attribution 4.0 International
+      License" (CrUX methodology page). The file is a monthly cache of the public BigQuery table
+      chrome-ux-report.experimental.country (github.com/zakird/crux-top-lists). Read by the operator on 2026-11-17.
+    license_status: unverified
+    notes: ~3.7 MB a month; the top 50,000 origins are ~40,000 sites (~8,100 in the top 10,000). Synced weekly.
+
   - slug: majestic-million-top
     name: Majestic Million (top 20,000)
     homepage: https://majestic.com/reports/majestic-million
@@ -14,6 +40,7 @@ sources:
     kind: dataset
     format: csv          # header row; the "Domain" column is used
     discover: true
+    discover_priority: 3   # the world's popular sites: after what Türkiye opens and the .tr names
     max_entries: 20000
     update_interval_seconds: 604800
     attribution: "Majestic Million, majestic.com, CC BY 3.0"
@@ -31,6 +58,7 @@ sources:
     kind: dataset
     format: csv
     discover: true
+    discover_priority: 2
     include_suffixes: [tr]
     update_interval_seconds: 604800
     attribution: "Majestic Million, majestic.com, CC BY 3.0"

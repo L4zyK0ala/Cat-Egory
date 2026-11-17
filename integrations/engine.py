@@ -19,6 +19,7 @@ elsewhere), a size cap and a timeout. Entries are parsed as untrusted text.
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import logging
 from collections.abc import Iterable, Iterator
@@ -138,9 +139,41 @@ def download(url: str, *, client: httpx.Client | None = None, resolver=None) -> 
             client.close()
 
 
-def _csv_rows(data: bytes) -> Iterator[tuple[int, str]]:
+def download_latest(url: str, *, client: httpx.Client | None = None, resolver=None,
+                    today: datetime | None = None) -> bytes:
+    """``{yyyymm}`` in a feed URL: the newest monthly file, this month's or one of the three before (a month's list
+    appears some days into the next month)."""
+    if "{yyyymm}" not in url:
+        return download(url, client=client, resolver=resolver)
+    year, month = (today or datetime.now(UTC)).year, (today or datetime.now(UTC)).month
+    for _ in range(4):
+        try:
+            return download(url.replace("{yyyymm}", f"{year:04d}{month:02d}"), client=client, resolver=resolver)
+        except SourceError as exc:
+            if exc.code != "http_status":
+                raise
+        year, month = (year, month - 1) if month > 1 else (year - 1, 12)
+    raise SourceError("http_status", "no monthly file found for the last four months")
+
+
+def _gunzip(data: bytes) -> bytes:
+    """A gzip feed (by its magic bytes), unpacked under the same size limit as a download."""
+    if data[:2] != b"\x1f\x8b":
+        return data
+    out = bytearray()
+    with gzip.GzipFile(fileobj=io.BytesIO(data)) as fh:
+        while chunk := fh.read(1 << 20):
+            out += chunk
+            if len(out) > MAX_DOWNLOAD_BYTES:
+                raise SourceError("too_large", "unpacked feed exceeds the download limit")
+    return bytes(out)
+
+
+def _csv_rows(data: bytes, column_name: str | None = None, rank_column: str | None = None) -> Iterator[tuple[int, str]]:
     """Stream (line number, value) from a CSV feed, keeping only the domain column. Large lists (a top-1M CSV is
-    ~80 MB with 12 columns) would not fit in a worker's memory if every cell were kept."""
+    ~80 MB with 12 columns) would not fit in a worker's memory if every cell were kept. ``column_name`` picks the
+    domain column by its header; with ``rank_column`` the number yielded is that column's value (a list that gives
+    its own rank, e.g. CrUX's buckets 1000, 5000, 10000 ...) instead of the line number."""
     try:
         sample = data[:4096].decode("utf-8-sig", errors="replace")
         delimiter = csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
@@ -148,25 +181,40 @@ def _csv_rows(data: bytes) -> Iterator[tuple[int, str]]:
         delimiter = ","
     # Decode while reading: one decoded copy of a 100 MB file would cost several hundred MB.
     stream = io.TextIOWrapper(io.BytesIO(data), encoding="utf-8-sig", errors="replace", newline="")
-    column, first = 0, True
+    column, ranked, first = 0, None, True
+    names = {column_name.lower()} if column_name else HEADER_NAMES
     for n, cells in enumerate(csv.reader(stream, delimiter=delimiter), start=1):
         if not any(c.strip() for c in cells):
             continue
         if first:
             first = False
             header = [c.strip().lower() for c in cells]
-            found = next((i for i, name in enumerate(header) if name in HEADER_NAMES), None)
+            found = next((i for i, name in enumerate(header) if name in names), None)
+            if rank_column:
+                if found is None or rank_column.lower() not in header:
+                    raise SourceError("bad_header", f"expected the columns {sorted(names)} and {rank_column!r}")
+                ranked = header.index(rank_column.lower())
             if found is not None:
                 column = found
                 continue
         value = cells[column].strip() if column < len(cells) else ""
-        if value and not value.startswith("#"):
+        if not value or value.startswith("#"):
+            continue
+        if ranked is None:
             yield n, value
+            continue
+        try:
+            yield int(cells[ranked]), value
+        except (ValueError, IndexError):
+            continue  # a row without a usable rank: its place is unknown
 
 
 def select_rows(rows: Iterable[tuple[int, str]], entry: dict[str, Any]) -> list[tuple[int, str]]:
     """Apply a catalogue entry's filters while reading, keeping the source's order: ``include_suffixes``
-    (e.g. ``[tr]``: only names ending in ``.tr``) then ``max_entries`` (the first N). At most MAX_ENTRIES."""
+    (e.g. ``[tr]``: only names ending in ``.tr``), ``max_rank`` (rows ranked at most this) then ``max_entries`` (the
+    first N). At most MAX_ENTRIES."""
+    if (top := entry.get("max_rank")) is not None:
+        rows = ((n, v) for n, v in rows if n <= int(top))
     if suffixes := entry.get("include_suffixes"):
         ends = tuple("." + str(x).lower().strip(".") for x in suffixes)
         rows = ((n, v) for n, v in rows if v.strip().lower().rstrip(".").endswith(ends))
@@ -175,10 +223,25 @@ def select_rows(rows: Iterable[tuple[int, str]], entry: dict[str, Any]) -> list[
 
 
 def parse(data: bytes, data_format: str | None, entry: dict[str, Any] | None = None) -> list[tuple[int, str]]:
+    entry = entry or {}
+    data = _gunzip(data)
     if data_format == "csv":
-        return select_rows(_csv_rows(data), entry or {})
-    # hosts, domains, url-list (a URL's host is extracted when normalising)
-    return select_rows(parse_text(data, MAX_ENTRIES), entry or {})
+        rows = select_rows(_csv_rows(data, entry.get("column"), entry.get("rank_column")), entry)
+    else:  # hosts, domains, url-list (a URL's host is extracted when normalising)
+        rows = select_rows(parse_text(data, MAX_ENTRIES), entry)
+    if entry.get("registrable_only"):
+        rows = [(n, _registrable(v)) for n, v in rows]
+    return rows
+
+
+def _registrable(value: str) -> str:
+    """www.sahibinden.com, m.sahibinden.com -> sahibinden.com: one domain per site (a list of origins names the same
+    site many times). A blog host on a shared suffix (x.blogspot.com) stays itself. Bad values are kept as they
+    are, so normalising counts them as invalid."""
+    try:
+        return normalize_domain(value).registrable
+    except DomainError:
+        return value
 
 
 # ----------------------------------------------------------------------------- sync
@@ -208,7 +271,7 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
     source.last_sync_at = now
     result = SyncResult(slug=slug)
     try:
-        raw = data if data is not None else download(source.feed_url, client=client, resolver=resolver)
+        raw = data if data is not None else download_latest(source.feed_url, client=client, resolver=resolver)
         rows = parse(raw, source.data_format, entry)
         del raw
     except SourceError as exc:
@@ -221,12 +284,14 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
     # Rank = the row in the source file, not the position after filtering: two catalogue entries cut from the same
     # list (the top 20,000 and "every .tr name") must agree on how popular a name is. Numbering the filtered list
     # 1, 2, 3 put the 600,000th .tr site level with the world's 3,000th, so discovery scanned them side by side.
+    # A name listed more than once (several origins of one site) keeps its best rank.
     rank: dict[str, int] = {}
     for n, value in rows:
         try:
-            rank.setdefault(normalize_domain(value).ascii, n)
+            name = normalize_domain(value).ascii
         except DomainError:
             continue
+        rank[name] = min(n, rank.get(name, n))
     label = entry.get("category")
     ids: list[int] = []
     ranks: dict[int, int] = {}

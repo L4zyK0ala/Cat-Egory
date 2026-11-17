@@ -1,8 +1,9 @@
 """Yaş Mama: Cat-egory's own category classifier, which learns from the labels Cat-egory already has.
 
 The AI provider may stop being free. This model is trained on the domains' current main categories: people's
-decisions (weighted higher) and, unless ``local_train_on_ai_labels`` is off, confident AI answers. It runs on the
-CPU in the worker and costs nothing per page.
+decisions (weighted higher) and, unless ``local_train_on_ai_labels`` is off, confident AI answers. Small categories
+weigh more than their page count (``local_class_balance``), or news and government would drown out tobacco and
+VPNs. It runs on the CPU in the worker and costs nothing per page.
 
 For now it only runs in **shadow mode** (``CATEGORY_LOCAL_SHADOW=true``): after every AI answer its guess is stored
 in ``local_predictions`` and compared, by ``report``, with the AI and with people. It never publishes a category,
@@ -193,6 +194,16 @@ def fit(pages: list[Page], labels: list[str], weights: list[float], *, version: 
                    coef=coef.astype(np.float32), intercept=intercept.astype(np.float32), text_chars=text_chars)
 
 
+def class_weights(sizes: Counter[str], balance: float) -> dict[str, float]:
+    """Per category: (pages per category on average / this category's pages) ** balance. With balance 0 every page
+    counts 1; with 1 every category weighs the same in total; 0.5 halves the gap (a category 100 times larger
+    weighs 10 times more, not 100). The average weight of a page stays about 1."""
+    if not sizes or balance <= 0:
+        return dict.fromkeys(sizes, 1.0)
+    mean = sum(sizes.values()) / len(sizes)
+    return {c: (mean / n) ** balance for c, n in sizes.items()}
+
+
 def held_out(domain_id: int) -> bool:
     """A fixed fifth of all domains is never trained on (stable across retraining)."""
     return int(hashlib.sha256(f"local-test:{domain_id}".encode()).hexdigest()[:8], 16) % 5 == 0
@@ -287,6 +298,9 @@ def evaluate(model: Weights, examples: list[TrainingExample]) -> dict:
     for category, n in sorted(actual.items()):
         if n >= MIN_PER_CATEGORY_REPORT:
             out["categories"][category] = {"pages": n, "guessed": predicted[category], "correct": hits[category]}
+    # Every category counts the same here, so a model that only gets the big ones right scores low.
+    recalls = [c["correct"] / c["pages"] for c in out["categories"].values()]
+    out["macro_recall"] = round(sum(recalls) / len(recalls), 4) if recalls else None
     return out
 
 
@@ -306,9 +320,12 @@ def train(session: Session, store, settings: Settings, now: datetime | None = No
         return (f"not enough labelled pages: {len(learn)} in {len(classes)} categories "
                 f"(need {settings.local_min_train} in at least 2)")
     version = now.strftime("%Y%m%d-%H%M%S")
-    model = fit([page_of(e) for e in learn], [e.label for e in learn], [WEIGHT.get(e.origin, 1.0) for e in learn],
+    balance = class_weights(Counter(e.label for e in learn), settings.local_class_balance)
+    model = fit([page_of(e) for e in learn], [e.label for e in learn],
+                [WEIGHT.get(e.origin, 1.0) * balance[e.label] for e in learn],
                 version=version, text_chars=settings.local_text_chars)
     metrics = evaluate(model, test) | {
+        "class_balance": settings.local_class_balance,
         "snapshot": stats, "train_by_category": dict(sorted(per_category.items())),
         "too_small": sorted(c for c in per_category if c not in classes),
         "ai_labels": settings.local_train_on_ai_labels, "seconds": round(time.monotonic() - started, 1),

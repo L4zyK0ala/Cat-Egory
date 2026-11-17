@@ -15,5 +15,6 @@
 Every feed and API response states the licence and attribution that apply to it.
 
 Domain names that reached Cat-egory through a third-party list keep that list's provenance (shown per domain).
-Approved lists: none yet. Candidates are in `integrations/sources.yaml`; the first planned discovery source is
-the Majestic Million (© Majestic, CC BY 3.0).
+Approved lists, used only to choose which sites to scan first (their order is not republished): the Majestic
+Million (© Majestic, CC BY 3.0) and the Chrome UX Report top sites for Türkiye (CrUX by Google, CC BY 4.0).
+Other candidates are in `integrations/sources.yaml`.

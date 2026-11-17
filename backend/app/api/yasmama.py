@@ -46,6 +46,8 @@ class Model(BaseModel):
     ai_labels: bool | None
     seconds: float | None
     peak_memory_mb: int | None
+    class_balance: float | None  # local_class_balance at training (None: before it existed, i.e. 0)
+    macro_recall: float | None   # held-out recall averaged over categories, each counting the same
     human: Group | None  # held-out pages a person labelled
     ai: Group | None     # held-out pages with a confident AI label
 
@@ -95,7 +97,14 @@ def _model(row: LocalModel) -> Model:
     return Model(version=row.version, trained_at=row.trained_at, current=row.is_current,
                  train_examples=row.train_examples, test_examples=row.test_examples, ai_labels=m.get("ai_labels"),
                  seconds=m.get("seconds"), peak_memory_mb=m.get("peak_memory_mb"),
+                 class_balance=m.get("class_balance"), macro_recall=m.get("macro_recall", _macro(m)),
                  human=_group(groups.get("human")), ai=_group(groups.get("ai")))
+
+
+def _macro(metrics: dict) -> float | None:
+    """Models trained before macro_recall was stored: the same figure from their per-category scores."""
+    cats = [c for c in metrics.get("categories", {}).values() if c.get("pages")]
+    return round(sum(c["correct"] / c["pages"] for c in cats) / len(cats), 4) if cats else None
 
 
 @router.get("", response_model=YasMamaOut, summary="Yaş Mama: trained models and shadow agreement per day")

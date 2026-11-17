@@ -202,7 +202,11 @@ the report's contents: [EVREN_INTEGRATION.md](EVREN_INTEGRATION.md#comparing-mod
 Yaş Mama, a CPU-only classifier (`classification/yasmama.py`), learns the main category from the labels we already have:
 people's decisions (weighted ×3) and AI answers that were published at ≥ 0.90 (unless
 `CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false`; EVREN allows training on its answers, confirmed 2026-11-16). Domains
-with an active threat and registry-rule labels are left out. In **shadow mode** (`CATEGORY_LOCAL_SHADOW=true`) it
+with an active threat and registry-rule labels are left out. Categories are weighed against their size
+(`CATEGORY_LOCAL_CLASS_BALANCE`, default 0.5 since 2026-11-17): a category with 100 times the pages weighs 10 times
+more, not 100, so news and government do not drown out tobacco or VPNs (0 = off, 1 = every category the same). Each
+model records its setting and its **category average** (held-out recall averaged over categories, each counting the
+same); compare it with earlier models in the admin tab before keeping the setting. In **shadow mode** (`CATEGORY_LOCAL_SHADOW=true`) it
 guesses after every AI answer and stores the guess in `local_predictions`. It never publishes, never opens a
 review and never says anything about threats; a failure in it never affects the classification.
 
@@ -332,8 +336,11 @@ $DC exec api python -m integrations.cli sync urlhaus
 ### Discovery (popular-site lists)
 
 Entries with `discover: true` in `integrations/sources.yaml` only bring domains in; syncing never scans. The
-`category.discovery.queue` task then queues their first scans slowly, most popular first, at priority 8 (after
-manual and scheduled work). Popularity is the row in the source file, so both Majestic cuts agree. One in four of
+`category.discovery.queue` task then queues their first scans slowly at priority 8 (after manual and scheduled
+work): by the source's `discover_priority` first (1 `crux-top-tr`: what people in Türkiye open; 2 `majestic-million-tr`;
+3 `majestic-million-top`: the world's popular sites), then most popular first within it. A domain in several lists
+takes its best place. Popularity is the row in the source file, so both Majestic cuts agree, or the source's own rank
+(CrUX gives buckets: 1000, 5000, 10000, 50000; random order inside a bucket). One in four of
 each batch goes to names that hint at restricted content (casino, bahis, porn, vape ...; `RESTRICTED_HINT` in
 `backend/app/discovery.py`), so the lists people block most fill up early. Limits:
 - at most `CATEGORY_DISCOVERY_BATCH_SIZE` (15) per run;
@@ -364,6 +371,21 @@ for s in majestic-million-top majestic-million-tr; do
       --attribution-required yes --reviewer you@example.org --notes "read majestic.com/reports/majestic-million"
   $DC exec -T worker python -m integrations.cli sync $s     # or wait for the hourly sync
 done
+```
+
+Since 2026-11-17 Türkiye comes first: `crux-top-tr` is the Chrome UX Report's list of the origins Chrome users in
+Türkiye open most (CC BY 4.0, Google; a monthly cache of the public BigQuery table at github.com/zakird/crux-top-lists,
+the newest month found by trying `{yyyymm}` back four months). The top 50,000 origins become ~40,000 sites
+(`registrable_only`: www.x.com and m.x.com are x.com); the top 10,000 are ~8,100. After reading the licence on
+https://developer.chrome.com/docs/crux/methodology:
+
+```bash
+$DC exec -T worker python -m integrations.cli register crux-top-tr
+$DC exec -T worker python -m integrations.cli approve crux-top-tr --license-slug CC-BY-4.0 \
+    --license-name "Creative Commons Attribution 4.0 International" \
+    --license-url https://creativecommons.org/licenses/by/4.0/ --redistribution yes --commercial yes \
+    --attribution-required yes --reviewer you@example.org --notes "read developer.chrome.com/docs/crux/methodology"
+$DC exec -T worker python -m integrations.cli sync crux-top-tr
 ```
 
 Sources with `--redistribution no` are used internally only: their threat flags are not shown by the API and

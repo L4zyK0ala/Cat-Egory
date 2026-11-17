@@ -8,7 +8,8 @@ import { categoryName, intl, type Locale, type T } from "@/lib/i18n";
 type Threshold = { threshold: number; answered: number; correct: number };
 type Group = { pages: number; correct: number; thresholds: Threshold[] };
 type Model = { version: string; trained_at: string; current: boolean; train_examples: number; test_examples: number;
-  ai_labels: boolean | null; seconds: number | null; peak_memory_mb: number | null; human: Group | null; ai: Group | null };
+  ai_labels: boolean | null; seconds: number | null; peak_memory_mb: number | null;
+  class_balance: number | null; macro_recall: number | null; human: Group | null; ai: Group | null };
 type Day = { day: string; models: string[]; guesses: number; compared: number; agree: number; alone: number;
   alone_agree: number };
 type Data = { shadow: boolean; alone_threshold: number; auto_approve: number; days: number; since: string;
@@ -234,6 +235,8 @@ function View({ api }: { api: string }) {
   ];
   const peopleName = t("Pages people labelled", "İnsanların etiketlediği sayfalar");
   const aiName = t("Pages EVREN labelled", "EVREN'in etiketlediği sayfalar");
+  // every category counts the same: shows whether the small ones are learnt too (local_class_balance)
+  const macroName = t("Category average", "Kategori ortalaması");
   const modelSeries: Series[] = [
     { name: peopleName, tone: "a", values: data.models.map((m) => (m.human ? ratio(m.human.correct, m.human.pages) : null)) },
     { name: aiName, tone: "b", values: data.models.map((m) => (m.ai ? ratio(m.ai.correct, m.ai.pages) : null)) },
@@ -323,15 +326,19 @@ function View({ api }: { api: string }) {
               <div><i className="key key-a" />{peopleName}: {m.human ? `${f.pct(ratio(m.human.correct, m.human.pages))} (${f.num(m.human.correct)}/${f.num(m.human.pages)})` : "–"}</div>
               <div><i className="key key-b" />{aiName}: {m.ai ? `${f.pct(ratio(m.ai.correct, m.ai.pages))} (${f.num(m.ai.correct)}/${f.num(m.ai.pages)})` : "–"}</div>
               <div className="muted">{t(`${f.num(m.train_examples)} pages learnt`, `${f.num(m.train_examples)} sayfa öğrendi`)}</div>
+              {m.macro_recall !== null && <div className="muted">{macroName}: {f.pct(m.macro_recall)}</div>}
             </>); }} />
           <table>
             <thead><tr><th>{t("Model", "Model")}</th><th>{t("Trained", "Eğitim")}</th><th className="num">{t("Learnt", "Öğrenilen")}</th>
-              <th className="num">{peopleName}</th><th className="num">{aiName}</th><th className="num">{t("Time", "Süre")}</th></tr></thead>
+              <th className="num">{peopleName}</th><th className="num">{aiName}</th><th className="num">{macroName}</th>
+              <th className="num">{t("Balance", "Denge")}</th><th className="num">{t("Time", "Süre")}</th></tr></thead>
             <tbody>{[...data.models].reverse().map((m) => (
               <tr key={m.version}><td className="mono small">{m.version}{m.current && <> · <strong>{t("current", "güncel")}</strong></>}</td>
                 <td>{f.when(m.trained_at)}</td><td className="num">{f.num(m.train_examples)}</td>
                 <td className="num">{m.human ? f.pct(ratio(m.human.correct, m.human.pages)) : "–"}</td>
                 <td className="num">{m.ai ? f.pct(ratio(m.ai.correct, m.ai.pages)) : "–"}</td>
+                <td className="num">{m.macro_recall !== null ? f.pct(m.macro_recall) : "–"}</td>
+                <td className="num">{f.num(m.class_balance ?? 0)}</td>
                 <td className="num">{m.seconds !== null ? `${f.num(Math.round(m.seconds))} s` : "–"}</td></tr>
             ))}</tbody>
           </table>

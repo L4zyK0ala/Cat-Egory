@@ -40,6 +40,72 @@ def test_select_rows_filters_keep_order():
     assert select_rows(rows, {}) == rows
 
 
+CRUX = (b"origin,rank\nhttps://www.pornsite.xyz,1000\nhttps://m.habersitesi.com.tr,1000\n"
+        b"https://www.habersitesi.com.tr,1000\nhttps://bankasi.com.tr,5000\nhttps://bigsite.com,5000\n"
+        b"https://deepsite.net,500000\nnot a url,1000\nhttps://norank.com,\n")
+CRUX_TR = {"name": "CrUX TR", "kind": "dataset", "format": "csv", "feed_url": "https://lists.example.com/{yyyymm}.gz",
+           "column": "origin", "rank_column": "rank", "max_rank": 50000, "registrable_only": True,
+           "discover": True, "discover_priority": 1}
+
+
+def test_a_ranked_gzip_list_of_origins_becomes_one_domain_per_site(engine, clean):
+    import gzip
+
+    with Session(engine) as s, s.begin():
+        approved(s, "test-crux", CRUX_TR)
+        result = sync(s, "test-crux", data=gzip.compress(CRUX), entry=CRUX_TR)
+    # www. and m. of one site are one domain; 500000 is over max_rank; a row without a rank is skipped
+    assert ranks(engine, "test-crux") == {"pornsite.xyz": 1000, "habersitesi.com.tr": 1000,
+                                          "bankasi.com.tr": 5000, "bigsite.com": 5000}
+    assert result.invalid == 1  # "not a url"
+
+
+def test_discovery_takes_the_source_priority_before_the_rank(engine, clean):
+    """CrUX Türkiye (priority 1) comes before the .tr list (2) and the world list (3), whatever the numbers."""
+    import gzip
+
+    entries = {"test-top": TOP | {"max_entries": None, "discover_priority": 3}, "test-crux": CRUX_TR}
+    with Session(engine) as s, s.begin():
+        approved(s, "test-top", entries["test-top"])
+        approved(s, "test-crux", CRUX_TR)
+        sync(s, "test-top", data=CSV, entry=entries["test-top"])  # ranks 2..6: smaller numbers than CrUX's buckets
+        sync(s, "test-crux", data=gzip.compress(CRUX), entry=CRUX_TR)
+    one = Settings(_env_file=None, discovery_daily_budget=100, discovery_batch_size=1, discovery_max_queued=100)
+    order: list[str] = []
+    for _ in range(9):  # one at a time: jobs queued together carry the same time
+        with Session(engine) as s, s.begin():
+            assert queue_discovery(s, one, entries=entries) == 1
+        order += [name for name, _, _ in queued(engine) if name not in order]
+    # a restricted-looking name takes its quarter first (pornsite.xyz), then the rest in place order: the CrUX
+    # buckets, then the world list by its rows
+    assert order[0] == "pornsite.xyz"
+    assert order[1:] == ["habersitesi.com.tr", "bankasi.com.tr", "bigsite.com", "big.example.com",
+                         "haber.example.com.tr", "mid.example.com", "banka.example.com.tr", "small.example.org"]
+
+
+def test_the_newest_monthly_file_is_found(monkeypatch):
+    from integrations import engine as eng
+
+    tried = []
+
+    def fake(url, **_):
+        tried.append(url[-11:])
+        if "202611" in url or "202610" in url:
+            raise eng.SourceError("http_status", "feed answered HTTP 404")
+        return b"data"
+
+    monkeypatch.setattr(eng, "download", fake)
+    assert eng.download_latest("https://x.example/{yyyymm}.csv.gz", today=datetime(2026, 11, 17, tzinfo=UTC)) == b"data"
+    assert tried == ["202611.csv.gz"[-11:], "202610.csv.gz"[-11:], "202609.csv.gz"[-11:]]
+    assert eng.download_latest("https://x.example/plain.csv") == b"data"  # no template: one plain download
+    monkeypatch.setattr(eng, "download", lambda url, **_: (_ for _ in ()).throw(eng.SourceError("http_status", "404")))
+    try:
+        eng.download_latest("https://x.example/{yyyymm}.gz", today=datetime(2026, 1, 5, tzinfo=UTC))
+        raise AssertionError("expected no file")
+    except eng.SourceError as exc:
+        assert exc.code == "http_status"
+
+
 def test_sync_applies_filters_and_ranks(engine, clean):
     with Session(engine) as s, s.begin():
         approved(s, "test-top", TOP)

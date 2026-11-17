@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     local_max_train: int = Field(default=20_000, ge=100,
                                  description="newest pages used for training (worker memory: ~450 MB at 20,000)")
     local_text_chars: int = Field(default=2000, ge=200, description="characters of visible text kept per page")
+    local_class_balance: float = Field(
+        default=0.5, ge=0, le=1, description="weigh categories against their size when training: 0 = as they come "
+        "(the big ones win: news, government, business), 1 = every category counts the same, 0.5 = in between")
     local_keep_models: int = Field(default=4, ge=1, description="trained models whose weights are kept")
     reclassify_unchanged_days: int = Field(
         default=180, ge=0, description="a scheduled re-scan whose page has not changed keeps the AI answer instead of "

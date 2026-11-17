@@ -13,7 +13,8 @@ under a daily budget so that crawling and the AI provider's quota grow slowly an
   into the share of the account's quota that other projects need,
 * first the names several visitors looked up while we did not know them (``demand`` source, added nightly by
   ``backend/app/demand.py``),
-* each domain once, most popular first (``domain_source_records.source_rank``, the row in the source file); later
+* each domain once: by the source's ``discover_priority`` in sources.yaml (CrUX Türkiye, then .tr, then the world),
+  then most popular first (``domain_source_records.source_rank``: the row in the source file or its own rank); later
   scans are scheduled by ``category.scan.schedule`` like any other domain,
 * a quarter of each batch goes to names that hint at restricted content (``RESTRICTED_HINT``: casino, bahis, porn,
   vape, ...), most popular first, so the lists people block with most (adult, gambling, alcohol, tobacco, drugs,
@@ -26,7 +27,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import exists, func, select, true
+from sqlalchemy import BigInteger, case, cast, exists, func, literal, select, true
 from sqlalchemy.orm import Session
 
 from common.config import Settings, get_settings
@@ -59,6 +60,8 @@ RESTRICTED_HINT = (
     r"|silah|firearm|ammo|airsoft|tabanca|tufek"
 )
 RESTRICTED_SHARE = 4  # one in four of each batch
+DEFAULT_PRIORITY = 100  # a discovery source without discover_priority in sources.yaml
+RANK_SPAN = 10_000_000  # larger than any rank (lists are cut at 3M rows)
 NOT_SPENT = (JobStatus.FAILED, JobStatus.BLOCKED, JobStatus.CANCELLED)  # never reached the AI
 
 
@@ -80,16 +83,19 @@ def tokens_since(session: Session, since: datetime) -> int:
     return total
 
 
-def discovery_source_ids(session: Session, entries: dict[str, dict[str, Any]] | None = None) -> list[int]:
+def discovery_sources(session: Session, entries: dict[str, dict[str, Any]] | None = None) -> dict[int, int]:
+    """{source id: discover_priority} of the approved discovery sources."""
     if entries is None:
         from integrations.engine import catalogue
 
         entries = catalogue()
-    slugs = [slug for slug, entry in entries.items() if entry.get("discover")]
+    slugs = {slug: int(entry.get("discover_priority", DEFAULT_PRIORITY)) for slug, entry in entries.items()
+             if entry.get("discover")}
     if not slugs:
-        return []
-    return list(session.scalars(select(DataSource.id).where(DataSource.slug.in_(slugs), DataSource.enabled,
-                                                            DataSource.license_id.is_not(None))))
+        return {}
+    return {sid: slugs[slug] for sid, slug in session.execute(
+        select(DataSource.id, DataSource.slug).where(DataSource.slug.in_(slugs), DataSource.enabled,
+                                                     DataSource.license_id.is_not(None)))}
 
 
 def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, dict[str, Any]] | None = None,
@@ -97,7 +103,8 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
     """Queue the next batch of never-scanned discovery domains. Returns how many were queued."""
     if settings.discovery_daily_budget <= 0:
         return 0
-    source_ids = discovery_source_ids(session, entries)
+    priorities = discovery_sources(session, entries)
+    source_ids = list(priorities)
     # names several visitors looked up while we did not know them (backend/app/demand.py): before the lists
     demand_id = session.scalar(select(DataSource.id).where(DataSource.slug == DEMAND_SOURCE, DataSource.enabled))
     if not source_ids and demand_id is None:
@@ -119,13 +126,18 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
     # came back): only a job that was not cancelled counts as "already queued once".
     ever_queued = exists(select(ScanJob.id).where(ScanJob.domain_id == Domain.id,
                                                   ScanJob.status != JobStatus.CANCELLED))
-    rank = func.min(DomainSourceRecord.source_rank)
+    # The source's priority first (a CrUX bucket of 1000 and Majestic's row 1000 are not the same thing), then its
+    # rank; a domain in several lists takes its best place. Unranked rows go last within their source.
+    priority = case(priorities, value=DomainSourceRecord.source_id, else_=DEFAULT_PRIORITY) if priorities \
+        else literal(DEFAULT_PRIORITY)
+    place = func.min(cast(priority, BigInteger) * RANK_SPAN
+                     + func.coalesce(DomainSourceRecord.source_rank, RANK_SPAN - 1))
 
     def candidates(ids: list[int]):
         return (select(Domain.id).join(DomainSourceRecord, DomainSourceRecord.domain_id == Domain.id)
                 .where(DomainSourceRecord.source_id.in_(ids), DomainSourceRecord.is_listed, Domain.is_active,
                        Domain.last_scanned.is_(None), ~ever_queued)
-                .group_by(Domain.id).order_by(rank.asc().nulls_last(), Domain.id))
+                .group_by(Domain.id).order_by(place, Domain.id))
 
     ids = list(session.scalars(candidates([demand_id]).limit(n))) if demand_id is not None else []
     if source_ids and len(ids) < n:
