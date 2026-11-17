@@ -240,6 +240,8 @@ services:
   # Certificate Transparency relay (third-party image, pinned by digest). Downloads new certificates from the
   # public CT logs (~15 Mbit/s, nothing stored: read-only file system, no volume) and serves host names to
   # ct-watch on the internal `ct` network. No published ports, no access to the database or Redis.
+  # It also serves other projects on the same host over `ct-relay` (Octryx: profile `ct-shared`), so the CT logs
+  # are downloaded and parsed once; their consumers never share a network with ct-watch.
   certstream:
     image: 0rickyy0/certstream-server-go:v1.10.1@sha256:8938600fa61acb807c56bce05229216c3101a65e9aa976082996f40c3b56a633
     volumes: ["./certstream/config.yaml:/app/config.yaml:ro"]
@@ -248,7 +250,7 @@ services:
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    networks: [egress, ct]
+    networks: [egress, ct, ct-relay]
     # 256m was too little (in swap at 98 %, then too slow to feed ct-watch). No swap: restart rather than crawl.
     # Parsing every new certificate is CPU work: at 1 CPU it ran at 100 % and skipped certificates for ct-watch.
     deploy: {resources: {limits: {cpus: "2", memory: 768m}}}
@@ -465,6 +467,9 @@ networks:
     internal: true
   ct:
     internal: true   # certstream <-> ct-watch only
+  ct-relay:
+    internal: true   # certstream <-> other projects' CT consumers on this host (fixed name, joined as external)
+    name: ct-relay
   egress: {}
   alerts:
     internal: true   # prometheus <-> alertmanager only

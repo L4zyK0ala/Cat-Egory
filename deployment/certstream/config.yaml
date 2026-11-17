@@ -1,6 +1,7 @@
 # certstream-server-go v1.10.1 (MIT, https://github.com/d-Rickyy-b/certstream-server-go): reads public Certificate
 # Transparency logs (classic and static-ct/tiled) and relays new certificates over a websocket. Cat-Egory only
-# uses /domains-only, from the ct-watch container on the internal `ct` network. Nothing is written to disk:
+# uses /domains-only, from the ct-watch container on the internal `ct` network (other projects on the host:
+# the `ct-relay` network, see the compose file). Nothing is written to disk:
 # recovery and stream processing are off and the container's file system is read-only.
 webserver:
   listen_addr: "0.0.0.0"

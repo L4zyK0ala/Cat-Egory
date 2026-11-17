@@ -293,6 +293,12 @@ reviews: `$DC exec api python -m backend.cli triage-lookalikes [--yes]` (the dry
 then `$DC exec worker python -m backend.cli second-opinion --yes` for the 0.70–0.89 ones. Liveness: heartbeat `ct-watch.stream`, alert
 `CtWatchStopped`. To pause it: `$DC stop certstream ct-watch`.
 
+Parsing the CT logs costs about one CPU core, so one host should run one relay. `certstream` also joins the
+internal network `ct-relay` (fixed name), where other projects on the same host connect to
+`ws://certstream:8080/domains-only` instead of running their own (Octryx: `docker compose --profile ct-shared`).
+They never share a network with ct-watch or anything else of ours. Stopping `certstream` stops their CT feed too;
+they reconnect when it is back.
+
 ct-watch reads into a bounded queue (50k messages), matches in a separate task and writes hits in a third, so a
 burst never makes certstream skip certificates ("client's buffer is full" in certstream's log means ct-watch fell
 behind). Every minute it logs `stream alive` with `messages_last_minute`, `names_last_minute`, `hits_last_minute`,
