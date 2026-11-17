@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { api, publicApiUrl } from "@/lib/api";
 import type { Category, Feed } from "@/lib/types";
@@ -7,6 +8,12 @@ import { categoryDescription, categoryName, intl } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t("Free DNS block lists", "Ücretsiz DNS engelleme listeleri"),
+           description: t("Free, open block lists by category for Pi-hole, AdGuard Home, routers and DNS (hosts, adblock, RPZ): gambling, adult content, phishing and more.", "Pi-hole, AdGuard Home, router ve DNS için kategoriye göre ücretsiz, açık engelleme listeleri (hosts, adblock, RPZ): kumar, yetişkin içerik, oltalama ve daha fazlası.") };
+}
 
 const FORMATS = ["txt", "hosts", "rpz", "adblock"] as const;
 

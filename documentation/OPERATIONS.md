@@ -533,6 +533,15 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 
 ### Going public
 
+**Search engines.** Each domain page has its own title and description (main category, or the warning when it is
+flagged) and a canonical address; only classified and verified domains may be indexed (unknown, pending and
+www.x → x pages say `noindex`). `/robots.txt` points to `/sitemap.xml`: the public pages, every category and every
+published domain, read from `/api/v1/feeds/all.json` without being counted as a download. Both need
+`CATEGORY_PUBLIC_SITE_URL` (default `https://cat-egory.org`); the admin UI says `noindex` and lists nothing. Pages
+are not cached at Cloudflare on purpose: they depend on the visitor's language and count lookups per visitor; the
+static files are (`/_next/static`), and the API's fixed reads are cached inside the site. Register the sitemap in
+Google Search Console and Bing Webmaster Tools.
+
 The Cloudflare Tunnel dials out, so no port is opened at home. `cloudflared` sits on the `tunnel` network with only
 `frontend` and `api`, and has a fixed address, the only one whose `CF-Connecting-IP` header the public API believes.
 Its way out to Cloudflare is a network of its own (`tunnelout`), shared with nothing. Admin containers never join

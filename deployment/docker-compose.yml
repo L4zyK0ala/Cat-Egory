@@ -349,6 +349,8 @@ services:
       API_INTERNAL_URL: http://api:8000
       # address the visitor's browser uses for the API (feed links, admin console, reports)
       PUBLIC_API_URL: ${CATEGORY_PUBLIC_API_URL:-http://127.0.0.1:8110}
+      # the public address: canonical links, robots.txt and /sitemap.xml for search engines
+      PUBLIC_SITE_URL: ${CATEGORY_PUBLIC_SITE_URL:-https://cat-egory.org}
       # shown on /privacy and /contact, and in /.well-known/security.txt
       CONTACT_EMAIL: ${CATEGORY_CONTACT_EMAIL:-}
       OPERATOR_NAME: ${CATEGORY_OPERATOR_NAME:-}

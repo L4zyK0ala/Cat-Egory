@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import type { Category } from "@/lib/types";
@@ -6,6 +7,12 @@ import { categoryDescription, categoryName } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t("Website categories", "Site kategorileri"),
+           description: t("Every category in the open Cat-Egory taxonomy, with the sites in it and a DNS block list for each.", "Açık Cat-Egory kategori ağacındaki bütün kategoriler: içindeki siteler ve her biri için DNS engelleme listesi.") };
+}
 
 export default async function Categories() {
   const { locale, t } = await getT();

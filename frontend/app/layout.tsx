@@ -3,6 +3,7 @@ import Link from "next/link";
 import LanguageSwitch from "@/components/LanguageSwitch";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { getT } from "@/lib/locale";
+import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
 // Read at request time: the same image runs as the public site and, with UI_ADMIN=true, as the admin UI.
@@ -10,11 +11,15 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
+  const site = siteUrl();
   return {
+    ...(site ? { metadataBase: site } : {}),
     title: { default: t("Cat-Egory — open web categorization", "Cat-Egory — açık web kategorilendirme"),
              template: "%s · Cat-Egory" },
     description: t("Open database of website categories, built by AI classification and community review.",
                    "Yapay zekâ sınıflandırması ve topluluk incelemesiyle oluşturulan açık web sitesi kategori veri tabanı."),
+    // the admin UI is on the home network only, but say it anyway
+    ...(process.env.UI_ADMIN === "true" ? { robots: { index: false, follow: false } } : {}),
   };
 }
 

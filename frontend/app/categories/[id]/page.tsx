@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { api, ApiError, publicApiUrl, UNCACHED } from "@/lib/api";
 import type { Category } from "@/lib/types";
@@ -7,6 +8,24 @@ import { getT } from "@/lib/locale";
 export const dynamic = "force-dynamic";
 
 type Page = { category: string; items: { domain: string; primary?: boolean }[]; next_cursor: number | null };
+
+export async function generateMetadata({ params, searchParams }: {
+  params: Promise<{ id: string }>; searchParams: Promise<{ cursor?: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const { locale, t } = await getT();
+  const all = await api<{ items: Category[] }>("/api/v1/categories", 3600).catch(() => ({ items: [] as Category[] }));
+  const category = all.items.find((c) => c.id === id);
+  if (!category) return { robots: { index: false, follow: true } };
+  const name = categoryName(locale, category.id, category.name);
+  return {
+    title: t(`${name} websites — list and DNS block list`, `${name} siteleri — liste ve DNS engelleme listesi`),
+    description: categoryDescription(locale, category.id, category.description),
+    alternates: { canonical: `/categories/${category.id}` },
+    // later pages of the same list are for browsing, not for search results
+    robots: { index: !(await searchParams).cursor, follow: true },
+  };
+}
 
 export default async function CategoryPage({ params, searchParams }: {
   params: Promise<{ id: string }>; searchParams: Promise<{ cursor?: string }>;

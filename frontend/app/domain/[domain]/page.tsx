@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { cache } from "react";
 import { headers } from "next/headers";
 import { api, ApiError, UNCACHED, publicApiUrl } from "@/lib/api";
 import type { Category, DomainInfo, HistoryItem, Risk, UrlLookup } from "@/lib/types";
@@ -43,17 +45,75 @@ function statusLabel(t: T, status: string) {
   return labels[status] ?? status.replace("_", " ");
 }
 
+type Found = { info: DomainInfo | null; error: ApiError | null; viaParent: boolean };
+
+/** The domain as the page shows it. Wrapped in React's cache: the page and its metadata (title, description for
+ *  search engines) ask once per request, so the visitor is counted once and the API is called once. */
+const findDomain = cache(async (name: string, visitor: string | null): Promise<Found> => {
+  try {
+    return { info: await api<DomainInfo>(`/api/v1/domain/${encodeURIComponent(name)}`, UNCACHED, { visitor }),
+             error: null, viaParent: false };
+  } catch (e) {
+    const error = e instanceof ApiError ? e : new ApiError(0, "network", "API unreachable");
+    if (error.status === 404) {
+      // e.g. www.example.com is not stored but example.com is: show the registrable domain, and say so.
+      try {
+        const r = await api<{ match: string; result: DomainInfo }>(`/api/v1/url?url=${encodeURIComponent(`http://${name}/`)}`,
+          UNCACHED, { secondary: true });
+        if (r.match === "registrable_domain") return { info: r.result, error: null, viaParent: true };
+      } catch {
+        /* keep the 404 */
+      }
+    }
+    return { info: null, error, viaParent: false };
+  }
+});
+
+function decoded(domain: string): string {
+  try {
+    return decodeURIComponent(domain);
+  } catch {
+    return domain; // a broken %-escape: the API will refuse the name as it is
+  }
+}
+
+/** What a search result shows: the domain, its main category and whether it is flagged. Only classified and
+ *  verified domains may be indexed; unknown, pending and borrowed (www.x -> x) pages are not worth a search hit. */
+export async function generateMetadata({ params }: { params: Promise<{ domain: string }> }): Promise<Metadata> {
+  const name = decoded((await params).domain);
+  const { locale, t } = await getT();
+  const { info, viaParent } = await findDomain(name, (await headers()).get("cf-connecting-ip"));
+  if (!info) return { title: name, robots: { index: false, follow: true } };
+  const main = info.categories.find((c) => c.primary) ?? info.categories[0];
+  const category = main ? categoryName(locale, main.id, main.name) : t("not categorised yet", "henüz kategorisi yok");
+  const risks = flagged(locale, info.risk).map(([, label]) => label);
+  const shown = info.display_domain;
+  const title = risks.length
+    ? t(`${shown}: ${risks.join(", ")} warning`, `${shown}: ${risks.join(", ")} uyarısı`)
+    : t(`${shown}: ${category} — website category`, `${shown}: ${category} — site kategorisi`);
+  const others = info.categories.filter((c) => c !== main).map((c) => categoryName(locale, c.id, c.name));
+  const description = risks.length
+    ? t(`${shown} is flagged in Cat-Egory as ${risks.join(", ")}. Main category: ${category}. Open data, free DNS lists.`,
+        `${shown}, Cat-Egory'de ${risks.join(", ")} olarak işaretli. Ana kategori: ${category}. Açık veri, ücretsiz DNS listeleri.`)
+    : t(`${shown} is categorised as ${category}${others.length ? ` (also ${others.join(", ")})` : ""}. `
+        + "No security warning. Open, free website category data and DNS block lists.",
+        `${shown} sitesinin kategorisi: ${category}${others.length ? ` (ayrıca ${others.join(", ")})` : ""}. `
+        + "Güvenlik uyarısı yok. Açık ve ücretsiz site kategorisi verisi, DNS engelleme listeleri.");
+  const indexable = !viaParent && (info.classification_status === "classified" || info.classification_status === "verified");
+  return {
+    title: { absolute: `${title} · Cat-Egory` },
+    description,
+    alternates: { canonical: `/domain/${info.domain}` },
+    robots: { index: indexable, follow: true },
+    openGraph: { title, description, type: "website" },
+  };
+}
+
 export default async function DomainPage({ params, searchParams }: {
   params: Promise<{ domain: string }>; searchParams: Promise<{ url?: string | string[] }>;
 }) {
-  const { domain } = await params;
+  const name = decoded((await params).domain);
   const { locale, t } = await getT();
-  let name = domain;
-  try {
-    name = decodeURIComponent(domain);
-  } catch {
-    /* a broken %-escape: the API will refuse the name as it is */
-  }
   const link = (v => (Array.isArray(v) ? v[0] : v))((await searchParams).url)?.slice(0, 2000);
   // A full link was searched: also check that exact page (a phishing page can sit on an otherwise fine site).
   // Set by the Cloudflare tunnel only; absent when the site is opened on the home network.
@@ -61,27 +121,7 @@ export default async function DomainPage({ params, searchParams }: {
   const lookup = link
     ? await api<UrlLookup>(`/api/v1/url?url=${encodeURIComponent(link)}`, UNCACHED, { secondary: true }).catch(() => null)
     : null;
-  let info: DomainInfo | null = null;
-  let error: ApiError | null = null;
-  let viaParent = false;
-  try {
-    info = await api<DomainInfo>(`/api/v1/domain/${encodeURIComponent(name)}`, UNCACHED, { visitor });
-  } catch (e) {
-    error = e instanceof ApiError ? e : new ApiError(0, "network", "API unreachable");
-  }
-  if (!info && error?.status === 404) {
-    // e.g. www.example.com is not stored but example.com is: show the registrable domain, and say so.
-    try {
-      const r = await api<{ match: string; result: DomainInfo }>(`/api/v1/url?url=${encodeURIComponent(`http://${name}/`)}`, UNCACHED,
-        { secondary: true });
-      if (r.match === "registrable_domain") {
-        info = r.result;
-        viaParent = true;
-      }
-    } catch {
-      /* keep the 404 */
-    }
-  }
+  const { info, error, viaParent } = await findDomain(name, visitor);
   if (!info) {
     return (
       <>
