@@ -52,7 +52,7 @@ MEDIA_TYPES = {"txt": "text/plain; charset=utf-8", "hosts": "text/plain; charset
                "csv": "text/csv; charset=utf-8", "json": "application/json"}
 # Ready-made lists for routers and DNS filters (the /integrations page). Every profile also blocks all threats.
 FAMILY_CATEGORIES = ("adult-content", "gambling", "illegal-gambling", "illegal-drugs", "violence", "weapons",
-                     "hate-and-discrimination", "proxy-services")
+                     "hate-and-discrimination", "proxy-services", "piracy")
 PROFILES = {"profile-security": ("security threats", ()), "profile-family": ("family filter", FAMILY_CATEGORIES)}
 RPZ_ORIGIN = "rpz.cat-egory."
 THREAT_SOURCES = OWN_THREAT_SOURCES  # threat records we may redistribute under our own licence

@@ -6,7 +6,7 @@
     python -m backend.cli list-keys    [--email mod@example.org]
     python -m backend.cli revoke-key   --prefix abcdefghij
     python -m backend.cli reclassify-provider --provider mock [--yes]
-    python -m backend.cli reclassify-category --category gambling [--yes]
+    python -m backend.cli reclassify-category --category gambling [--matching WORDS|piracy] [--limit N] [--yes]
     python -m backend.cli suggest-robots-blocked [--yes]
     python -m backend.cli apply-registry-rules [--yes]
     python -m backend.cli daily-report [--send]
@@ -144,21 +144,46 @@ def reclassify_provider(session: Session, provider: str, *, dry_run: bool = Fals
     return len(ids), len(tasks)
 
 
-def reclassify_category(session: Session, category: str, *, dry_run: bool = False) -> list[str]:
-    """Scan again, and ask the model again, every active domain whose main category is ``category``: after a
-    taxonomy change, e.g. 2.0.0 split gambling into licensed (gambling) and illegal-gambling. AI answers are
-    replaced as usual; a domain a person verified goes back to a person when the new answer differs
-    (conflicts_with_human_decision). Returns the domain names."""
-    from backend.app.services.domains import queue_scans
-    from database.models import Domain, ScanReason
+# Words that hint at pirated films, series, sports streams or software (folded: ı→i, ş→s, ç→c, ğ→g, ö→o, ü→u),
+# matched in the domain name, page title and description: `reclassify-category --matching piracy` (taxonomy 3.0.0).
+HINTS = {"piracy": ("izle", "dizi", "hdfilm", "film izle", "filmizle", "full hd", "1080p", "torrent", "crack", "keygen",
+                    "warez", "apk mod", "mod apk", "iptv", "mac izle", "macizle", "canli mac", "taraftarium", "justin",
+                    "selcuksport", "altyazili", "turkce dublaj", "bolum", "sezon", "anime", "manga oku", "watch free",
+                    "free movies", "full movie", "123movies", "putlocker", "fmovies", "yabanci dizi")}
+_FOLD = str.maketrans("ıİşŞçÇğĞöÖüÜ", "iissccggoouu")
 
+
+def reclassify_category(session: Session, category: str, *, dry_run: bool = False, matching: str | None = None,
+                        limit: int | None = None) -> list[str]:
+    """Scan again, and ask the model again, every active domain whose main category is ``category`` (several:
+    comma-separated): after a taxonomy change, e.g. 2.0.0 split gambling into licensed (gambling) and
+    illegal-gambling. ``matching``: only domains whose name, page title or description contains one of these
+    comma-separated words (or a named set from HINTS, e.g. "piracy"), so a narrow split does not re-ask the model
+    about every streaming site. ``limit``: at most this many. AI answers are replaced as usual; a domain a person
+    verified goes back to a person when the new answer differs (conflicts_with_human_decision). Returns the names."""
+    from backend.app.services.domains import queue_scans
+    from database.models import Domain, ScanReason, ScanResult
+
+    categories = [c.strip() for c in category.split(",") if c.strip()]
     rows = session.execute(select(Domain.id, Domain.normalized_domain).where(
-        Domain.is_active, Domain.primary_category_id == category).order_by(Domain.id)).all()
+        Domain.is_active, Domain.primary_category_id.in_(categories)).order_by(Domain.id)).all()
+    if matching:
+        words = HINTS.get(matching) or tuple(w.strip().lower() for w in matching.split(",") if w.strip())
+        newest = (select(func.max(ScanResult.id)).where(ScanResult.domain_id.in_([i for i, _ in rows]),
+                                                        ScanResult.url_id.is_(None), ScanResult.page_title.is_not(None))
+                  .group_by(ScanResult.domain_id))
+        pages = {d: f"{t or ''} {m or ''}" for d, t, m in session.execute(
+            select(ScanResult.domain_id, ScanResult.page_title, ScanResult.meta_description)
+            .where(ScanResult.id.in_(newest))).all()} if rows else {}
+        rows = [(i, name) for i, name in rows
+                if any(w in f"{name} {pages.get(i, '')}".translate(_FOLD).lower() for w in words)]
+    if limit is not None:
+        rows = rows[:limit]
     if dry_run or not rows:
         return [name for _, name in rows]
     queued = queue_scans(session, [i for i, _ in rows], reason=ScanReason.RESCAN, priority=3, requested_by_id=None)
-    audit.record(session, action="domains.reclassify_category", target_type="category", target_id=category,
-                 after={"domains": len(rows), "queued_scans": queued})
+    audit.record(session, action="domains.reclassify_category", target_type="category", target_id=category[:200],
+                 after={"domains": len(rows), "queued_scans": queued, "matching": matching})
     return [name for _, name in rows]
 
 
@@ -368,7 +393,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("reclassify-category",
                        help="re-scan and re-classify the domains whose main category is this one (taxonomy change)")
-    p.add_argument("--category", required=True, help="category id, e.g. gambling")
+    p.add_argument("--category", required=True, help="category id(s), comma-separated, e.g. gambling")
+    p.add_argument("--matching", help="only names / titles containing one of these words (comma-separated), or a "
+                                      "named set: " + ", ".join(HINTS))
+    p.add_argument("--limit", type=int, help="at most this many domains")
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
 
     p = sub.add_parser("suggest-robots-blocked",
@@ -542,7 +570,8 @@ def main(argv: list[str] | None = None) -> int:
                 verb = "asked about" if args.yes else "dry run: would ask about"
                 print(f"{verb} {len(names)} domains closed to bots" + (f": {', '.join(names[:10])} ..." if names else ""))
             elif args.command == "reclassify-category":
-                names = reclassify_category(session, args.category, dry_run=not args.yes)
+                names = reclassify_category(session, args.category, dry_run=not args.yes, matching=args.matching,
+                                            limit=args.limit)
                 verb = "queued" if args.yes else "dry run: would queue"
                 print(f"{verb} {len(names)} domains for re-classification" + (f": {', '.join(names[:10])} ..." if names else ""))
             elif args.command == "reclassify-provider":

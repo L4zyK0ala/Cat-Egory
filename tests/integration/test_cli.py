@@ -105,3 +105,31 @@ def test_reclassify_category(engine, clean, client, admin):
     with Session(engine) as s:
         jobs = s.scalars(select(ScanJob)).all()
         assert [(str(j.reason), j.priority) for j in jobs] == [("rescan", 3)]
+
+
+def test_reclassify_only_likely_pirates(engine, clean, client, admin):
+    from backend.cli import reclassify_category
+    from classification.engine import apply_categories
+    from classification.taxonomy import default_taxonomy
+    from database.models import AssignmentOrigin, ClassificationStatus, Domain
+    from tests.integration.test_classification import make_scan
+
+    names = {"hdfilmcehennemi.land": ("streaming-media", "Film İzle - Full HD Türkçe Dublaj"),
+             "netflix.com": ("streaming-media", "Netflix Türkiye - Dizi ve Film İzleyin"),
+             "hbo.com": ("streaming-media", "HBO: Home"),
+             "canlimacizle.net": ("sports", "Canlı Maç İzle"),
+             "news.example.com": ("news", "Film izle haberleri")}
+    client.post("/api/v1/admin/domains", headers=admin, json={"domains": list(names), "scan": "none"})
+    with Session(engine) as s, s.begin():
+        for name, (primary, _) in names.items():
+            apply_categories(s, s.scalar(select(Domain).where(Domain.normalized_domain == name)), primary=primary,
+                             secondary=[], confidence=0.9, origin=AssignmentOrigin.AI, taxonomy=default_taxonomy(),
+                             status=ClassificationStatus.CLASSIFIED)
+    for name, (_, title) in names.items():
+        make_scan(engine, name, title=title)
+    with Session(engine) as s, s.begin():
+        found = reclassify_category(s, "streaming-media,sports", dry_run=True, matching="piracy")
+        # the model decides (Netflix's "Film İzleyin" is asked again too); HBO and other categories are not
+        assert sorted(found) == ["canlimacizle.net", "hdfilmcehennemi.land", "netflix.com"]
+        assert len(reclassify_category(s, "streaming-media,sports", dry_run=True, matching="piracy", limit=1)) == 1
+        assert reclassify_category(s, "streaming-media", dry_run=True, matching="hbo") == ["hbo.com"]

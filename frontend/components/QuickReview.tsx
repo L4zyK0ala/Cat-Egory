@@ -47,7 +47,9 @@ function UsomBadge({ sgb }: { sgb?: Review["sgb"] }) {
 }
 
 /** Close categories a reviewer often has to swap between: one click instead of typing (S). */
-const SWAP: Record<string, string> = { gambling: "illegal-gambling", "illegal-gambling": "gambling" };
+const SWAP: Record<string, string> = { gambling: "illegal-gambling", "illegal-gambling": "gambling",
+  "streaming-media": "piracy", video: "piracy", "file-sharing": "piracy", "software-downloads": "piracy",
+  piracy: "streaming-media" };
 
 const isLookalike = (reason: string) => reason === "brand_lookalike" || reason.startsWith("lookalike_of:");
 

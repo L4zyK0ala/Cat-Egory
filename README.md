@@ -29,11 +29,12 @@ domains ──► scan queue ──► sandboxed Chromium ──► page text, H
                       open database ──► REST API, web UI, feeds (TXT / hosts / adblock / CSV / JSON / RPZ)
 ```
 
-- **Taxonomy (2.0.0):** 66 content categories and 9 security-risk categories (incl. look-alike domains),
+- **Taxonomy (3.0.0):** 60 content categories and 8 security-risk categories (incl. look-alike domains); licensed
+  and unlicensed sites are kept apart where filters need it (gambling / illegal gambling, streaming / piracy),
   versioned and never renumbered ([TAXONOMY.md](documentation/TAXONOMY.md)).
 - **Trust rules:** the AI never overrides a human decision. Security-risk flags come only from people, from
-  licensed threat sources, or from the sister project Octryx when it proved an imitation on the page; never from
-  a model's claim, which only opens a review task ([THREATS.md](documentation/THREATS.md)). Pages that try to
+  licensed threat sources, from the sister project Octryx when it proved an imitation on the page, or from our own
+  page-proof detector once people's decisions have measured it; never from a model's claim, which only opens a review task ([THREATS.md](documentation/THREATS.md)). Pages that try to
   instruct the model ("ignore previous instructions…") always go to a person.
 - **Provenance:** every label records whether it came from the AI, a reviewer, the community or a third-party
   source. Third-party data keeps its own licence and is never relicensed.

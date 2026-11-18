@@ -154,6 +154,16 @@ $DC exec api python -m backend.cli reclassify-category --category gambling      
 $DC exec api python -m backend.cli reclassify-category --category gambling --yes    # do it
 ```
 
+A narrow split need not re-ask the model about a whole category. For 3.0.0 (`piracy` out of streaming, video,
+file sharing, software downloads and sports) only domains whose name, page title or description contains a piracy
+hint ("izle", "dizi", "full hd", "torrent", "crack", "maç izle", ...; `HINTS` in backend/cli.py) are re-asked;
+`--limit` keeps a run within the day's AI quota (~8,400 tokens a page):
+
+```bash
+$DC exec -T api python -m backend.cli reclassify-category --matching piracy \
+    --category streaming-media,video,music,entertainment,sports,file-sharing,software-downloads    # dry run
+```
+
 **Sites closed to bots.** Some sites' robots.txt shuts out every bot: facebook, instagram, x, reddit and others.
 They are never fetched. After such a blocked scan the model is asked once, from the domain name only
 (`category.classify.name_only`). If it recognises the site (confidence ≥ 0.5), a `robots_blocked` review opens with

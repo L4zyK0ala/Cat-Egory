@@ -16,7 +16,7 @@ from classification.taxonomy import Taxonomy
 
 from .schemas import ClassificationInput
 
-PROMPT_VERSION = "2026-11-15.2"
+PROMPT_VERSION = "2026-11-18.1"
 
 _INJECTION_PATTERNS = [
     re.compile(p, re.IGNORECASE)
@@ -70,6 +70,15 @@ Guidance:
   "giriş" pages, numbered or mirror copies of a betting brand, and unrelated domain names that now show a casino.
   Such pages say so in any language: "güncel giriş", "yeni adres", "link truy cập", "link vào", "alternatif link",
   "mirror", "official access link", or a domain that is not the brand's own name.
+- Piracy: "piracy" when films, series, music, live sports, software, games or books are offered in full without
+  the rights holder's licence: free "full HD izle", "dizi izle", "film izle", "canlı maç izle", "maç izle" pages,
+  embedded third-party players, torrent indexes of such works, cracks, keygens, "apk mod" or modded paid apps,
+  unauthorised IPTV lists; and domains made to get round blocking ("yeni adres", "güncel giriş", numbered or
+  mirror copies of the same site). Licensed services (Netflix, Disney+, Prime Video, HBO Max, Exxen, BluTV, TOD,
+  beIN, Gain, TV channels' own sites, Spotify, Steam, app stores) are "streaming-media", "music", "gaming" or
+  "software-downloads"; a site only reviewing or listing films with trailers is "entertainment". When it is unclear
+  whether the content is licensed, keep the content category, lower "confidence" and set
+  "requires_human_review" to true.
 - "primary_category": what the site is mainly for, judged by what its visitors do there, not by who runs it.
   Choose the most specific category that clearly fits; use a broad one (business, information-technology,
   finance, shopping, media, entertainment) only when no narrower category describes the site's main purpose.

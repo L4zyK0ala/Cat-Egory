@@ -4,8 +4,8 @@
 #   * Every change bumps `version` (semver): new category = minor, deprecation/redefinition = major, wording = patch.
 #   * `kind: risk` categories form the separate security-threat classification.
 #   * Groups (`group: true`) organise the tree and are never assigned to a domain.
-version: "2.0.0"
-released: "2026-11-15"
+version: "3.0.0"
+released: "2026-11-18"
 license: "CC-BY-4.0"
 
 categories:
@@ -55,7 +55,7 @@ categories:
   - {id: group-entertainment, code: 300, kind: content, group: true, name: "Entertainment",
      description: "Leisure, media consumption and sports."}
   - {id: streaming-media, code: 301, parent: group-entertainment, kind: content, name: "Streaming Media",
-     description: "On-demand or live streaming platforms for film, TV and events."}
+     description: "Licensed on-demand or live streaming platforms for film, TV and events (unlicensed streams are piracy)."}
   - {id: music, code: 302, parent: group-entertainment, kind: content, name: "Music",
      description: "Music streaming, artists, labels, lyrics and music news."}
   - {id: video, code: 303, parent: group-entertainment, kind: content, name: "Video",
@@ -132,6 +132,8 @@ categories:
      description: "Content attacking people based on protected characteristics."}
   - {id: illegal-gambling, code: 609, parent: group-restricted-content, kind: content, name: "Illegal Gambling",
      description: "Betting and casino sites with no licence from any gambling regulator, and domains made to get round blocking (mirror, \"new address\" or numbered copies, unrelated domains that now show a casino)."}
+  - {id: piracy, code: 610, parent: group-restricted-content, kind: content, name: "Piracy",
+     description: "Films, series, music, sports broadcasts, software, games or books offered without the rights holder's licence (streams, downloads, torrent indexes, cracks, unauthorised IPTV), and domains made to get round blocking of such sites."}
 
   # ------------------------------------------------------------------ 700 Web Infrastructure
   - {id: group-web-infrastructure, code: 700, kind: content, group: true, name: "Web Infrastructure",
@@ -149,9 +151,9 @@ categories:
   - {id: remote-access, code: 706, parent: group-web-infrastructure, kind: content, name: "Remote Access",
      description: "Remote desktop and remote administration services."}
   - {id: file-sharing, code: 707, parent: group-web-infrastructure, kind: content, name: "File Sharing",
-     description: "File hosting, cloud drives, peer-to-peer and torrent indexes."}
+     description: "File hosting, cloud drives and peer-to-peer services (torrent indexes of copyrighted works are piracy)."}
   - {id: software-downloads, code: 708, parent: group-web-infrastructure, kind: content, name: "Software Downloads",
-     description: "Download portals and software mirrors."}
+     description: "Download portals and mirrors of free or licensed software (cracks, keygens and modded paid apps are piracy)."}
   - {id: parked-domains, code: 709, parent: group-web-infrastructure, kind: content, name: "Parked Domains",
      description: "Parked, for-sale, placeholder or empty default pages."}
 
