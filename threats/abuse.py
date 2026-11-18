@@ -225,7 +225,7 @@ def draft_domain(session: Session, domain_id: int, rdap: Rdap, *, site_url: str)
     evidence = next(((r.raw or {}).get("evidence") for r in rows if (r.raw or {}).get("evidence")), None)
     scan = session.execute(
         select(ScanResult.final_url, ScanResult.resolved_ips).where(
-            ScanResult.domain_id == domain_id, ScanResult.http_status.is_not(None))
+            ScanResult.domain_id == domain_id, ScanResult.http_status.is_not(None), ScanResult.url_id.is_(None))
         .order_by(ScanResult.id.desc()).limit(1)).first()
     url = scan.final_url if scan else None
     ip = next((str(a) for a in (scan.resolved_ips if scan else []) or []), None)

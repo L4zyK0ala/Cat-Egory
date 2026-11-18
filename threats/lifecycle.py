@@ -155,7 +155,8 @@ def observe(result: CrawlResult) -> str | None:
 def _previous_page(session: Session, domain: Domain, scan_id: int | None) -> tuple | None:
     stmt = (select(ScanResult.page_title, ExtractedContent.text_excerpt, ScanResult.final_url)
             .outerjoin(ExtractedContent, ExtractedContent.scan_result_id == ScanResult.id)
-            .where(ScanResult.domain_id == domain.id, ScanResult.http_status < 400, ScanResult.blocked_reason.is_(None))
+            .where(ScanResult.domain_id == domain.id, ScanResult.http_status < 400, ScanResult.blocked_reason.is_(None),
+                   ScanResult.url_id.is_(None))
             .order_by(ScanResult.id.desc()).limit(1))
     if scan_id is not None:
         stmt = stmt.where(ScanResult.id < scan_id)

@@ -142,10 +142,22 @@ def feed_candidates() -> list[str]:
     from threats import feeds
 
     settings = get_settings()
-    if settings.threat_feed_candidates_per_hour <= 0:
+    if settings.threat_feed_candidates_per_hour <= 0 and settings.threat_feed_global_per_hour <= 0:
         return []
     with session_factory()() as session, session.begin():
         queued = feeds.pick(session, settings)
     if queued:
         log.info("threat-list candidates queued", extra={"count": len(queued)})
     return queued
+
+
+@celery_app.task(name="category.threats.page_check", ignore_result=True, soft_time_limit=120, time_limit=180)
+def page_check(scan_result_id: int) -> str:
+    """A scanned page judged by our detector alone, no AI (threats/pages.py): one-page scans and worldwide
+    candidates. Runs on the classify / fast queue after the scan was stored."""
+    from crawler.storage import S3Store
+    from threats.pages import page_check as check
+
+    settings = get_settings()
+    with session_factory()() as session, session.begin():
+        return check(session, scan_result_id, settings, S3Store(settings))

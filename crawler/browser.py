@@ -144,8 +144,9 @@ def _chain(response) -> list[dict[str, Any]]:
     return hops
 
 
-def capture(domain: str, settings: Settings) -> PageCapture:
-    """Try https://domain/, then http://domain/. Returns a PageCapture (never raises for site errors)."""
+def capture(domain: str, settings: Settings, url: str | None = None) -> PageCapture:
+    """Try https://domain/, then http://domain/ — or only ``url``, one page a threat list named (its scheme as
+    given; the query string was already dropped). Returns a PageCapture (never raises for site errors)."""
     agent_token = settings.crawler_user_agent_token
     timeout = settings.crawler_navigation_timeout_ms
     with sync_playwright() as p:
@@ -156,11 +157,12 @@ def capture(domain: str, settings: Settings) -> PageCapture:
             probe.close()
             user_agent = f"{user_agent} {agent_token}"  # honest bot token; robots.txt rules use it
             last: PageCapture | None = None
-            for url, ignore_tls in ((f"https://{domain}/", False), (f"https://{domain}/", True),
-                                    (f"http://{domain}/", False)):
+            attempts = ((url, False), (url, True)) if url else (
+                (f"https://{domain}/", False), (f"https://{domain}/", True), (f"http://{domain}/", False))
+            for target, ignore_tls in attempts:
                 if ignore_tls and (last is None or last.error_code != "tls_error"):
                     continue
-                result = _visit(browser, url, user_agent=user_agent, ignore_tls=ignore_tls, timeout=timeout,
+                result = _visit(browser, target, user_agent=user_agent, ignore_tls=ignore_tls, timeout=timeout,
                                 settings=settings)
                 result.sandboxed = sandboxed
                 if ignore_tls and result.tls is not None:

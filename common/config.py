@@ -191,6 +191,12 @@ class Settings(BaseSettings):
                                                  "a scan per hour, Türkiye-related first; 0 = off")
     threat_feed_min_relevance: int = Field(default=1, ge=0, le=2, description="pick only hosts this related to "
                                            "Türkiye: 2 = resembles a watched brand, 1 = also .tr names, 0 = any")
+    threat_feed_global_per_hour: int = Field(default=12, ge=0, description="worldwide phishing candidates (a watched "
+                                             "global brand in the name, or a link a list gives) queued per hour, "
+                                             "newest first, judged without the AI; a person sees one only when its "
+                                             "page asks for a secret or a phone number; 0 = off")
+    threat_page_scans: bool = Field(default=True, description="scan the exact page a phishing list names (its link, "
+                                    "query string dropped) instead of the host's home page")
     # Our own page-proof detector (threats/detector.py): measured in shadow mode, flags only when allowed AND proven.
     threat_detector_auto: bool = Field(default=False, description="let the detector flag by itself once its measured "
                                        "precision qualifies (threat_detector_min_*)")

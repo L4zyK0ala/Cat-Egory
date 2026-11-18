@@ -1,0 +1,60 @@
+# Worldwide brands phishing pages imitate most. Same format as ct_watchlist.yaml (`substrings` match anywhere in a
+# host name, `tokens` only as a whole part between "-" or "."; names under an `official` domain are ignored).
+#
+# Used by threat-list candidates (threats/feeds.py: which global hosts to scan) and by our page-proof detector
+# (threats/detector.py: which brand a page claims). NOT used by the certificate-log watch (integrations/ct_watch.py):
+# these brands' look-alike certificates number thousands a day.
+#
+# Official domains list the brand's own registrable domains; a page under one is never called phishing. A brand's
+# other sites (country domains, CDNs) are covered by the popularity lists (threats/detector.py `popular`).
+version: 2026-11-18
+brands:
+  # --- payments, banks and crypto
+  - {name: PayPal, sector: payment, substrings: [paypal], official: [paypal.com, paypal.me, paypalobjects.com]}
+  - {name: Stripe, sector: payment, tokens: [stripe], official: [stripe.com]}
+  - {name: Wise, sector: payment, substrings: [transferwise], official: [wise.com, transferwise.com]}
+  - {name: Revolut, sector: bank, substrings: [revolut], official: [revolut.com]}
+  - {name: HSBC, sector: bank, tokens: [hsbc], official: [hsbc.com, hsbc.co.uk, hsbc.com.tr]}
+  - {name: Chase, sector: bank, tokens: [chase], substrings: [jpmorganchase], official: [chase.com, jpmorganchase.com]}
+  - {name: Wells Fargo, sector: bank, substrings: [wellsfargo], official: [wellsfargo.com]}
+  - {name: Bank of America, sector: bank, substrings: [bankofamerica], official: [bankofamerica.com, bofa.com]}
+  - {name: Binance, sector: crypto, substrings: [binance], official: [binance.com, binance.us, binance.tr]}
+  - {name: Coinbase, sector: crypto, substrings: [coinbase], official: [coinbase.com]}
+  - {name: MetaMask, sector: crypto, substrings: [metamask], official: [metamask.io]}
+  - {name: Trust Wallet, sector: crypto, substrings: [trustwallet], official: [trustwallet.com]}
+  - {name: Ledger, sector: crypto, tokens: [ledger], substrings: [ledgerlive], official: [ledger.com]}
+  # --- accounts, mail and cloud
+  - {name: Microsoft, sector: technology, substrings: [microsoft, office365, onedrive, sharepoint], tokens: [outlook, msft],
+     official: [microsoft.com, live.com, office.com, office365.com, outlook.com, microsoftonline.com, sharepoint.com,
+                onedrive.com, onedrive.live.com, msn.com, azure.com, windows.net]}
+  - {name: Apple, sector: technology, substrings: [icloud, appleid], tokens: [apple], official: [apple.com, icloud.com]}
+  - {name: Google, sector: technology, substrings: [google, gmail], official: [google.com, gmail.com, googleusercontent.com,
+     youtube.com, google.com.tr, goo.gl, g.co]}
+  - {name: Adobe, sector: technology, tokens: [adobe], official: [adobe.com]}
+  - {name: Dropbox, sector: technology, substrings: [dropbox], official: [dropbox.com, dropboxusercontent.com]}
+  - {name: DocuSign, sector: technology, substrings: [docusign], official: [docusign.com, docusign.net]}
+  - {name: Yahoo, sector: technology, tokens: [yahoo], official: [yahoo.com]}
+  # --- social and messaging
+  - {name: Meta, sector: social, substrings: [facebook], tokens: [meta, fb], official: [facebook.com, meta.com, fb.com, fb.me]}
+  - {name: Instagram, sector: social, substrings: [instagram], official: [instagram.com]}
+  - {name: WhatsApp, sector: social, substrings: [whatsapp], official: [whatsapp.com, whatsapp.net, wa.me]}
+  - {name: Telegram, sector: social, substrings: [telegram], official: [telegram.org, t.me, telegram.me]}
+  - {name: LinkedIn, sector: social, substrings: [linkedin], official: [linkedin.com]}
+  - {name: TikTok, sector: social, substrings: [tiktok], official: [tiktok.com]}
+  - {name: X (Twitter), sector: social, substrings: [twitter], official: [twitter.com, x.com]}
+  - {name: Discord, sector: social, substrings: [discord], official: [discord.com, discord.gg, discordapp.com]}
+  # --- shopping, delivery and entertainment
+  - {name: Amazon, sector: e-commerce, substrings: [amazon], official: [amazon.com, amazon.com.tr, amazon.de, amazon.co.uk,
+     amazonaws.com, aws.amazon.com]}
+  - {name: eBay, sector: e-commerce, tokens: [ebay], official: [ebay.com]}
+  - {name: Netflix, sector: entertainment, substrings: [netflix], official: [netflix.com]}
+  - {name: Spotify, sector: entertainment, substrings: [spotify], official: [spotify.com]}
+  - {name: Steam, sector: entertainment, substrings: [steamcommunity, steampowered], official: [steamcommunity.com, steampowered.com]}
+  - {name: Roblox, sector: entertainment, substrings: [roblox], official: [roblox.com]}
+  - {name: Booking.com, sector: travel, substrings: [bookingcom], official: [booking.com]}
+  - {name: Airbnb, sector: travel, substrings: [airbnb], official: [airbnb.com]}
+  - {name: DHL, sector: cargo, tokens: [dhl], official: [dhl.com, dhl.de, dhl.com.tr]}
+  - {name: FedEx, sector: cargo, substrings: [fedex], official: [fedex.com]}
+  - {name: UPS, sector: cargo, tokens: [ups], official: [ups.com]}
+  - {name: USPS, sector: cargo, tokens: [usps], official: [usps.com]}
+  - {name: Royal Mail, sector: cargo, substrings: [royalmail], official: [royalmail.com]}

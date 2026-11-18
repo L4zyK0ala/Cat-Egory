@@ -140,7 +140,7 @@ def collect(session: Session, sites: list[Site], provider: str) -> list[Row]:
                              .order_by(ScanJob.queued_at.desc()).limit(1))
         row.crawl = str(job.status) if job else "not scanned"
         row.crawl_error = job.error_code if job else None
-        scan = session.scalar(select(ScanResult).where(ScanResult.domain_id == domain.id)
+        scan = session.scalar(select(ScanResult).where(ScanResult.domain_id == domain.id, ScanResult.url_id.is_(None))
                               .order_by(ScanResult.created_at.desc()).limit(1))
         row.title = scan.page_title if scan else None
         pred = session.scalar(select(AIPrediction).where(AIPrediction.domain_id == domain.id,

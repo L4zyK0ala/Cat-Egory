@@ -298,7 +298,7 @@ def sync(session: Session, slug: str, *, data: bytes | None = None, client: http
     if entry.get("candidates_only"):  # a threat list we only take candidates from (threats/feeds.py)
         from threats.feeds import sync as sync_candidates
 
-        counts = sync_candidates(session, source, rows, now=now)
+        counts = sync_candidates(session, source, rows, now=now, watched_only=bool(entry.get("watched_only")))
         result.entries, result.valid, result.invalid = counts["entries"], counts["hosts"], counts["invalid"]
         result.delisted = counts["delisted"]
         source.last_success_at, source.last_error, source.record_count = now, None, counts["hosts"]

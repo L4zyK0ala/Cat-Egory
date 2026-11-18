@@ -457,11 +457,15 @@ class ScanResult(Base):
     # (classification/unchanged.py). The domain kept its categories.
     reused_prediction_id: Mapped[int | None] = mapped_column(
         ForeignKey("ai_predictions.id", ondelete="SET NULL", use_alter=True))  # ai_predictions points back here
+    # Set when the scan was of one page a threat list named (threats/pages.py), not of the domain's home page.
+    # Such scans never count as the domain's scan: no category, no re-scan schedule, no threat lifecycle.
+    url_id: Mapped[int | None] = mapped_column(ForeignKey("urls.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = _now()
 
     __table_args__ = (Index("ix_scan_results_domain_created", "domain_id", "created_at"),
                       Index("ix_scan_results_reused_created", "created_at",
-                            postgresql_where=text("reused_prediction_id IS NOT NULL")))
+                            postgresql_where=text("reused_prediction_id IS NOT NULL")),
+                      Index("ix_scan_results_url", "url_id", postgresql_where=text("url_id IS NOT NULL")))
 
 
 class Screenshot(Base):
@@ -883,6 +887,7 @@ class DetectorVerdict(Base):
     id: Mapped[int] = _pk()
     domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False)
     scan_result_id: Mapped[int | None] = mapped_column(ForeignKey("scan_results.id", ondelete="SET NULL"))
+    url_id: Mapped[int | None] = mapped_column(ForeignKey("urls.id", ondelete="SET NULL"))  # a one-page scan's URL
     rule: Mapped[str] = mapped_column(String(64), nullable=False)
     positive: Mapped[bool] = mapped_column(Boolean, nullable=False)
     signals: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))

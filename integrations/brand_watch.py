@@ -151,3 +151,13 @@ def load_watchlist(path: Path = WATCHLIST) -> Watchlist:
 @lru_cache(maxsize=1)
 def default_watchlist() -> Watchlist:
     return load_watchlist()
+
+
+GLOBAL_LIST = Path(__file__).with_name("global_brands.yaml")
+
+
+@lru_cache(maxsize=1)
+def global_watchlist() -> Watchlist:
+    """Worldwide brands phishing imitates (integrations/global_brands.yaml). Used by the threat-list candidates and
+    our page-proof detector only, never by the certificate-log watch: their certificates are far too many."""
+    return load_watchlist(GLOBAL_LIST)

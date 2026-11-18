@@ -137,7 +137,7 @@ def rescan_days(session: Session, domain: Domain, scan: ScanResult, status: JobS
     if status == JobStatus.BLOCKED:
         return settings.scan_interval_blocked_days
     previous = session.scalar(select(ScanResult).where(ScanResult.domain_id == domain.id, ScanResult.id != scan.id,
-                                                       ScanResult.http_status.is_not(None))
+                                                       ScanResult.http_status.is_not(None), ScanResult.url_id.is_(None))
                               .order_by(ScanResult.created_at.desc()).limit(1))
     if previous is not None and (previous.page_title != scan.page_title
                                  or _host(previous.final_url) != _host(scan.final_url)):
@@ -190,7 +190,7 @@ def store_result(session: Session, result: CrawlResult, job_id: str, settings: S
         content_length=result.content_length, page_title=result.page_title, meta_description=result.meta_description,
         open_graph=result.open_graph, language_hint=result.language_hint, robots_allowed=result.robots_allowed,
         blocked_reason=result.blocked_reason, timings=result.timings | {"sandboxed": result.sandboxed},
-        content_fingerprint=result.content_fingerprint if result.ok else None,
+        content_fingerprint=result.content_fingerprint if result.ok else None, url_id=job.url_id,
     )
     session.add(scan)
     session.flush()
@@ -216,6 +216,14 @@ def store_result(session: Session, result: CrawlResult, job_id: str, settings: S
     job.finished_at = now
     job.error_code = result.blocked_reason or result.error_code
     job.error_detail = result.error_detail
+    if job.url_id is not None:
+        # One page a threat list named (threats/pages.py): it never stands for the domain, so the domain's scan
+        # schedule, status and threat lifecycle are left as they are.
+        from database.models import Url
+
+        if url := session.get(Url, job.url_id):
+            url.last_scanned = now
+        return job.status.value if hasattr(job.status, "value") else str(job.status)
 
     # before the rescan interval below, which depends on whether active threats remain
     if change := after_scan(session, domain, result, expire_days=settings.threat_expire_days, now=now, scan_id=scan.id,
@@ -251,15 +259,21 @@ def precheck(session: Session, job_id: str, settings: Settings, resolver: Any = 
     if job is None or job.status != JobStatus.RUNNING:
         return None
     domain = session.get(Domain, job.domain_id).normalized_domain
+    page_url = None
+    if job.url_id is not None:  # one page a threat list named (threats/pages.py)
+        from database.models import Url
+
+        url = session.get(Url, job.url_id)
+        page_url = url.url if url else None
     info, addresses, error = lookup_dns(domain, resolver)
     host = domain
-    if error == "dns_no_address" and not domain.startswith("www."):
+    if error == "dns_no_address" and not domain.startswith("www.") and page_url is None:
         # Many sites answer only on www (the bare name has no A/AAAA record): read the site there instead.
         www_info, www_addresses, www_error = lookup_dns(f"www.{domain}", resolver)
         if www_error is None:
             host, addresses, error = f"www.{domain}", www_addresses, None
             info = info | {"a": www_info["a"], "aaaa": www_info["aaaa"], "host": host}
-    result = CrawlResult(job_id=job_id, domain=domain, requested_url=f"https://{host}/", dns=info,
+    result = CrawlResult(job_id=job_id, domain=domain, requested_url=page_url or f"https://{host}/", dns=info,
                          resolved_ips=addresses)
     if error:
         result.error_code = error
@@ -271,7 +285,10 @@ def precheck(session: Session, job_id: str, settings: Settings, resolver: Any = 
         result.error_detail = f"{len(blocked)} non-public address(es)"
         store_result(session, result, job_id, settings)
         return None
-    return {"job_id": job_id, "domain": domain, "host": host, "dns": info, "resolved_ips": addresses}
+    payload = {"job_id": job_id, "domain": domain, "host": host, "dns": info, "resolved_ips": addresses}
+    if page_url:
+        payload["url"] = page_url
+    return payload
 
 
 # ----------------------------------------------------------------------------- celery tasks
@@ -327,11 +344,15 @@ def persist(result: dict, job_id: str, fast: bool = False) -> str:
     settings = get_settings()
     with session_factory()() as session, session.begin():
         outcome = store_result(session, CrawlResult.from_dict(result), job_id, settings)
-        scan_result_id = suggest_id = None
+        scan_result_id = suggest_id = page_check_id = None
         if outcome == "succeeded":
+            from threats.pages import detector_only
+
             from .classify_tasks import scan_result_for_job
 
             scan_result_id = scan_result_for_job(session, job_id)
+            if scan_result_id is not None and detector_only(session, session.get(ScanResult, scan_result_id)):
+                page_check_id, scan_result_id = scan_result_id, None  # our detector alone: no AI answer needed
             if scan_result_id is not None and not ai_answer_needed(
                     session, session.get(ScanResult, scan_result_id).domain_id,
                     every_days=settings.threat_reclassify_days, now=datetime.now(UTC)):
@@ -340,16 +361,19 @@ def persist(result: dict, job_id: str, fast: bool = False) -> str:
                 scan_result_id = None
         elif outcome == "blocked" and result.get("blocked_reason") == "robots_disallowed":
             from classification.engine import name_suggestion_due
+            from threats.pages import worldwide_only
 
             job = session.get(ScanJob, uuid.UUID(job_id))
             domain = session.get(Domain, job.domain_id)
-            if name_suggestion_due(session, domain):
-                suggest_id = domain.id
+            if job.url_id is None and not worldwide_only(session, domain) and name_suggestion_due(session, domain):
+                suggest_id = domain.id  # (not for a one-page scan or a worldwide threat candidate: no AI for those)
     log.info("scan persisted", extra={"job_id": job_id, "outcome": outcome})
     if suggest_id is not None:  # closed to bots: a suggestion from the name only, for a person to confirm
         celery_app.send_task("category.classify.name_only", args=[suggest_id], queue="fast" if fast else "classify")
     if scan_result_id is not None:
         celery_app.send_task("category.classify.scan", args=[scan_result_id], queue="fast" if fast else "classify")
+    if page_check_id is not None:
+        celery_app.send_task("category.threats.page_check", args=[page_check_id], queue="fast" if fast else "classify")
     return outcome
 
 

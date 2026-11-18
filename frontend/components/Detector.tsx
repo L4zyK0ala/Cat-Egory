@@ -9,7 +9,8 @@ type Measure = { rule: string; verdicts: number; positive: number; tp: number; f
   pending: number; precision: number | null; recall: number | null; listed: number; flagged: number; withdrawn: number };
 type Gate = { auto: boolean; qualified: boolean; min_decisions: number; min_precision: number; max_per_day: number;
   flagged_today: number };
-type Signals = { secrets?: string[]; brand?: string | null; official?: boolean; protected?: string | null;
+type Signals = { kind?: string | null; phone?: boolean; invest_terms?: string[]; secrets?: string[]; brand?: string | null; brand_via?: string | null; listed_brands?: string[];
+  turkish?: boolean; official?: boolean; protected?: string | null; popular?: string | null;
   suspicious_name?: string | null; fresh_cert?: boolean };
 type Verdict = { domain: string; positive: boolean; signals: Signals; action: string | null; created_at: string };
 type Feed = { slug: string; enabled: boolean; last_success_at: string | null; last_error: string | null; listed: number;
@@ -50,12 +51,17 @@ function View({ api }: { api: string }) {
   const secretName: Record<string, string> = { password: t("password", "şifre"), card: t("card", "kart"),
     sms_code: t("SMS code", "SMS kodu"), tr_id: t("TR ID no.", "TC kimlik no") };
   const reason = (s: Signals) => [
+    s.kind === "investment_scam" ? t("investment scam", "yatırım dolandırıcılığı") : null,
     ...(s.secrets ?? []).map((x) => secretName[x] ?? x),
-    s.brand ? `${t("brand", "marka")}: ${s.brand}` : null,
+    s.phone ? t("phone number", "telefon numarası") : null,
+    s.invest_terms?.length ? `${t("investment talk", "yatırım dili")}: ${s.invest_terms.slice(0, 3).join(", ")}` : null,
+    s.brand ? `${t("brand", "marka")}: ${s.brand}${s.brand_via === "host" ? ` (${t("in the address", "adreste")})` : ""}` : null,
+    s.listed_brands?.length ? `${t("lists brands", "marka listesi")}: ${s.listed_brands.join(", ")}` : null,
     s.suspicious_name ? s.suspicious_name : null,
     s.fresh_cert ? t("new certificate", "yeni sertifika") : null,
     s.official ? t("official site", "resmi site") : null,
     s.protected ? `${t("protected", "korumalı")}: ${s.protected}` : null,
+    s.popular ? `${t("popular", "popüler")}: ${s.popular}` : null,
   ].filter(Boolean).join(" · ");
   const state = g.auto
     ? (g.qualified ? t("Flagging by itself", "Kendi başına işaretliyor") : t("Allowed, not proven yet", "İzinli, henüz kanıtlanmadı"))
@@ -118,7 +124,7 @@ function View({ api }: { api: string }) {
         {data.recent.map((v, i) => (
           <tr key={`${v.domain}-${i}`}><td className="small">{f.when(v.created_at)}</td>
             <td className="mono small"><a href={`/domain/${encodeURIComponent(v.domain)}`}>{v.domain}</a></td>
-            <td><span className={`badge ${v.positive ? "danger" : "ok"}`}>{v.positive ? t("phishing", "oltalama") : t("no proof", "kanıt yok")}</span>
+            <td><span className={`badge ${v.positive ? "danger" : "ok"}`}>{v.positive ? (v.signals.kind === "investment_scam" ? t("scam", "dolandırıcılık") : t("phishing", "oltalama")) : t("no proof", "kanıt yok")}</span>
               {v.action === "flagged" && <> <span className="badge pending">{t("flagged", "işaretledi")}</span></>}</td>
             <td className="small">{reason(v.signals) || "–"}</td></tr>
         ))}</tbody>

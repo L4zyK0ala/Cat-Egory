@@ -237,7 +237,8 @@ def snapshot(session: Session, settings: Settings) -> dict[str, int]:
         chunk = ids[start:start + CHUNK]
         newest = (select(func.max(ScanResult.id))  # each domain's newest scan that still has its text
                   .join(ExtractedContent, ExtractedContent.scan_result_id == ScanResult.id)
-                  .where(ScanResult.domain_id.in_(chunk), ExtractedContent.text_excerpt.is_not(None))
+                  .where(ScanResult.domain_id.in_(chunk), ExtractedContent.text_excerpt.is_not(None),
+                         ScanResult.url_id.is_(None))  # a one-page threat scan is not the site
                   .group_by(ScanResult.domain_id))
         pages = {r.domain_id: r for r in session.execute(
             select(ScanResult.domain_id, ScanResult.id, ScanResult.final_url, ScanResult.page_title,

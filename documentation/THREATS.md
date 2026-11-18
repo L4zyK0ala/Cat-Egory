@@ -50,20 +50,57 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
 1. **Candidates (semi-dependent).** Outside threat lists only nominate hosts; we scan them and a person decides, so
    every record is ours (CC BY) and a list's mistake is never republished. Approve each list with
    `--redistribution no` (OPERATIONS.md). The review card shows which lists name the host and the listed link.
-2. **Shadow detector (hybrid).** After every classification, `threats/detector.py` judges the page with one
-   deterministic rule, `page_proven_v1`: it asks for a secret (password, card number / CVV, SMS or one-time code,
-   Turkish ID number) **and** claims a watched Turkish brand in its title, description or first lines **and** is not
-   that brand's site nor a popular / official / restricted host **and** the host is suspect by itself (its name
-   imitates a brand or a top site, a threat list names it, or its certificate is under 30 days old). Verdicts on
+2. **Shadow detector (hybrid).** After every classification — and after every scan of a threat candidate that
+   needs no AI answer (below) — `threats/detector.py` judges the page with deterministic rules, `page_proven_v3`:
+   * **phishing:** the page asks for a secret (password, card number / CVV, SMS or one-time code, Turkish ID
+     number);
+   * **investment scam:** it asks for a phone number and talks investment (at least two of "yatırım", "alım
+     satım", "yapay zeka", "resmi web sitesi", trading, profit, ...): the fake "AI trading platform of <bank>";
+
+   **and** in both cases it claims a watched brand, Turkish (`integrations/ct_watchlist.yaml`) or worldwide
+   (`integrations/global_brands.yaml`: PayPal, Microsoft, Apple, Meta, WhatsApp, DHL, Binance, ...) — in its title or
+   description, else by a distinctive brand string in its address unless the page goes by that address word as its
+   own, different name, else as the only watched brand its first lines name (several brands named only in the text
+   are a list, e.g. payment methods, not a claim; "Sign in with Google" / "Facebook ile giriş" buttons are not a
+   claim either) **and** is not that brand's site nor a popular / official /
+   restricted host, nor under a registrable domain the Majestic top list or the Chrome UX Report Türkiye ranks
+   **and** the host is suspect by itself (its name imitates a brand or a top site, a threat list names it, or its
+   certificate is under 30 days old). The page's language is recorded, not required: phishing of a Turkish brand
+   abroad, or of a worldwide brand, is phishing too.
+
+   History: `page_proven_v1` (2026-11-17) measured 40 % precision (Vodafone UK's own sign-in pages, a gambling
+   site's list of banks); v2 added popularity, the brand in the address and listed brands (no wrong flag left when
+   replayed on v1's pages); v3 (2026-11-18) added the investment-scam rule and the worldwide brands. A new rule name
+   starts its measurement afresh. Before trusting a rule change, `python -m threats.detector replay` (worker,
+   read-only) judges the earlier rule's pages again and compares both with the same decisions of people. Verdicts on
    threat candidates and all positive ones go to `detector_verdicts`; `measure` compares each domain's newest verdict
    with people: a reviewer flag = right, a closed threat review without one = wrong, a detector flag a person
    withdrew = wrong. The admin tab **Dedektör** shows precision, recall, the confusion table and the lists.
 3. **On its own (independent).** With `CATEGORY_THREAT_DETECTOR_AUTO=true`, a positive verdict flags the domain
-   (phishing, plus look-alike when the name imitates a brand) from the source `cat-egory-detector` — but only while
+   (phishing, or scam for an investment scam; plus look-alike when the name imitates a brand) from the source
+   `cat-egory-detector` — only the page's URL when the scan was of one listed page — but only while
    at least `CATEGORY_THREAT_DETECTOR_MIN_DECISIONS` (200) people's decisions on its positives exist and at least
    `..._MIN_PRECISION` (0.99) of them were right, at most `..._MAX_PER_DAY` (20) a day. Its open threat review is
    closed, except every `..._SAMPLE_EVERY`-th (10) flag, which stays with a person so the measurement goes on.
    Detector records are our own: they expire with a dead site and can be withdrawn like a reviewer's.
+
+### Worldwide candidates and one-page scans
+
+Cat-egory lists threats worldwide, not only those aimed at Türkiye (2026-11-18). Phishing pages die fast (hosting
+companies take them down within hours or days), so worldwide candidates are picked **newest first**, and judged
+without the AI model, so they cost no tokens (`threats/pages.py`):
+
+* `CATEGORY_THREAT_FEED_CANDIDATES_PER_HOUR` (6): Türkiye-related hosts (a Turkish brand's look-alike, then .tr),
+  as before: scanned, classified, and always shown to a person.
+* `CATEGORY_THREAT_FEED_GLOBAL_PER_HOUR` (12): other hosts from phishing lists (never malware lists: a malware link
+  is a download) that resemble a watched worldwide brand or come with the page's link. Their pages are judged by the
+  detector alone; a person sees one only when the page asks for a secret or a phone number.
+* **One-page scans** (`CATEGORY_THREAT_PAGE_SCANS`, on): where a phishing list gives the page's link (OpenPhish,
+  `phishing-database-links`), that page is scanned — query string and fragment dropped, as they often carry a
+  victim's address or token — not the host's home page; robots.txt is asked about that path. Such a scan
+  (`scan_results.url_id`) never stands for the domain: no category, no re-scan schedule, no threat lifecycle. A
+  detector flag from it is URL-scoped (one page of a possibly hacked, honest site); a reviewer still decides for the
+  whole domain from the card, which shows the scanned page.
 
 A threat flag on a popular site (Majestic top list), a watched brand's official domain or a restricted suffix
 (.gov.tr, .edu.tr, ...) — or any subdomain of these — is refused with 409 `protected_domain` until the reviewer

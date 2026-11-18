@@ -81,7 +81,8 @@ class Plan:
 
 def latest_scan(session: Session, domain_id: int) -> int | None:
     return session.scalar(select(ScanResult.id).join(ScanJob, ScanJob.id == ScanResult.scan_job_id)
-                          .where(ScanResult.domain_id == domain_id, ScanJob.status == JobStatus.SUCCEEDED)
+                          .where(ScanResult.domain_id == domain_id, ScanJob.status == JobStatus.SUCCEEDED,
+                                 ScanResult.url_id.is_(None))
                           .order_by(ScanResult.created_at.desc(), ScanResult.id.desc()).limit(1))
 
 

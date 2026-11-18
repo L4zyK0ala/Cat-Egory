@@ -394,7 +394,7 @@ the abuse.ch Auth-Key in the worker (`CATEGORY_ABUSECH_AUTH_KEY`; `.env` may cal
 `ABUSECH_AUTH_KEY`); it is put into the download path at run time and never stored. After reading each list's terms:
 
 ```bash
-for s in phishing-database openphish urlhaus; do
+for s in phishing-database phishing-database-links openphish urlhaus; do
   $DC exec -T worker python -m integrations.cli register $s
   $DC exec -T worker python -m integrations.cli approve $s --license-slug "terms-$s" --license-name "$s terms" \
       --redistribution no --commercial no --attribution-required yes --reviewer you@example.org \
@@ -404,9 +404,20 @@ done
 ```
 
 Then `category.threats.feed_candidates` (every 15 minutes) queues `CATEGORY_THREAT_FEED_CANDIDATES_PER_HOUR` (6)
-an hour: names resembling a watched Turkish brand first, then .tr names (`CATEGORY_THREAT_FEED_MIN_RELEVANCE`, 1;
-0 = any name). Phishing.Database is ~390,000 names (11 MB, synced daily); the table keeps them all so the detector
+an hour: names resembling a watched Turkish brand first, then .tr names (`CATEGORY_THREAT_FEED_MIN_RELEVANCE`, 1),
+and `CATEGORY_THREAT_FEED_GLOBAL_PER_HOUR` (12) worldwide phishing candidates, newest first, judged by our detector
+without the AI (THREATS.md, "Worldwide candidates and one-page scans"). Where a phishing list gives the page's link,
+that page is scanned (`CATEGORY_THREAT_PAGE_SCANS`, on). `phishing-database-links` (the same project's full links,
+~66 MB a day, `watched_only`: only Türkiye-related names and look-alikes of watched brands are kept) is approved
+like the others. Phishing.Database is ~390,000 names (11 MB, synced daily); the table keeps them all so the detector
 can say which of its positives a list also names.
+
+After changing the detector's rule (`threats/detector.py`, THREATS.md), measure the change on the pages already
+judged before trusting it — read-only, nothing is stored or flagged:
+
+```bash
+$DC exec -T worker python -m threats.detector replay < /dev/null    # --from-rule page_proven_v1 (default)
+```
 
 Sources with `--redistribution no` are used internally only: their threat flags are not shown by the API and
 never enter feeds.

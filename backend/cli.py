@@ -213,7 +213,7 @@ def apply_registry_rules(session: Session, *, dry_run: bool = False) -> list[str
         if job is None or job.status not in (JobStatus.FAILED, JobStatus.BLOCKED) \
                 or job.error_code == "resolves_to_blocked_ip":
             continue
-        scan = session.scalar(select(ScanResult).where(ScanResult.domain_id == domain.id)
+        scan = session.scalar(select(ScanResult).where(ScanResult.domain_id == domain.id, ScanResult.url_id.is_(None))
                               .order_by(ScanResult.created_at.desc()).limit(1))
         if scan is None or not scan.resolved_ips:  # never resolved: maybe not registered at all
             continue

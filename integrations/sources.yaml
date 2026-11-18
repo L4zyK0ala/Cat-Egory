@@ -124,6 +124,23 @@ sources:
       Candidate checked 2026-11-08, terms read by the operator 2026-11-17. ~390,000 names (11 MB); ~500 are .tr and
       a few hundred resemble watched Turkish brands. Aggregates community reports: candidates only.
 
+  - slug: phishing-database-links
+    name: Phishing.Database active phishing links (watched names only)
+    homepage: https://github.com/Phishing-Database/Phishing.Database
+    feed_url: https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt
+    kind: threat_feed
+    threat_type: phishing
+    format: url-list
+    candidates_only: true
+    watched_only: true   # keep only hosts related to Türkiye or resembling a watched brand (threats/feeds.py)
+    update_interval_seconds: 86400
+    believed_license: MIT (repository licence, copyright Mitchell Krog, Nissar Chababy and contributors)
+    license_status: unverified
+    notes: >-
+      Same project and licence as phishing-database, the full links instead of host names (~66 MB a day, read
+      2026-11-18): the exact page is scanned (threats/pages.py), not the host's home page. Only hosts related to
+      Türkiye or resembling a watched brand (integrations/global_brands.yaml) are kept. Candidates only.
+
   - slug: openphish
     name: OpenPhish community feed
     homepage: https://openphish.com/

@@ -26,7 +26,8 @@ class RobotsDecision:
 
 
 def fetch_robots(domain: str, *, agent: str, proxy_url: str | None, proxy_token: str | None = None,
-                 timeout: float = 8.0, transport: httpx.BaseTransport | None = None) -> RobotsDecision:
+                 timeout: float = 8.0, transport: httpx.BaseTransport | None = None, path: str = "/") -> RobotsDecision:
+    """Whether our agent may fetch ``path`` (the home page unless a one-page scan names another) on ``domain``."""
     last_error = "unavailable"
     for scheme in ("https", "http"):
         url = f"{scheme}://{domain}/robots.txt"
@@ -53,5 +54,5 @@ def fetch_robots(domain: str, *, agent: str, proxy_url: str | None, proxy_token:
         parser = RobotFileParser()
         parser.parse(body[:MAX_ROBOTS_BYTES].decode("utf-8", errors="replace").splitlines())
         token = agent.split("/", 1)[0]
-        return RobotsDecision(parser.can_fetch(token, f"{scheme}://{domain}/"), "parsed", url)
+        return RobotsDecision(parser.can_fetch(token, f"{scheme}://{domain}{path}"), "parsed", url)
     return RobotsDecision(False, last_error)

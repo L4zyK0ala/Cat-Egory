@@ -145,3 +145,18 @@ def test_crawl_reads_the_host_precheck_chose():
     r = crawl({"job_id": "j", "domain": "bare.com", "host": "www.bare.com"}, S, MemoryStore(), capture_fn=capture,
               robots_fn=robots)
     assert r.domain == "bare.com" and asked == [("robots", "www.bare.com"), ("page", "www.bare.com")]
+
+
+def test_crawl_of_one_page_asks_robots_for_that_path():
+    asked = []
+    def capture(host, settings, url=None):
+        asked.append(("page", host, url))
+        return fake_capture()(host, settings)
+    def robots(host, **k):
+        asked.append(("robots", host, k.get("path")))
+        return RobotsDecision(True, "parsed")
+    r = crawl({"job_id": "j", "domain": "garden-club.org", "url": "https://garden-club.org/wp/x/login.php"}, S,
+              MemoryStore(), capture_fn=capture, robots_fn=robots)
+    assert asked == [("robots", "garden-club.org", "/wp/x/login.php"),
+                     ("page", "garden-club.org", "https://garden-club.org/wp/x/login.php")]
+    assert r.ok
