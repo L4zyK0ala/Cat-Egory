@@ -237,3 +237,124 @@ def withdraw_threats(body: WithdrawIn, request: Request, principal: Principal = 
                  request_id=getattr(request.state, "request_id", None))
     session.commit()
     return ChangeOut(target=target, scope=scope, changed=changed)
+
+
+# --- USOM report queue (threats/usom.py) -----------------------------------------------------------------------------
+
+class UsomItem(BaseModel):
+    domain: str
+    defanged: str
+    types: list[str]
+    brand: str | None
+    confirmed_by: list[str]  # review, detector, octryx
+    first_seen: datetime | None
+    checked_at: datetime | None  # the national list's last answer
+    status_at: datetime | None   # reported or set aside
+    listed_at: datetime | None   # the list had it, after our report
+    days_to_list: float | None
+    mail_id: int | None
+    sending: bool
+    still_flagged: bool
+
+
+class UsomMailSetup(BaseModel):
+    ready: bool
+    sender: str | None
+    recipient: str
+
+
+class UsomQueueOut(BaseModel):
+    view: str
+    counts: dict[str, int]
+    median_days_to_list: float | None
+    mail: UsomMailSetup
+    items: list[UsomItem]
+
+
+class UsomStatusIn(BaseModel):
+    domains: list[str] = Field(min_length=1, max_length=500)
+    action: Literal["dismissed", "pending"]
+
+
+class UsomSendIn(BaseModel):
+    domains: list[str] = Field(min_length=1, max_length=100)
+    subject: str = Field(min_length=1, max_length=200)
+    body: str = Field(min_length=1, max_length=20000)
+
+
+class UsomMailOut(BaseModel):
+    id: int
+    status: str
+    recipient: str
+    domains: list[str]
+    error: str | None
+    created_at: datetime
+    sent_at: datetime | None
+
+
+def _mail_out(m) -> UsomMailOut:
+    return UsomMailOut(id=m.id, status=m.status, recipient=m.recipient, domains=m.domains, error=m.error,
+                       created_at=m.created_at, sent_at=m.sent_at)
+
+
+@router.get("/usom", response_model=UsomQueueOut,
+            summary="Our confirmed threats and the national list: waiting to report, reported, listed, set aside")
+def usom_queue(view: Literal["pending", "reported", "listed", "dismissed"] = "pending",
+               _: Principal = Depends(require("reviews:write")), session: Session = Depends(get_session)) -> UsomQueueOut:
+    from common.config import get_settings
+    from threats import usom
+
+    settings = get_settings()
+    data = usom.queue(session, view)
+    return UsomQueueOut(view=view, counts=data["counts"], median_days_to_list=data["median_days_to_list"],
+                        mail=UsomMailSetup(ready=usom.mail_ready(settings), sender=settings.usom_mail_from.strip() or None,
+                                           recipient=settings.usom_mail_to.strip()),
+                        items=[UsomItem(**i) for i in data["items"]])
+
+
+@router.post("/usom/status", summary="Set domains aside (not to report) or put them back in the queue")
+def usom_status(body: UsomStatusIn, request: Request, principal: Principal = Depends(require("reviews:write")),
+                session: Session = Depends(get_session)) -> dict:
+    from threats import usom
+
+    changed = usom.set_status(session, body.domains, body.action, principal.user_id)
+    audit.record(session, action=f"usom.{body.action}", target_type="domains", target_id=",".join(changed[:3]),
+                 after={"domains": changed}, principal=principal, request_id=getattr(request.state, "request_id", None))
+    session.commit()
+    return {"changed": len(changed)}
+
+
+@router.post("/usom/send", response_model=UsomMailOut, status_code=202,
+             summary="Queue a report e-mail to USOM; the worker sends it and marks the domains reported")
+def usom_send(body: UsomSendIn, request: Request, principal: Principal = Depends(require("reviews:write")),
+              session: Session = Depends(get_session)) -> UsomMailOut:
+    from common.config import get_settings
+    from threats import usom
+
+    from ..worker import celery_app
+
+    settings = get_settings()
+    if not usom.mail_ready(settings):
+        raise ApiError(409, "mail_not_configured", "set CATEGORY_USOM_MAIL_FROM and CATEGORY_RESEND_API_KEY first")
+    try:
+        mail = usom.queue_mail(session, body.domains, body.subject, body.body, recipient=settings.usom_mail_to,
+                               user_id=principal.user_id)
+    except ValueError as exc:
+        raise ApiError(422, "validation_error", str(exc)) from exc
+    audit.record(session, action="usom.emailed", target_type="usom_mail", target_id=mail.id,
+                 after={"domains": mail.domains, "recipient": mail.recipient, "subject": mail.subject},
+                 principal=principal, request_id=getattr(request.state, "request_id", None))
+    session.commit()
+    celery_app.send_task("category.threats.usom_mail", args=[mail.id])
+    return _mail_out(mail)
+
+
+@router.get("/usom/mails/{mail_id}", response_model=UsomMailOut, summary="One report e-mail: queued, sent or failed")
+def usom_mail(mail_id: int, _: Principal = Depends(require("reviews:write")),
+              session: Session = Depends(get_session)) -> UsomMailOut:
+    from database.models import UsomMail
+
+    mail = session.get(UsomMail, mail_id)
+    if mail is None:
+        raise ApiError(404, "not_found", "no such mail")
+    return _mail_out(mail)

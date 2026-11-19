@@ -175,6 +175,29 @@ happens at most once per `threat_change_cooldown_days` (7), because kits show ha
 Audit actions: `threat.expire` (with its reason), `threat.return`, `threat.changed`. These daily scans only ask whether the site is still there, so a domain with
 an active confirmed threat and a valid AI answer newer than `threat_reclassify_days` (30) is not sent to the model.
 
+## Reporting to USOM
+
+The admin page *Onaylanmış Tehditler* is a queue for reporting our confirmed threats to the national CERT
+(T.C. Siber Güvenlik Başkanlığı, `ihbar@siberguvenlik.gov.tr`), `threats/usom.py`:
+
+- **Bildirilecek (to report):** an active domain-scoped threat of our own (a reviewer, the page-proof detector or
+  Octryx's page evidence) of a type the national list carries (phishing, scam, fraud, malware, malicious downloads,
+  command-and-control), which the daily cross-check found missing from the list. A look-alike name or *suspicious*
+  alone is not reported, nor is a hit on someone else's list. Domains not checked yet are counted, not shown.
+- **Sending:** a person ticks domains, reads and may edit the Turkish e-mail (addresses defanged, threat types, the
+  imitated brand, who confirmed it and when) and presses *USOM'a Gönder*. The admin API stores the mail as `queued`
+  (`usom_mails`) and the core worker sends it through Resend; only then do the domains become *reported*
+  (`usom_reports`). A refused mail stays `failed` with the service's reason, and nothing is marked. Without a sender
+  the text can still be opened in a mail program or copied. At most 100 domains per mail; a domain in a mail being
+  sent cannot be picked again. Audit: `usom.emailed`, `usom.dismissed`, `usom.pending`.
+- **Bildirildi → USOM listeledi:** after each hourly cross-check run, reported domains the list has had since the
+  report get `listed_at`; the tab shows the days from report to listing and their median.
+- **Bildirilmeyecek:** set aside by a person (put back with *Kuyruğa Al*).
+
+Settings (worker; the admin API gets the sender and recipient only, never the key): `CATEGORY_USOM_MAIL_FROM`
+(e.g. `Cat-Egory <ihbar@cat-egory.org>`, its domain verified in Resend), `CATEGORY_RESEND_API_KEY`,
+`CATEGORY_USOM_MAIL_TO` (default `ihbar@siberguvenlik.gov.tr`), `CATEGORY_USOM_MAIL_REPLY_TO`.
+
 ## Abuse reports
 
 **Paused (2026-11-19):** `CATEGORY_ABUSE_DRAFTS_ENABLED` now defaults to `false` and the admin menu no longer

@@ -14,7 +14,7 @@ type Report = { counts: Record<string, number>; items: Item[] };
 type Status = "missing" | "listed" | "unchecked" | "all";
 
 
-function Report({ api }: { api: string }) {
+export function Report({ api }: { api: string }) {
   const t = useT();
   const locale = useLocale();
   const LABEL: Record<Item["status"], string> = { listed: t("On the list", "Listede"), missing: t("Not on the list", "Listede değil"),

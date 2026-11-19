@@ -25,7 +25,7 @@ from database.models import (
     ThreatIntelligence,
 )
 from database.session import get_session
-from integrations.brand_watch import default_watchlist, global_watchlist
+from threats.usom import brand_of
 
 from ..demand import local_day
 from ..deps import Principal, rate_limit, require
@@ -99,11 +99,6 @@ def _top(rows, limit: int = TOP) -> list[Count]:
     out = [Count(key=k, count=n) for k, n in rows[:limit]]
     rest = sum(n for _, n in rows[limit:])
     return out + ([Count(key="other", count=rest)] if rest else [])
-
-
-def brand_of(name: str, claimed: str | None) -> str | None:
-    match = default_watchlist().match(name) or global_watchlist().match(name)
-    return match.brand.name if match else claimed
 
 
 @router.get("", response_model=InfographicOut, summary="One month's numbers for a social-media infographic")

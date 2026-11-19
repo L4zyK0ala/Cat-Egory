@@ -1,25 +1,32 @@
 import { publicApiUrl } from "@/lib/api";
-import SgbReport from "@/components/SgbReport";
+import UsomQueue from "@/components/UsomQueue";
 import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
+
+function siteName(): string {
+  try {
+    return new URL(process.env.PUBLIC_SITE_URL || "").host || "cat-egory.org";
+  } catch {
+    return "cat-egory.org";
+  }
+}
 
 export default async function Threats() {
   const { locale, t } = await getT();
   return (<><h1>{t("Confirmed Threats", "Onaylanmış Tehditler")}</h1>
     {locale === "tr" ? <p className="muted">
-      Bir inceleyicinin onayladığı tehditler. <b>Geri Çek</b> bir işareti geri çeker (hata ya da site temizlendi); geçmişte
-      ve denetim kaydında saklanır. Her alan adı günde bir kez T.C. Siber Güvenlik Başkanlığı&apos;nın (USOM) zararlı adres
-      listesiyle karşılaştırılır: <b>listede olmayanlar</b>{" "}
-      <a href="https://siberguvenlik.gov.tr" target="_blank" rel="noopener noreferrer">siberguvenlik.gov.tr</a> üzerindeki
-      İhbar Formu ile bildirilebilecek adaylardır. Yalnızca iç kullanım içindir: listenin şartları yazılı izin olmadan yeniden
-      yayımlanmasına izin vermez.
+      Onayladığımız tehditleri T.C. Siber Güvenlik Başkanlığı&apos;na (USOM) bildirme kuyruğu. Her alan adı günde bir kez
+      ulusal zararlı adres listesiyle karşılaştırılır; listede olmayanlar <b>Bildirilecek</b> sekmesinde bekler. Seçip
+      metni okuyun ve <b>USOM&apos;a Gönder</b>&apos;e basın: e-posta yalnızca siz bastığınızda gider. Liste bir adresi
+      eklediğinde kendiliğinden <b>USOM listeledi</b> sekmesine geçer. Bir işareti geri çekmek için <b>Tüm onaylanmış
+      tehditler</b> sekmesini kullanın. Ulusal liste yalnızca iç kullanım içindir; şartları yeniden yayımlamaya izin vermez.
     </p> : <p className="muted">
-      Threats a reviewer confirmed. <b>Withdraw</b> takes a flag back (a mistake, or the site was cleaned); it is kept
-      in the history and the audit log. Each domain is checked once a day against the malicious-address list of
-      T.C. Siber Güvenlik Başkanlığı (USOM): <b>not on the list</b> are candidates to report through the İhbar Formu on{" "}
-      <a href="https://siberguvenlik.gov.tr" target="_blank" rel="noopener noreferrer">siberguvenlik.gov.tr</a>.
-      Internal only: the list&apos;s terms do not allow republishing it without written permission.
+      The queue for reporting our confirmed threats to the national CERT (USOM). Each domain is checked against the
+      national malicious-address list once a day; those it lacks wait under <b>To report</b>. Pick some, read the text
+      and press <b>Send to USOM</b>: the e-mail goes only when you press it. When the list adds a domain, it moves to
+      <b> Listed by USOM</b> by itself. To withdraw a flag, use <b>All confirmed threats</b>. The national list is for
+      internal use only; its terms do not allow republishing it.
     </p>}
-    <SgbReport api={publicApiUrl()} /></>);
+    <UsomQueue api={publicApiUrl()} site={siteName()} /></>);
 }

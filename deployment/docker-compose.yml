@@ -72,6 +72,11 @@ x-worker-env: &worker-env
   CATEGORY_THREAT_FEED_GLOBAL_PER_HOUR: ${CATEGORY_THREAT_FEED_GLOBAL_PER_HOUR:-12}
   CATEGORY_THREAT_PAGE_SCANS: ${CATEGORY_THREAT_PAGE_SCANS:-true}
   CATEGORY_THREAT_DETECTOR_AUTO: ${CATEGORY_THREAT_DETECTOR_AUTO:-false}
+  # USOM report e-mails: sent only by the worker, only when a person presses send (threats/usom.py)
+  CATEGORY_USOM_MAIL_FROM: ${CATEGORY_USOM_MAIL_FROM:-}
+  CATEGORY_USOM_MAIL_TO: ${CATEGORY_USOM_MAIL_TO:-ihbar@siberguvenlik.gov.tr}
+  CATEGORY_USOM_MAIL_REPLY_TO: ${CATEGORY_USOM_MAIL_REPLY_TO:-}
+  CATEGORY_RESEND_API_KEY: ${CATEGORY_RESEND_API_KEY:-}
 
 services:
   postgres:
@@ -175,6 +180,9 @@ services:
     environment:
       <<: *backend-env
       CATEGORY_ADMIN_ROUTES: "true"
+      # shown on the USOM queue (the mail key stays on the worker)
+      CATEGORY_USOM_MAIL_FROM: ${CATEGORY_USOM_MAIL_FROM:-}
+      CATEGORY_USOM_MAIL_TO: ${CATEGORY_USOM_MAIL_TO:-ihbar@siberguvenlik.gov.tr}
       CATEGORY_CORS_ORIGINS: ${CATEGORY_ADMIN_CORS_ORIGINS:-[]}
     networks: [core, edge]
     ports:

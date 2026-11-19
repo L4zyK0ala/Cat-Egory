@@ -925,6 +925,47 @@ class AbuseReport(Base):
     )
 
 
+class UsomMail(Base):
+    """One report e-mail to the national CERT (USOM, ``ihbar@siberguvenlik.gov.tr``) listing our confirmed threats
+    its list does not have. A person picks the domains and presses send; the worker hands it to the mail service
+    (threats/usom.py). ``queued`` until then, ``sent`` or ``failed`` after."""
+
+    __tablename__ = "usom_mails"
+
+    id: Mapped[int] = _pk()
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="queued")  # queued sent failed
+    recipient: Mapped[str] = mapped_column(String(254), nullable=False)
+    subject: Mapped[str] = mapped_column(Text, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    domains: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    provider: Mapped[str | None] = mapped_column(String(32))
+    provider_id: Mapped[str | None] = mapped_column(String(200))  # the mail service's message id
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (CheckConstraint("status IN ('queued', 'sent', 'failed')", name="status_known"),)
+
+
+class UsomReport(Base):
+    """Where one domain stands with USOM: reported to it (by which mail) or set aside by a person, and when the
+    national list was first seen to contain it after the report. Domains without a row are waiting."""
+
+    __tablename__ = "usom_reports"
+
+    id: Mapped[int] = _pk()
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # reported dismissed
+    status_at: Mapped[datetime] = _now()
+    decided_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    mail_id: Mapped[int | None] = mapped_column(ForeignKey("usom_mails.id", ondelete="SET NULL"))
+    listed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (CheckConstraint("status IN ('reported', 'dismissed')", name="status_known"),
+                      Index("ix_usom_reports_status", "status", "status_at"))
+
+
 class FalsePositiveReport(Base):
     """Structured report that a category (or threat flag) on a domain is wrong or missing."""
 

@@ -453,3 +453,13 @@ details summary { cursor: pointer; font-size: 14px; }
 .infographic-card figcaption { justify-content: space-between; margin-top: 8px; font-size: 14px; }
 .infographic-text { width: 100%; font: 14px/1.5 var(--sans); padding: 12px; border-radius: 12px; border: 1px solid var(--line);
   background: var(--panel); color: var(--text); box-sizing: border-box; }
+
+/* ---------- USOM report queue (components/UsomQueue.tsx): the same pills as the admin menu, smaller */
+.sub-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 5px; border-radius: 999px; background: var(--beige);
+  width: fit-content; max-width: 100%; }
+.sub-tabs button { background: none; border: 0; box-shadow: none; padding: 5px 12px; border-radius: 999px; color: var(--muted);
+  font-weight: 600; font-size: .88rem; }
+.sub-tabs button[aria-pressed="true"] { background: var(--panel); color: var(--red-deep); box-shadow: var(--shadow); }
+.usom-compose textarea { width: 100%; box-sizing: border-box; font: 14px/1.5 var(--mono); padding: 12px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+.usom-compose input[type=text] { width: 100%; box-sizing: border-box; }

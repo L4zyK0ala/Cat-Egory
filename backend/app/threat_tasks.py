@@ -9,7 +9,7 @@ import redis
 
 from common.config import get_settings
 from database.session import session_factory
-from threats import abuse, octryx, sgb, virustotal
+from threats import abuse, octryx, sgb, usom, virustotal
 
 from . import audit
 from .worker import celery_app
@@ -39,9 +39,12 @@ def run_sgb_check(limit: int | None = None, progress: Callable[[str, list[dict]]
 
     def run() -> dict:
         with sgb.client() as http, session_factory()() as session:
-            return sgb.check(session, sgb.http_fetch(http), limit=limit or settings.sgb_check_batch,
-                             max_age_hours=settings.sgb_check_max_age_hours, pause=settings.sgb_check_pause_seconds,
-                             commit_each=True, progress=progress)
+            counts = sgb.check(session, sgb.http_fetch(http), limit=limit or settings.sgb_check_batch,
+                               max_age_hours=settings.sgb_check_max_age_hours, pause=settings.sgb_check_pause_seconds,
+                               commit_each=True, progress=progress)
+            counts["usom_listed_after_report"] = usom.mark_listed(session)
+            session.commit()
+            return counts
 
     counts = _exclusive("sgb-check", run)
     log.info("sgb cross-check", extra=counts)
@@ -114,6 +117,13 @@ def sgb_check() -> dict | None:
 @celery_app.task(name="category.threats.virustotal_check", ignore_result=True, soft_time_limit=240, time_limit=300)
 def virustotal_check() -> dict | None:
     return run_virustotal_check() if virustotal_key() else None
+
+
+@celery_app.task(name="category.threats.usom_mail", ignore_result=True, soft_time_limit=60, time_limit=90)
+def usom_mail(mail_id: int) -> str:
+    """Send one USOM report e-mail a person queued from the panel (the API container has no internet)."""
+    with httpx.Client(timeout=20, follow_redirects=False) as http, session_factory()() as session:
+        return usom.deliver(session, mail_id, http, get_settings())
 
 
 def run_abuse_drafts(limit: int | None = None) -> dict:

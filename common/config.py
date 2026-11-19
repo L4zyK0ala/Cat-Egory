@@ -207,6 +207,11 @@ class Settings(BaseSettings):
     threat_detector_sample_every: int = Field(default=10, ge=2, description="every Nth flag it adds still goes to a "
                                               "person, so its precision keeps being measured")
     virustotal_api_key: SecretStr | None = Field(default=None, description="VirusTotal API key; empty = off")
+    # USOM report e-mails (threats/usom.py): sent by the worker through Resend when a person presses send
+    usom_mail_from: str = Field(default="", description='sender, e.g. "Cat-Egory <ihbar@cat-egory.org>"; empty = off')
+    usom_mail_to: str = "ihbar@siberguvenlik.gov.tr"
+    usom_mail_reply_to: str = ""
+    resend_api_key: SecretStr | None = Field(default=None, description="Resend API key for the USOM e-mails")
     virustotal_check_batch: int = Field(default=4, ge=1, le=40, description="domains asked per run (every 15 minutes)")
     virustotal_check_max_age_hours: int = Field(default=72, ge=1)
     virustotal_check_pause_seconds: float = Field(default=16.0, ge=0, description="the public API allows 4 a minute")
