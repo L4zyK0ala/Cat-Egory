@@ -274,6 +274,25 @@ def test_review_set_with_risk_and_reject(engine, client, admin):
     assert current(engine, "other.example.com") == []
 
 
+def test_approve_without_a_model_category_confirms_only_the_threats(engine, client, admin):
+    """A threat candidate often has no model answer: Approve with ticked threats flags them and touches no
+    category; without threats there is nothing to approve."""
+    from database.models import ReviewStatus, ReviewTask
+    make_scan(engine, "event.example.net", title="PUBG MOBILE EVENT")
+    with Session(engine) as s, s.begin():
+        s.add(ReviewTask(domain_id=domain(engine, "event.example.net").id, reason="feed_listed:openphish",
+                         status=ReviewStatus.OPEN))
+    task = client.get("/api/v1/admin/reviews", headers=admin, params={"queue": "all"}).json()["items"][0]
+    assert task["prediction"] is None
+    url = f"/api/v1/admin/reviews/{task['id']}/decision"
+    assert client.post(url, headers=admin, json={"action": "approve"}).json()["error"]["code"] == "nothing_to_approve"
+    r = client.post(url, headers=admin, json={"action": "approve", "risk": ["phishing", "suspicious"]})
+    assert r.status_code == 200 and r.json()["status"] == "done"
+    public = client.get("/api/v1/domain/event.example.net").json()
+    assert public["risk"]["phishing"] is True and public["risk"]["suspicious"] is True
+    assert current(engine, "event.example.net") == []
+
+
 @pytest.mark.parametrize("body", [
     {"action": "set"}, {"action": "set", "primary": "made-up"}, {"action": "set", "primary": "phishing"},
     {"action": "approve", "risk": ["gambling"]},

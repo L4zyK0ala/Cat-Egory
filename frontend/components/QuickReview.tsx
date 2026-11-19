@@ -94,8 +94,19 @@ function Quick({ api }: { api: string }) {
 
   const advance = useCallback(() => setItems((xs) => xs.slice(1)), []);
 
-  const decide = useCallback(async (action: Action, preset?: string) => {
+  const decide = useCallback(async (requested: Action, preset?: string) => {
     if (!current || busy) return;
+    let action = requested;
+    // No valid model category: Approve takes the category typed in the box (= Set), or, with none typed, confirms
+    // only the ticked threats and leaves the categories as they are.
+    if (action === "approve" && !current.prediction?.primary_category) {
+      if (choice.trim()) action = "set";
+      else if (risk.length === 0) {
+        setMsg({ ok: false, text: t("The model gave no valid category: choose one (S), tick a threat, or reject (R).",
+                                    "Model geçerli bir kategori vermedi: bir kategori seçin (S), bir tehdit işaretleyin ya da reddedin (R).") });
+        picker.current?.focus(); return;
+      }
+    }
     let primary: string | undefined = preset;
     if (action === "set" && !primary) {
       // Both sides through the same rule: a plain toLowerCase() turns Turkish "İ" into "i" + a combining dot, so
@@ -107,18 +118,17 @@ function Quick({ api }: { api: string }) {
       primary = content.find((c) => same(c.id) || same(c.name) || same(name(c.id)))?.id;
       if (!primary) { setMsg({ ok: false, text: t("Choose a category from the list first (press S).", "Önce listeden bir kategori seçin (S tuşu).") }); picker.current?.focus(); return; }
     }
-    if (action === "approve" && !current.prediction?.primary_category) {
-      setMsg({ ok: false, text: t("The model gave no valid category: choose one (S) or reject (R).", "Model geçerli bir kategori vermedi: birini seçin (S) ya da reddedin (R).") }); return;
-    }
     setBusy(true);
     const body = { action, ...(primary ? { primary, secondary: [] } : {}), risk };
     const res = await postConfirmed(api, `/api/v1/admin/reviews/${current.id}/decision`, body);
     setBusy(false);
     if (res.ok || res.code === "already_decided") {
-      const verb = action === "approve" ? t("approved", "onaylandı") : action === "set" ? t(`set to ${name(primary!)}`, `${name(primary!)} olarak atandı`)
+      const flags = risk.length ? ` · ${t("threat", "tehdit")}: ${risk.map(name).join(", ")}` : "";
+      const verb = action === "approve" ? (primary || current.prediction?.primary_category ? t("approved", "onaylandı")
+                                           : t("threat confirmed", "tehdit onaylandı")) : action === "set" ? t(`set to ${name(primary!)}`, `${name(primary!)} olarak atandı`)
         : action === "withdraw" ? t("threat flag withdrawn", "tehdit işareti kaldırıldı")
         : changed ? t("flag kept", "işaret bırakıldı") : t("rejected", "reddedildi");
-      setMsg({ ok: true, text: `${current.domain}: ${verb}` });
+      setMsg({ ok: true, text: `${current.domain}: ${verb}${action === "withdraw" ? "" : flags}` });
       setDone((d) => d + 1);
       picker.current?.blur();  // keyboard shortcuts work again on the next item
       advance();
@@ -221,7 +231,7 @@ function Quick({ api }: { api: string }) {
                 ))}</div>
               </details>
               <div className="row">
-                <button disabled={busy || !p?.primary_category} onClick={() => decide("approve")}>{t("Approve", "Onayla")} <kbd>A</kbd></button>
+                <button disabled={busy || (!p?.primary_category && !choice.trim() && risk.length === 0)} onClick={() => decide("approve")}>{t("Approve", "Onayla")} <kbd>A</kbd></button>
                 <button className="secondary" disabled={busy} onClick={() => decide("set")}>{t("Set Category", "Kategori Ata")} <kbd>S</kbd></button>
                 {p?.primary_category && SWAP[p.primary_category] && (
                   <button className="secondary" disabled={busy} onClick={() => decide("set", SWAP[p.primary_category!])}>

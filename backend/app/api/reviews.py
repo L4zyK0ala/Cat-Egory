@@ -124,7 +124,8 @@ class ReviewPage(BaseModel):
 
 class DecisionIn(BaseModel):
     action: Literal["approve", "set", "reject", "withdraw"] = Field(
-        description="approve = accept the model's categories; set = use the categories given here; "
+        description="approve = accept the model's categories (with no valid model category: only the risk "
+                    "categories given, which are then required); set = use the categories given here; "
                     "reject = keep the current state and close the task; withdraw = take back our own threat "
                     "flags on the domain (e.g. the page was cleaned) and close the task")
     primary: str | None = None
@@ -270,11 +271,14 @@ def decide_review(task_id: int, body: DecisionIn, request: Request,
     primary, secondary, confidence = None, [], None
     if body.action == "approve":
         pred = session.get(AIPrediction, task.ai_prediction_id) if task.ai_prediction_id else None
-        if pred is None or pred.primary_category_id is None:
+        if (pred is None or pred.primary_category_id is None) and not body.risk:
             raise ApiError(409, "nothing_to_approve", "this task has no valid model prediction; use action=set")
-        # A person confirmed it: the model's self-reported confidence no longer describes this assignment.
-        primary, secondary = pred.primary_category_id, pred.secondary_category_ids
-        session.execute(Evidence.__table__.update().where(Evidence.ai_prediction_id == pred.id).values(verified=True))
+        if pred is not None and pred.primary_category_id is not None:
+            # A person confirmed it: the model's self-reported confidence no longer describes this assignment.
+            primary, secondary = pred.primary_category_id, pred.secondary_category_ids
+            session.execute(Evidence.__table__.update().where(Evidence.ai_prediction_id == pred.id)
+                            .values(verified=True))
+        # else: no model category, but the person confirms the threats; the categories stay as they are
     elif body.action == "set":
         if not body.primary:
             raise ApiError(422, "validation_error", "primary is required for action=set")
