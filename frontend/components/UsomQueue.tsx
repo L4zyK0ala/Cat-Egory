@@ -10,7 +10,9 @@ type Item = { domain: string; defanged: string; types: string[]; brand: string |
   first_seen: string | null; checked_at: string | null; status_at: string | null; listed_at: string | null;
   days_to_list: number | null; mail_id: number | null; sending: boolean; still_flagged: boolean };
 type View = "pending" | "reported" | "listed" | "dismissed";
-type Queue = { view: View; counts: Record<View | "unchecked", number>; median_days_to_list: number | null;
+type Listing = { reported: number; listed: number; rate: number | null; settled_days: number; settled: number;
+  settled_listed: number; settled_rate: number | null; median_days: number | null };
+type Queue = { view: View; counts: Record<View | "unchecked", number>; median_days_to_list: number | null; listing: Listing;
   mail: { ready: boolean; sender: string | null; recipient: string }; items: Item[] };
 type Mail = { id: number; status: "queued" | "sent" | "failed"; recipient: string; domains: string[]; error: string | null };
 
@@ -36,6 +38,29 @@ function draft(items: Item[], site: string): { subject: string; body: string } {
       "", ...lines, "",
       "Adresler bilerek tıklanamaz biçimde ([.]) yazılmıştır.", "", "Saygılarımızla,", "Cat-Egory"].join("\n"),
   };
+}
+
+/** Of the domains we reported, how many USOM has listed since; also for reports old enough to judge. */
+function ListingRate({ l }: { l: Listing }) {
+  const t = useT();
+  const locale = useLocale();
+  const pct = (v: number | null) => (v == null ? "–" : locale === "tr" ? `%${Math.round(v * 100)}` : `${Math.round(v * 100)}%`);
+  if (l.reported === 0) return <div className="notice">{t("Nothing reported yet: the listing rate appears after the first report.",
+                                                          "Henüz bildirim yok: listeye girme oranı ilk bildirimden sonra görünür.")}</div>;
+  return (
+    <div className="tiles">
+      <div className="panel tile"><div className="label">{t("Listed after our report", "Bildirimden sonra listeye giren")}</div>
+        <div className="value">{pct(l.rate)}</div>
+        <div className="muted" style={{ fontSize: 13 }}>{t(`${l.listed} of ${l.reported} reported domains`, `bildirilen ${l.reported} alan adından ${l.listed}`)}</div></div>
+      <div className="panel tile"><div className="label">{t(`Reports ${l.settled_days}+ days old`, `${l.settled_days} günden eski bildirimler`)}</div>
+        <div className="value">{pct(l.settled_rate)}</div>
+        <div className="muted" style={{ fontSize: 13 }}>{l.settled ? t(`${l.settled_listed} of ${l.settled}`, `${l.settled} bildirimden ${l.settled_listed}`)
+          : t(`none yet; newer reports had little time`, `henüz yok; yeni bildirimler için erken`)}</div></div>
+      <div className="panel tile"><div className="label">{t("Time to listing (median)", "Listeye girme süresi (ortanca)")}</div>
+        <div className="value">{l.median_days == null ? "–" : t(`${l.median_days} d`, `${l.median_days} gün`)}</div>
+        <div className="muted" style={{ fontSize: 13 }}>{t("from the report to the list", "bildirimden listeye")}</div></div>
+    </div>
+  );
 }
 
 function Queue({ api, site }: { api: string; site: string }) {
@@ -133,8 +158,7 @@ function Queue({ api, site }: { api: string; site: string }) {
           {t("Threats we confirmed (a reviewer, the page detector or Octryx's page evidence) that the national list does not have. Phishing, scams, fraud and malware only; a look-alike name alone is not reported.",
              "Bizim onayladığımız (inceleyici, sayfa dedektörü ya da Octryx'in sayfa kanıtı) ama ulusal listede olmayan tehditler. Yalnızca oltalama, dolandırıcılık, sahtecilik ve zararlı yazılım; yalnızca taklit ad bildirilmez.")}
           {c && c.unchecked > 0 && t(` ${c.unchecked} more wait for the daily list check.`, ` ${c.unchecked} alan adı daha günlük liste kontrolünü bekliyor.`)}</p>}
-        {view === "listed" && data.median_days_to_list != null && <div className="notice ok">
-          {t(`USOM listed our reports in ${data.median_days_to_list} days (median).`, `USOM bildirimlerimizi ortanca ${data.median_days_to_list} günde listeledi.`)}</div>}
+        {(view === "reported" || view === "listed") && <ListingRate l={data.listing} />}
         {view === "pending" && !data.mail.ready && <div className="notice">
           {t("Sending is not set up (CATEGORY_USOM_MAIL_FROM and CATEGORY_RESEND_API_KEY in .env). You can still open the text in your mail program.",
              "Doğrudan gönderim ayarlı değil (.env içinde CATEGORY_USOM_MAIL_FROM ve CATEGORY_RESEND_API_KEY). Metni yine de posta programınızda açabilirsiniz.")}</div>}

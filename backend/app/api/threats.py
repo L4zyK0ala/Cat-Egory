@@ -263,10 +263,23 @@ class UsomMailSetup(BaseModel):
     recipient: str
 
 
+class UsomListing(BaseModel):
+    """Of the domains we reported, how many the national list has added since (all reports, and those old enough)."""
+    reported: int
+    listed: int
+    rate: float | None
+    settled_days: int
+    settled: int
+    settled_listed: int
+    settled_rate: float | None
+    median_days: float | None
+
+
 class UsomQueueOut(BaseModel):
     view: str
     counts: dict[str, int]
     median_days_to_list: float | None
+    listing: UsomListing
     mail: UsomMailSetup
     items: list[UsomItem]
 
@@ -307,6 +320,7 @@ def usom_queue(view: Literal["pending", "reported", "listed", "dismissed"] = "pe
     settings = get_settings()
     data = usom.queue(session, view)
     return UsomQueueOut(view=view, counts=data["counts"], median_days_to_list=data["median_days_to_list"],
+                        listing=UsomListing(**data["listing"]),
                         mail=UsomMailSetup(ready=usom.mail_ready(settings), sender=settings.usom_mail_from.strip() or None,
                                            recipient=settings.usom_mail_to.strip()),
                         items=[UsomItem(**i) for i in data["items"]])

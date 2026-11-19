@@ -129,6 +129,18 @@ def test_send_report_and_listing(engine, sites, client, admin, mail_settings, se
     q = get(client, admin, "listed")
     assert [i["domain"] for i in q["items"]] == ["evil-shop.net"] and q["items"][0]["days_to_list"] == 2.0
     assert q["median_days_to_list"] == 2.0 and q["counts"]["reported"] == 1
+    assert q["listing"] == {"reported": 2, "listed": 1, "rate": 0.5, "settled_days": 7, "settled": 0,
+                            "settled_listed": 0, "settled_rate": None, "median_days": 2.0}
+
+
+def test_the_listing_rate_also_counts_only_reports_old_enough():
+    now = datetime(2026, 12, 20, tzinfo=UTC)
+    rows = [UsomReport(status="reported", status_at=now - timedelta(days=d), listed_at=now if listed else None)
+            for d, listed in ((30, True), (10, True), (9, False), (2, False))]
+    out = usom.listing_rate(rows, 3.0, now)
+    assert (out["reported"], out["listed"], out["rate"]) == (4, 2, 0.5)
+    assert (out["settled"], out["settled_listed"], out["settled_rate"]) == (3, 2, 0.667)
+    assert usom.listing_rate([], None, now)["rate"] is None
 
 
 def test_a_refused_mail_reports_nothing_and_never_shows_the_key(engine, sites, client, admin, mail_settings,

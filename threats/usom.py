@@ -13,7 +13,7 @@ national list is published (its terms forbid it); this module only reads its yes
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parseaddr
 from typing import Any
 
@@ -47,6 +47,7 @@ REPORTED, DISMISSED = "reported", "dismissed"
 VIEWS = ("pending", "reported", "listed", "dismissed")
 RESEND_URL = "https://api.resend.com/emails"
 MAX_DOMAINS_PER_MAIL = 100
+SETTLED_DAYS = 7  # the listing rate is also given for reports at least this old
 
 
 class MailError(RuntimeError):
@@ -141,8 +142,24 @@ def queue(session: Session, view: str, *, limit: int = 500) -> dict[str, Any]:
     items.sort(key=lambda i: i["status_at"] or i["first_seen"] or "", reverse=True)
     listed_days = [(r.listed_at - r.status_at).total_seconds() / 86400 for r in reports.values()
                    if r.status == REPORTED and r.listed_at]
-    return {"items": items[:limit], "counts": counts,
-            "median_days_to_list": round(sorted(listed_days)[len(listed_days) // 2], 1) if listed_days else None}
+    median = round(sorted(listed_days)[len(listed_days) // 2], 1) if listed_days else None
+    return {"items": items[:limit], "counts": counts, "median_days_to_list": median,
+            "listing": listing_rate([r for r in reports.values() if r.status == REPORTED], median)}
+
+
+def listing_rate(reported: list[UsomReport], median: float | None, now: datetime | None = None) -> dict[str, Any]:
+    """How many reported domains the national list has added since. A report a few days old has had little time,
+    so the rate is also given for reports at least ``SETTLED_DAYS`` old."""
+    now = now or datetime.now(UTC)
+    settled = [r for r in reported if r.status_at <= now - timedelta(days=SETTLED_DAYS)]
+
+    def rate(rows: list[UsomReport]) -> float | None:
+        return round(sum(1 for r in rows if r.listed_at) / len(rows), 3) if rows else None
+
+    return {"reported": len(reported), "listed": sum(1 for r in reported if r.listed_at), "rate": rate(reported),
+            "settled_days": SETTLED_DAYS, "settled": len(settled),
+            "settled_listed": sum(1 for r in settled if r.listed_at), "settled_rate": rate(settled),
+            "median_days": median}
 
 
 def _ids(session: Session, names: list[str]) -> dict[str, int]:
