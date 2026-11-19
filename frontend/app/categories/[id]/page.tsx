@@ -52,6 +52,10 @@ export default async function CategoryPage({ params, searchParams }: {
       <p><Link href="/categories">← {t("Categories", "Kategoriler")}</Link></p>
       <h1>{categoryName(locale, category.id, category.name)}</h1>
       <p className="muted">{categoryDescription(locale, category.id, category.description)}</p>
+      {category.kind === "risk" && <div className="notice error" role="note">
+        {t("These addresses are dangerous: do not visit them. They are listed so that firewalls and DNS filters can block them.",
+           "Bu adresler tehlikelidir, ziyaret etmeyin. Güvenlik duvarları ve DNS filtreleri engelleyebilsin diye listeleniyor.")}
+      </div>}
       <div className="row" style={{ fontSize: 14 }}>
         {t("Download", "İndir")}: {["txt", "hosts", "rpz"].map((ext) => (
           <a key={ext} href={`${base}/api/v1/feeds/${category!.id}.${ext}`}>{category!.id}.{ext}</a>

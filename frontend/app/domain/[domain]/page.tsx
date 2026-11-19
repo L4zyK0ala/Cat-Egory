@@ -29,6 +29,33 @@ function flagged(locale: Locale, risk: Risk) {
     .map((k) => [k, categoryName(locale, RISK_IDS[k], RISK_EN[k])] as const);
 }
 
+const DOWNLOADS = new Set(["malware", "malicious_downloads", "command_and_control"]);
+
+/** First thing on the page when the site or the searched link is a confirmed threat: most visitors arrive with a
+ *  link from an SMS or a mail and ask "is this safe?". What not to do, what to do if it already happened, where to
+ *  report it. The listed name is never a link out (see tests/unit/test_frontend_links.py). */
+function ThreatWarning({ t, risks, link }: { t: T; risks: readonly (readonly [string, string])[]; link: boolean }) {
+  const labels = risks.map(([, label]) => label).join(", ");
+  const files = risks.some(([k]) => DOWNLOADS.has(k));
+  return (
+    <div className="notice error threat-warning" role="alert">
+      <strong>{link ? t("Do not open this link", "Bu bağlantıyı açmayın") : t("Do not visit this site", "Bu siteye girmeyin")}</strong>
+      <p>{link ? t(`This link is confirmed as: ${labels}.`, `Bu bağlantı şu olarak onaylandı: ${labels}.`)
+               : t(`This site is confirmed as: ${labels}.`, `Bu site şu olarak onaylandı: ${labels}.`)}{" "}
+        {t("Do not enter a password, card number, ID number or verification code there, and do not download anything from it.",
+           "Orada şifre, kart numarası, kimlik numarası ya da doğrulama kodu girmeyin; oradan bir şey indirmeyin.")}</p>
+      <p>{t("If you already did: change that password, and the same password everywhere else you use it; if you gave card or bank details, call your bank now.",
+            "Girdiyseniz: o şifreyi ve aynı şifreyi kullandığınız diğer hesaplardaki şifreleri hemen değiştirin; kart ya da banka bilgisi verdiyseniz bankanızı hemen arayın.")}
+        {files && <>{" "}{t("If you downloaded a file, do not open it, and scan the device with security software.",
+                            "Bir dosya indirdiyseniz açmayın ve cihazı bir güvenlik yazılımıyla tarayın.")}</>}</p>
+      <p className="muted">{t("You can report it to the national cyber security centre through the İhbar Formu on ",
+                              "Ulusal siber güvenlik merkezine (USOM) bildirmek için ")}
+        <a href="https://siberguvenlik.gov.tr" target="_blank" rel="noopener noreferrer">siberguvenlik.gov.tr</a>
+        {t(".", " üzerindeki İhbar Formu'nu kullanabilirsiniz.")}</p>
+    </div>
+  );
+}
+
 function originLabel(t: T, origin: string) {
   const labels: Record<string, string> = { human: t("human", "insan"), ai: t("AI", "yapay zekâ"),
     community: t("community", "topluluk"), rule: t("rule", "kural"), source: t("source", "kaynak") };
@@ -151,6 +178,8 @@ export default async function DomainPage({ params, searchParams }: {
       <div className="row"><h1>{info.display_domain}</h1>
         <span className={`badge ${info.classification_status}`}>{statusLabel(t, info.classification_status)}</span></div>
       {info.display_domain !== info.domain && <div className="mono muted">{info.domain}</div>}
+      {(risks.length > 0 || linkRisks.length > 0) &&
+        <ThreatWarning t={t} risks={linkRisks.length ? linkRisks : risks} link={linkRisks.length > 0} />}
       {viaParent && <div className="notice">{t(`${name} is not listed itself; showing its registrable domain ${info.domain}.`,
                                              `${name} kendisi listede yok; kayıtlı üst alan adı ${info.domain} gösteriliyor.`)}</div>}
       {lookup && (
