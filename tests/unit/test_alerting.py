@@ -1,6 +1,7 @@
 """The alerting configuration: what is shipped must load and route as documented."""
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2] / "deployment"
@@ -96,3 +97,56 @@ def test_telegram_messages_are_in_turkish():
 def test_silent_config_has_no_receiver_settings():
     conf = yaml.safe_load((ROOT / "alertmanager/silent.yml").read_text())
     assert conf["receivers"] == [{"name": "nobody"}]
+
+
+def run_cleanup(tmp_path, percent: int, *args: str):
+    """docker-cleanup.sh with stand-ins for docker and df: what it ran, and what it told node-exporter."""
+    import os
+    import subprocess
+
+    bin_dir, text = tmp_path / "bin", tmp_path / "textfile"
+    bin_dir.mkdir(exist_ok=True)
+    text.mkdir(exist_ok=True)
+    calls = tmp_path / "calls"
+    (bin_dir / "docker").write_text(f'#!/bin/sh\necho "$@" >> {calls}\necho "Total reclaimed space: 0B"\n')
+    (bin_dir / "df").write_text(f'#!/bin/sh\ncase "$*" in *pcent*) printf "Use%%\\n {percent}%%\\n";; '
+                                f'*) printf "Used\\n 1000\\n";; esac\n')
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    env = os.environ | {"PATH": f"{bin_dir}:{os.environ['PATH']}", "STORE": str(tmp_path), "TEXTFILE_DIR": str(text),
+                        "LOCK": str(tmp_path / "lock")}
+    env.pop("KEEP_BUILD_CACHE", None)
+    done = subprocess.run(["bash", str(ROOT / "scripts/docker-cleanup.sh"), *args], env=env, capture_output=True,
+                          text=True)
+    metric = text / "docker_cleanup.prom"
+    return (done.returncode, calls.read_text().splitlines() if calls.exists() else [],
+            metric.read_text() if metric.exists() else "")
+
+
+def test_the_disk_guard_does_nothing_below_its_limit(tmp_path):
+    assert run_cleanup(tmp_path, 59, "--if-above", "80") == (0, [], "")
+
+
+def test_the_disk_guard_cleans_harder_above_its_limit(tmp_path):
+    code, calls, metric = run_cleanup(tmp_path, 83, "--if-above", "80")
+    assert code == 0 and calls == ["builder prune -f --keep-storage 5GB", "image prune -f"]
+    assert "category_docker_cleanup_last_run_by_guard 1" in metric
+
+
+def test_the_weekly_run_keeps_more_build_cache(tmp_path):
+    code, calls, metric = run_cleanup(tmp_path, 40)
+    assert code == 0 and calls[0] == "builder prune -f --keep-storage 20GB"
+    assert "category_docker_cleanup_last_run_by_guard 0" in metric
+
+
+@pytest.mark.parametrize("limit", ["", "0", "100", "eighty"])
+def test_the_disk_guard_refuses_a_bad_limit(tmp_path, limit):
+    assert run_cleanup(tmp_path, 95, "--if-above", limit)[:2] == (2, [])
+
+
+def test_the_guard_timer_is_installed_with_the_weekly_one():
+    systemd = ROOT / "systemd"
+    assert "--if-above 80" in (systemd / "docker-cleanup-guard.service").read_text()
+    assert "OnUnitActiveSec=15min" in (systemd / "docker-cleanup-guard.timer").read_text()
+    make = (ROOT.parent / "Makefile").read_text()
+    assert "docker-cleanup-guard.timer" in make and "enable --now docker-cleanup.timer docker-cleanup-guard.timer" in make

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the system disk every 15 minutes; clean Docker leftovers above 80 %
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

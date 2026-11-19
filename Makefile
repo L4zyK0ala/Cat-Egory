@@ -52,12 +52,13 @@ backup-timer:   ## install the nightly backup timer (needs sudo)
 	sudo systemctl daemon-reload
 	sudo systemctl enable --now cat-egory-backup.timer
 
-cleanup-timer:  ## install the weekly Docker housekeeping timer and node-exporter's textfile directory (needs sudo)
+cleanup-timer:  ## install the weekly Docker housekeeping, its 80 % disk guard and node-exporter's textfile directory (needs sudo)
 	sudo install -d -m 755 /var/lib/node_exporter/textfile
 	sed 's#@ROOT@#$(CURDIR)#' deployment/systemd/docker-cleanup.service | sudo tee /etc/systemd/system/docker-cleanup.service > /dev/null
-	sudo cp deployment/systemd/docker-cleanup.timer /etc/systemd/system/
+	sed 's#@ROOT@#$(CURDIR)#' deployment/systemd/docker-cleanup-guard.service | sudo tee /etc/systemd/system/docker-cleanup-guard.service > /dev/null
+	sudo cp deployment/systemd/docker-cleanup.timer deployment/systemd/docker-cleanup-guard.timer /etc/systemd/system/
 	sudo systemctl daemon-reload
-	sudo systemctl enable --now docker-cleanup.timer
+	sudo systemctl enable --now docker-cleanup.timer docker-cleanup-guard.timer
 
 docker-after-vpn: ## start Docker after WireGuard, so ports bound to the VPN address can open (needs sudo)
 	sudo install -D -m 644 deployment/systemd/docker-after-wireguard.conf /etc/systemd/system/docker.service.d/10-after-wireguard.conf

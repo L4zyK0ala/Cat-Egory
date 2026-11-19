@@ -546,7 +546,11 @@ listening only on 10.250.62.1:9101, the gateway of the internal `hostmetrics` ne
 disk 85 %. `deployment/scripts/docker-cleanup.sh` keeps the build cache to 20 GB (most recently used layers) and
 removes dangling images; it never touches containers, volumes, networks or tagged images. `make cleanup-timer` installs
 it as a weekly timer (Sunday 04:00) and creates `/var/lib/node_exporter/textfile`, where each run records its time and
-the space it freed (the Server dashboard; **DockerCleanupStale** after 8 days). Run it now:
+the space it freed (the Server dashboard; **DockerCleanupStale** after 8 days). The same target installs a **disk guard**
+(`docker-cleanup-guard.timer`, every 15 minutes, `docker-cleanup.sh --if-above 80`): quiet while the system disk is
+at most 80 % full, above that it cleans at once and keeps only 5 GB of build cache. A day of rebuilds once took 33 GB
+(2026-11-19), so the guard acts before **HostDiskFilling** (80 %, 30 minutes) would. The two never run at the same time
+(`/run/docker-cleanup.lock`). Run it now:
 `sudo ./deployment/scripts/docker-cleanup.sh`. Images a stopped project no longer needs stay until removed by hand
 (`sudo docker image prune -a --filter until=168h`).
 

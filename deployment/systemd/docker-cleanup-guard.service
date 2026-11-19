@@ -1,0 +1,11 @@
+# Installed by `make cleanup-timer`, which fills in the repository path.
+[Unit]
+Description=Docker housekeeping when the system disk is more than 80 % full
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=@ROOT@/deployment/scripts/docker-cleanup.sh --if-above 80
+Nice=10
+IOSchedulingClass=idle
