@@ -35,6 +35,7 @@ from .api import (
     detector,
     developer,
     feeds,
+    infographic,
     reviews,
     session,
     threats,
@@ -182,6 +183,7 @@ def create_app() -> FastAPI:
         app.include_router(threats.router)
         app.include_router(abuse.router)
         app.include_router(trends.router)
+        app.include_router(infographic.router)
         app.include_router(yasmama.router)
         app.include_router(detector.router)
         app.include_router(session.router)

@@ -265,6 +265,18 @@ downloads (requests include the "not modified" checks of polling firewalls; visi
 per-day totals. Cloudflare may answer some feed downloads from its cache; those are not counted.
 `CATEGORY_DEMAND_COUNTING=false` switches counting off. These settings are code defaults, not passed through compose.
 
+### Monthly infographic (admin "İnfografik" tab)
+
+`GET /api/v1/admin/infographic?month=YYYY-MM` (default: the last finished month, Türkiye time; `scans:read`) returns
+one month's totals: published sites and how many were first seen that month, .tr sites by main category, new threat
+records by type with the brands they imitate and their endings, and visitor demand as category totals with a daily
+line. The tab draws four 1080×1350 cards (cover, .tr categories, threats, visitor lookups) in Turkish or English,
+saves each as PNG in the browser, and writes a post text to go with them. Cards can be left out one by one.
+
+Only what is published anyway goes in: never a looked-up name, the national (USOM) list or VirusTotal answers.
+"Confirmed by us" counts records from our reviewers, the detector and Octryx. The site address printed on the cards
+is `CATEGORY_PUBLIC_SITE_URL` (also passed to the admin UI).
+
 ### Two review queues
 
 `GET /api/v1/admin/reviews?queue=categories|threats|all`. *Threat candidates* are look-alikes (`brand_lookalike`,

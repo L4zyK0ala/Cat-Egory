@@ -177,6 +177,9 @@ an active confirmed threat and a valid AI answer newer than `threat_reclassify_d
 
 ## Abuse reports
 
+**Paused (2026-11-19):** `CATEGORY_ABUSE_DRAFTS_ENABLED` now defaults to `false` and the admin menu no longer
+links `/admin/abuse` (the page and API still exist). Set the variable to `true` to prepare drafts again.
+
 `threats/abuse.py` prepares abuse-report drafts every hour (`category.threats.abuse_drafts`). Nothing is ever
 sent by Cat-Egory: a person reads the draft on `/admin/abuse`, opens it in their own mail program (a `mailto:`
 link), sends it, and marks it **I Sent It**. Each change is audited (`abuse.sent`, `abuse.dismissed`).

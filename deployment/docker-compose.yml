@@ -405,6 +405,8 @@ services:
       UI_ADMIN: "true"
       API_INTERNAL_URL: http://admin-api:8000
       PUBLIC_API_URL: ${CATEGORY_ADMIN_API_URL:-http://127.0.0.1:8111}
+      # printed on the infographic cards (admin "İnfografik" tab)
+      PUBLIC_SITE_URL: ${CATEGORY_PUBLIC_SITE_URL:-https://cat-egory.org}
     read_only: true
     tmpfs: ["/tmp:size=64m", "/app/.next/cache:size=64m"]
     cap_drop: [ALL]

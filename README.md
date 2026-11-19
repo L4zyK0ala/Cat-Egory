@@ -60,6 +60,7 @@ domains ──► scan queue ──► sandboxed Chromium ──► page text, H
 | Web UI (Next.js): search, bulk lookup, category explorer, feeds and router guides, accuracy, admin console with review and moderation queues | ✅ |
 | Third-party sources with licence approval and provenance | ✅ |
 | Demand: daily totals of what is looked up and downloaded, never who asked (admin "Yönelim" tab) | ✅ |
+| Monthly infographic: social-media cards (PNG) and a post text from published totals (admin "İnfografik" tab) | ✅ |
 | Yaş Mama: a local classifier that learns from published labels and is compared with the AI in shadow mode (admin tab with charts); it publishes nothing yet | 🧪 shadow |
 | Monitoring (Prometheus, Grafana, alert rules), backup / restore scripts, Turkish alerts and a daily summary on Telegram | ✅ |
 | Quality measurement on known sites (`python -m classification.evaluation`) | ✅ |

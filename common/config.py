@@ -152,7 +152,7 @@ class Settings(BaseSettings):
     threat_expire_days: int = Field(default=14, ge=1, description="a confirmed threat whose site has been gone this "
                                                                   "long is deactivated (threats/lifecycle.py)")
     # abuse-report drafts (threats/abuse.py): prepared hourly, sent only by a person
-    abuse_drafts_enabled: bool = True
+    abuse_drafts_enabled: bool = False  # off for now (no admin tab); the drafts code stays
     abuse_drafts_batch: int = Field(default=10, ge=1, le=100)
     abuse_report_repeat_days: int = Field(default=30, ge=1, description="draft again for a domain after this long")
     public_site_url: str = "https://cat-egory.org"

@@ -444,3 +444,12 @@ details summary { cursor: pointer; font-size: 14px; }
 .meter-cell { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .meter { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: var(--beige); overflow: hidden; }
 .meter > span { display: block; height: 100%; background: var(--series-n); border-radius: 3px; }
+
+/* admin "İnfografik": the cards are fixed 1080×1350 images, shown scaled down */
+.infographic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.infographic-card { margin: 0; }
+.infographic-card svg { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--line); }
+.infographic-card.skipped svg { opacity: .35; }
+.infographic-card figcaption { justify-content: space-between; margin-top: 8px; font-size: 14px; }
+.infographic-text { width: 100%; font: 14px/1.5 var(--sans); padding: 12px; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); box-sizing: border-box; }
