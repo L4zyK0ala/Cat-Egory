@@ -38,7 +38,11 @@ export async function call<T>(base: string, path: string, init: RequestInit & { 
     const text = await res.text();
     const body = text ? JSON.parse(text) : null;
     if (!res.ok) {
-      return { ok: false, status: res.status, code: body?.error?.code ?? "error", message: body?.error?.message ?? res.statusText };
+      // A validation error names the fields that failed (never the submitted values): show them with the message.
+      const details: { loc?: (string | number)[]; msg?: string }[] = Array.isArray(body?.error?.details) ? body.error.details : [];
+      const why = details.slice(0, 3).map((d) => `${(d.loc ?? []).slice(1).join(".")}: ${d.msg ?? ""}`).join("; ");
+      return { ok: false, status: res.status, code: body?.error?.code ?? "error",
+               message: `${body?.error?.message ?? res.statusText}${why ? ` (${why})` : ""}` };
     }
     return { ok: true, data: body as T };
   } catch (e) {

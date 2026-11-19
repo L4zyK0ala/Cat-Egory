@@ -31,6 +31,15 @@ def mail_settings(monkeypatch):
 
 
 @pytest.fixture
+def no_mail(monkeypatch):
+    """The local .env may set a sender (the server folder): these tests need none."""
+    monkeypatch.setenv("CATEGORY_USOM_MAIL_FROM", "")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
 def sent_tasks(monkeypatch):
     from backend.app.worker import celery_app
 
@@ -66,7 +75,7 @@ def resend(status=200, seen=None):
     return httpx.Client(transport=httpx.MockTransport(handle))
 
 
-def test_the_queue_holds_only_what_we_confirmed_and_the_list_lacks(sites, client, admin):
+def test_the_queue_holds_only_what_we_confirmed_and_the_list_lacks(sites, client, admin, no_mail):
     q = get(client, admin)
     assert sorted(i["domain"] for i in q["items"]) == ["evil-shop.net", "vakifbank-kredi.net"]
     assert q["counts"] == {"pending": 2, "reported": 0, "listed": 0, "dismissed": 0, "unchecked": 1}
@@ -77,7 +86,7 @@ def test_the_queue_holds_only_what_we_confirmed_and_the_list_lacks(sites, client
     assert q["mail"]["ready"] is False and q["mail"]["recipient"] == "ihbar@siberguvenlik.gov.tr"
 
 
-def test_without_a_sender_nothing_can_be_sent(sites, client, admin, sent_tasks):
+def test_without_a_sender_nothing_can_be_sent(sites, client, admin, sent_tasks, no_mail):
     r = client.post("/api/v1/admin/threats/usom/send", headers=admin,
                     json={"domains": ["evil-shop.net"], "subject": "Bildirim", "body": "metin"})
     assert r.status_code == 409 and r.json()["error"]["code"] == "mail_not_configured" and sent_tasks == []
@@ -161,3 +170,13 @@ def test_needs_a_reviewer(client, make_key):
     contributor, _ = make_key("contributor")
     assert client.get("/api/v1/admin/threats/usom", headers=contributor).status_code == 403
     assert ExternalListing  # imported for the fixtures' rows
+
+
+def test_one_mail_holds_up_to_100_domains_and_a_long_text(sites, client, admin, mail_settings, sent_tasks):
+    url = "/api/v1/admin/threats/usom/send"
+    many = client.post(url, headers=admin, json={"domains": [f"d{i}.net" for i in range(101)], "subject": "B",
+                                                 "body": "metin"})
+    assert many.status_code == 422
+    assert many.json()["error"]["details"][0]["loc"] == ["body", "domains"]  # the panel names the field
+    long = client.post(url, headers=admin, json={"domains": ["evil-shop.net"], "subject": "B", "body": "x" * 30000})
+    assert long.status_code == 202, long.text

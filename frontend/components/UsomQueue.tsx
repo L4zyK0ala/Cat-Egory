@@ -15,6 +15,7 @@ type Queue = { view: View; counts: Record<View | "unchecked", number>; median_da
 type Mail = { id: number; status: "queued" | "sent" | "failed"; recipient: string; domains: string[]; error: string | null };
 
 const MAILTO_LIMIT = 1900;  // longer mailto: links are cut off by browsers and mail programs
+const PER_MAIL = 100;  // the API's limit (threats/usom.py MAX_DOMAINS_PER_MAIL)
 const BY_TR: Record<string, string> = { review: "inceleyici", detector: "sayfa dedektörü", octryx: "Octryx sayfa kanıtı" };
 
 const trDay = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("tr-TR") : "–");
@@ -66,7 +67,7 @@ function Queue({ api, site }: { api: string; site: string }) {
   const mailBody = body ?? generated.body;
 
   function toggle(domain: string, on: boolean) {
-    setChosen((s) => { const n = new Set(s); if (on) n.add(domain); else n.delete(domain); return n; });
+    setChosen((s) => { const n = new Set(s); if (on && n.size < PER_MAIL) n.add(domain); else n.delete(domain); return n; });
     setBody(null);  // a new selection writes a new text; edits are kept only for the same selection
   }
 
@@ -142,16 +143,17 @@ function Queue({ api, site }: { api: string; site: string }) {
           <div className="panel">
             <table>
               <thead><tr>
-                {view === "pending" && <th><input type="checkbox" aria-label={t("Select all", "Tümünü seç")}
-                  checked={picked.length > 0 && picked.length === items.filter((i) => !i.sending).length}
-                  onChange={(e) => { setChosen(e.target.checked ? new Set(items.filter((i) => !i.sending).map((i) => i.domain)) : new Set()); setBody(null); }} /></th>}
+                {view === "pending" && <th><input type="checkbox" aria-label={t(`Select the first ${PER_MAIL}`, `İlk ${PER_MAIL} alan adını seç`)}
+                  title={t(`Select the first ${PER_MAIL} (one e-mail holds at most ${PER_MAIL})`, `İlk ${PER_MAIL} alan adını seç (bir e-postada en fazla ${PER_MAIL})`)}
+                  checked={picked.length > 0 && picked.length === Math.min(PER_MAIL, items.filter((i) => !i.sending).length)}
+                  onChange={(e) => { setChosen(e.target.checked ? new Set(items.filter((i) => !i.sending).slice(0, PER_MAIL).map((i) => i.domain)) : new Set()); setBody(null); }} /></th>}
                 <th>{t("Domain", "Alan adı")}</th><th>{t("Our finding", "Bulgumuz")}</th>
                 <th>{view === "pending" ? t("Confirmed", "Onay") : view === "dismissed" ? t("Set aside", "Ayrıldı") : t("Reported", "Bildirim")}</th>
                 <th>{view === "listed" ? t("Listed", "Listelendi") : t("List checked", "Liste kontrolü")}</th><th></th>
               </tr></thead>
               <tbody>{items.map((i) => (
                 <tr key={i.domain}>
-                  {view === "pending" && <td><input type="checkbox" disabled={i.sending} checked={chosen.has(i.domain)}
+                  {view === "pending" && <td><input type="checkbox" disabled={i.sending || (!chosen.has(i.domain) && chosen.size >= PER_MAIL)} checked={chosen.has(i.domain)}
                     aria-label={i.domain} onChange={(e) => toggle(i.domain, e.target.checked)} /></td>}
                   <td className="mono">{i.domain}{i.sending && <div className="muted" style={{ fontSize: 12 }}>{t("being sent…", "gönderiliyor…")}</div>}</td>
                   <td>{i.types.map((x) => categoryName(locale, x, x)).join(", ") || <span className="muted">{t("flag withdrawn", "işaret kalktı")}</span>}
@@ -170,6 +172,8 @@ function Queue({ api, site }: { api: string; site: string }) {
         {view === "pending" && picked.length > 0 && (
           <div className="panel stack usom-compose">
             <h2 style={{ margin: 0 }}>{t(`Report ${picked.length} domain(s) to USOM`, `${picked.length} alan adını USOM'a bildir`)}</h2>
+            {picked.length >= PER_MAIL && <div className="muted" style={{ fontSize: 13 }}>{t(`One e-mail holds at most ${PER_MAIL} domains; send the rest in the next one.`,
+                                                                                       `Bir e-postada en fazla ${PER_MAIL} alan adı olur; kalanları sonraki e-postayla gönderin.`)}</div>}
             <div className="muted" style={{ fontSize: 13 }}>{t("To", "Alıcı")}: <span className="mono">{data.mail.recipient}</span>
               {data.mail.sender && <> · {t("from", "gönderen")}: <span className="mono">{data.mail.sender}</span></>}</div>
             <input type="text" value={mailSubject} onChange={(e) => setSubject(e.target.value)} aria-label={t("Subject", "Konu")} />

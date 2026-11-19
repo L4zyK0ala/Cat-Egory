@@ -279,7 +279,7 @@ class UsomStatusIn(BaseModel):
 class UsomSendIn(BaseModel):
     domains: list[str] = Field(min_length=1, max_length=100)
     subject: str = Field(min_length=1, max_length=200)
-    body: str = Field(min_length=1, max_length=20000)
+    body: str = Field(min_length=1, max_length=60000)  # 100 domains with type, brand and date fit easily
 
 
 class UsomMailOut(BaseModel):
