@@ -140,7 +140,7 @@ def test_a_refused_mail_reports_nothing_and_never_shows_the_key(engine, sites, c
     out = client.get(f"/api/v1/admin/threats/usom/mails/{r.json()['id']}", headers=admin).json()
     assert out["status"] == "failed" and "HTTP 401" in out["error"] and "test-key" not in out["error"]
     q = get(client, admin)
-    assert "evil-shop.net" in [i["domain"] for i in q["items"]] and not any(i["sending"] for i in q["items"])
+    assert {"evil-shop.net"} <= {i["domain"] for i in q["items"]} and not any(i["sending"] for i in q["items"])
 
 
 @pytest.mark.parametrize("domains, reason", [
@@ -161,7 +161,7 @@ def test_set_aside_and_back(engine, sites, client, admin, mail_settings, sent_ta
                     json={"domains": ["evil-shop.net"], "subject": "Bildirim", "body": "metin"})
     assert r.status_code == 422 and "set aside" in r.json()["error"]["message"]
     client.post(url, headers=admin, json={"domains": ["evil-shop.net"], "action": "pending"})
-    assert "evil-shop.net" in [i["domain"] for i in get(client, admin)["items"]]
+    assert {"evil-shop.net"} <= {i["domain"] for i in get(client, admin)["items"]}
     with Session(engine) as s:
         assert s.scalar(select(UsomReport.id)) is None and s.scalar(select(UsomMail.id)) is None
 

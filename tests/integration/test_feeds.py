@@ -113,9 +113,9 @@ def test_feed_api(engine, client, admin, store, feed_client):
     run_build(engine, store)
     r = feed_client.get("/api/v1/feeds/gambling.txt")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
-    assert r.headers["X-Feed-Version"] and "casino.example.com" in names(r.text)
+    assert r.headers["X-Feed-Version"] and {"casino.example.com"} <= set(names(r.text))
     assert feed_client.get("/api/v1/feeds/gambling.txt", headers={"If-None-Match": r.headers["ETag"]}).status_code == 304
-    assert "bad.example.com" in names(feed_client.get("/api/v1/feeds/rpz").text)
+    assert {"bad.example.com"} <= set(names(feed_client.get("/api/v1/feeds/rpz").text))
     assert feed_client.get("/api/v1/feeds/all-domains.csv").headers["content-type"].startswith("text/csv")
     for bad in ("../etc/passwd", "gambling.exe", "UPPER.txt", "nope.txt"):
         assert feed_client.get(f"/api/v1/feeds/{bad}").status_code == 404
@@ -152,9 +152,9 @@ def test_a_flagged_domain_leaves_the_content_lists(engine, client, admin, store)
         record_url_threats(s, "https://forum.example.org/hacked/login", ["phishing"])  # one page, not the site
     run_build(engine, store)
     assert body(store, engine, "social-networking.txt").count("bad.example.com") == 0
-    assert "forum.example.org" in names(body(store, engine, "social-networking.txt"))
+    assert {"forum.example.org"} <= set(names(body(store, engine, "social-networking.txt")))
     assert "bad.example.com" not in body(store, engine, "all.csv")
-    assert "bad.example.com" in names(body(store, engine, "security.rpz"))
+    assert {"bad.example.com"} <= set(names(body(store, engine, "security.rpz")))
     listed = client.get("/api/v1/categories/social-networking/domains").json()["items"]
     assert [d["domain"] for d in listed] == ["forum.example.org"]
     distribution = {d["category"]: d["domains"] for d in client.get("/api/v1/stats").json()["category_distribution"]}
