@@ -211,7 +211,7 @@ def record(body: RecordIn, request: Request, principal: Principal = Depends(requ
         .where(where, ThreatIntelligence.source_id == source_id(session, REVIEW_SOURCE),
                ThreatIntelligence.threat_type.in_([ThreatType(t) for t in types]))
         .values(raw={"evidence": body.evidence, "by": principal.user_id}, source_reference=reference)).rowcount
-    audit.record(session, action="threat.record", target_type=scope, target_id=target[:500],
+    audit.record(session, action="threat.record", target_type=scope, target_id=target,
                  after={"types": types, "evidence": body.evidence}, principal=principal,
                  request_id=getattr(request.state, "request_id", None))
     session.commit()
@@ -232,7 +232,7 @@ def withdraw_threats(body: WithdrawIn, request: Request, principal: Principal = 
         domain, url = _domain(session, body.domain or ""), None
         target, scope = domain.normalized_domain, "domain"
     changed = withdraw(session, domain=domain, threat=threat, url=url)
-    audit.record(session, action="threat.withdraw", target_type=scope, target_id=target[:500],
+    audit.record(session, action="threat.withdraw", target_type=scope, target_id=target,
                  after={"type": body.type, "reason": body.reason, "withdrawn": changed}, principal=principal,
                  request_id=getattr(request.state, "request_id", None))
     session.commit()

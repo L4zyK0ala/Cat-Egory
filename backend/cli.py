@@ -182,7 +182,7 @@ def reclassify_category(session: Session, category: str, *, dry_run: bool = Fals
     if dry_run or not rows:
         return [name for _, name in rows]
     queued = queue_scans(session, [i for i, _ in rows], reason=ScanReason.RESCAN, priority=3, requested_by_id=None)
-    audit.record(session, action="domains.reclassify_category", target_type="category", target_id=category[:200],
+    audit.record(session, action="domains.reclassify_category", target_type="category", target_id=category,
                  after={"domains": len(rows), "queued_scans": queued, "matching": matching})
     return [name for _, name in rows]
 

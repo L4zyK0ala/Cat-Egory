@@ -133,3 +133,12 @@ def test_reclassify_only_likely_pirates(engine, clean, client, admin):
         assert sorted(found) == ["canlimacizle.net", "hdfilmcehennemi.land", "netflix.com"]
         assert len(reclassify_category(s, "streaming-media,sports", dry_run=True, matching="piracy", limit=1)) == 1
         assert reclassify_category(s, "streaming-media", dry_run=True, matching="hbo") == ["hbo.com"]
+    # a category list longer than the audit column still queues (the audit row keeps it whole in "after")
+    many = "streaming-media,video,music,entertainment,sports,file-sharing,software-downloads"
+    with Session(engine) as s, s.begin():
+        assert sorted(reclassify_category(s, many, matching="piracy")) == [
+            "canlimacizle.net", "hdfilmcehennemi.land", "netflix.com"]
+    with Session(engine) as s:
+        from database.models import AuditLog
+        row = s.scalar(select(AuditLog).where(AuditLog.action == "domains.reclassify_category"))
+        assert row.target_id == many[:64] and row.after["target"] == many and row.after["queued_scans"] == 3
