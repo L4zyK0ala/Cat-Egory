@@ -85,3 +85,16 @@ def test_clef_and_quota_probes(key, capsys):
     assert {q["type"] for q in sent["questions"].values()} == {"noul", "choice", "score"}
     out = capsys.readouterr().out
     assert '"remaining_cr": "0"' in out and "options: required" in out and KEY not in out
+
+
+def test_terms_prints_the_whole_text(key, capsys):
+    seen = []
+
+    def answer(request):
+        if request.url.path == "/v1/terms/status":
+            return httpx.Response(200, json={"accepted": True, "version": "2026-10"})
+        return httpx.Response(200, json={"version": "2026-10", "text": "Madde 1. Çıktılar...\nMadde 2. Saklama..."})
+    with client(seen, answer) as http:
+        assert evren_probe.terms(http) == 0
+    out = capsys.readouterr().out
+    assert "Madde 1. Çıktılar...\nMadde 2. Saklama..." in out and '"accepted": true' in out and KEY not in out

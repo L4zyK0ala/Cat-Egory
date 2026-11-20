@@ -27,7 +27,7 @@ export default async function ChangesPage() {
   let data: Changes | null = null;
   let names: Record<string, string> = {};
   try {
-    const [c, cats] = await Promise.all([api<Changes>(`/api/v1/changes?since=${encodeURIComponent(since)}&limit=1000`, UNCACHED),  // "since" differs on every request
+    const [c, cats] = await Promise.all([api<Changes>(`/api/v1/changes?since=${encodeURIComponent(since)}&limit=${SHOWN}&newest=true`, UNCACHED),  // "since" differs on every request
                                          api<{ items: Category[] }>("/api/v1/categories", 3600)]);
     data = c;
     names = Object.fromEntries(cats.items.map((x) => [x.id, categoryName(locale, x.id, x.name)]));
@@ -37,7 +37,8 @@ export default async function ChangesPage() {
   const base = publicApiUrl();
   const name = (id: string | null) => (id == null ? "" : names[id] ?? categoryName(locale, id, id));
   const when = new Intl.DateTimeFormat(intl(locale), { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Istanbul" });
-  const items = data ? [...data.items].reverse() : [];  // newest first on the page; the API is oldest first
+  // The latest changes, newest first. (Reversing the oldest-first feed showed only the oldest 1,000 of a busy week.)
+  const items = data?.items ?? [];
 
   const event = (c: Change) => {
     if (c.kind === "category") {

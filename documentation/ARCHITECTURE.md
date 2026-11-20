@@ -1,6 +1,9 @@
 # Cat-egory — System Architecture
 
-> Status (2026-11-07): all components exist; crawler sandbox verified. Open: live EVREN key, production deployment.
+> Status (last verified 2026-11-20): in production since 2026-11-08 with EVREN classifying live; the public site and
+> API run behind a Cloudflare Tunnel (cat-egory.org, api.cat-egory.org), the admin console only on the home VPN.
+> The object store is SeaweedFS (S3 API), which replaced MinIO when MinIO's images were withdrawn. Later
+> additions (threat detection, USOM reports, Yaş Mama) are described in THREATS.md and OPERATIONS.md.
 
 Cat-egory discovers websites, visits them in a sandboxed real browser, asks an AI provider to classify
 them against an open, versioned taxonomy, validates the answer, and publishes the result as an open
@@ -33,7 +36,7 @@ flowchart LR
         API["API service<br/>FastAPI"]
         PG[(PostgreSQL)]
         RD[(Redis<br/>broker + cache + rate limit)]
-        S3[(MinIO / S3<br/>screenshots, HTML, feeds)]
+        S3[(SeaweedFS, S3 API<br/>screenshots, HTML, feeds)]
         WK["Worker<br/>Celery: classify, persist,<br/>ingest, feeds, maintenance"]
         BEAT["Scheduler<br/>Celery beat"]
         PROM[Prometheus] --> GRAF[Grafana]
@@ -177,8 +180,8 @@ See [ER_DIAGRAM.md](ER_DIAGRAM.md). Key decisions:
 | Zone | Contents | Network |
 |---|---|---|
 | Public | Frontend, API listener | reached through the Cloudflare Tunnel (`cloudflared` on its own network); no port opened at home |
-| Core | Postgres, Redis, MinIO, workers | Docker `internal: true` network, no internet |
-| Crawler | Chromium, egress proxy | can reach Redis + MinIO + the internet; **cannot** reach Postgres or any private range |
+| Core | Postgres, Redis, SeaweedFS, workers | Docker `internal: true` network, no internet |
+| Crawler | Chromium, egress proxy | can reach Redis + SeaweedFS + the internet (through the egress proxy); **cannot** reach Postgres or any private range. Its own Redis user may only use its queues and hand results to the core (`deployment/redis/crawler.acl`), and its object-store key may only write artefacts (2026-11-20) |
 | Worker egress | AI provider, allow-listed source feeds | outbound HTTPS to named hosts only |
 
 ### 5.2 SSRF protection (crawler, Phase 3)
@@ -272,6 +275,6 @@ third-party-derived feed carries that source's licence and attribution header, o
 | ORM / migrations | SQLAlchemy 2 + Alembic | mature, explicit migrations |
 | Queue | Celery + Redis | requested stack; separate queues per workload |
 | Browser | Playwright + Chromium | real JS rendering, screenshots |
-| Object store | MinIO (S3 API) | self-hosted, swappable for any S3 |
+| Object store | SeaweedFS 4.52 (S3 API) | self-hosted, swappable for any S3 |
 | Domain parsing | `tldextract` with the bundled Public Suffix List snapshot | no network fetch at runtime |
 | Frontend | Next.js | requested stack |

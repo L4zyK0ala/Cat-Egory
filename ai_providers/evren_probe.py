@@ -4,6 +4,7 @@
     python -m ai_providers.evren_probe moderation   # the moderation endpoint on three fixed sample texts
     python -m ai_providers.evren_probe clef         # the decision endpoint (/v1/systemone) on one sample text
     python -m ai_providers.evren_probe quota        # the account's token and credit status
+    python -m ai_providers.evren_probe terms        # the terms of use this key accepted, in full
 
 Nothing here classifies a site or changes the database. The key is sent only to the gateway and never printed.
 ``moderation`` sends three short made-up texts (no site content, no personal data) and prints the answer as the
@@ -114,6 +115,24 @@ def quota(http: httpx.Client) -> int:
     return 0 if r.status_code < 400 else 1
 
 
+def terms(http: httpx.Client) -> int:
+    """The gateway's terms of use (whether outputs may be published, retention, automated use) and their status."""
+    base, headers = _auth()
+    status = http.get(f"{base}/v1/terms/status", headers=headers)
+    print(f"GET /v1/terms/status -> HTTP {status.status_code}")
+    print(_body(status, 2000))
+    text = http.get(f"{base}/v1/terms/text", headers=headers)
+    print(f"\nGET /v1/terms/text -> HTTP {text.status_code}")
+    try:
+        data = text.json()
+        body = next((data[k] for k in ("text", "content", "markdown", "body") if isinstance(data, dict) and k in data),
+                    None)
+        print(body if isinstance(body, str) else json.dumps(data, ensure_ascii=False, indent=2))
+    except ValueError:
+        print(text.text)
+    return 0 if status.status_code < 400 and text.status_code < 400 else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m ai_providers.evren_probe", description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -123,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     dec = sub.add_parser("clef", help="try the decision endpoint on one sample text")
     dec.add_argument("--model", default=DECISION_MODEL)
     sub.add_parser("quota", help="the account's token and credit status")
+    sub.add_parser("terms", help="the terms of use and whether this key accepted them")
     args = parser.parse_args(argv)
     with _client() as http:
         try:
@@ -130,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
                 return models(http)
             if args.command == "quota":
                 return quota(http)
+            if args.command == "terms":
+                return terms(http)
             return decision(http, args.model) if args.command == "clef" else moderation(http, args.model)
         except httpx.HTTPError as exc:
             print(f"could not reach the gateway: {type(exc).__name__}", file=sys.stderr)

@@ -63,6 +63,15 @@ def test_pages_never_split_one_instant(engine, client, admin):
     assert [c["domain"] for c in page["items"] + rest] == [c["domain"] for c in every]
 
 
+def test_newest_first_shows_the_latest_changes(engine, client, admin):
+    setup_data(engine, client, admin)
+    _reclassify(engine, "news.example.com", "gambling")  # the latest change
+    every = _events(client)["items"]
+    latest = _events(client, newest="true", limit=2)
+    assert latest["more"] and [c["at"] for c in latest["items"]] == sorted((c["at"] for c in every), reverse=True)[:2]
+    assert latest["items"][0]["domain"] == "news.example.com" and latest["until"] == latest["items"][0]["at"]
+
+
 def test_changes_limits(client):
     old = (datetime.now(UTC) - timedelta(days=31)).isoformat()
     assert client.get("/api/v1/changes", params={"since": old}).json()["error"]["code"] == "since_too_old"

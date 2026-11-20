@@ -90,6 +90,9 @@ export default function FeedBrowser({ profiles, threats, groups, allThreats }: {
               <a className="fmt" href={allThreats.url}>security.rpz</a>{" "}
               <span className="muted">{allThreats.records.toLocaleString(intl(locale))} {t("sites", "site")}</span></p>
           )}
+          {allThreats && !q && <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+            {t("One site can carry several threat types, so the lists below add up to more than this. Only whole-domain threats we confirmed (or that a source allowing redistribution reported) go into these lists; a single dangerous page on an otherwise fine site does not, so pages and statistics elsewhere can show more.",
+               "Bir site birden çok tehdit türünde olabilir; bu yüzden aşağıdaki listelerin toplamı bu sayıdan büyüktür. Bu listelere yalnızca alan adının tamamı için onayladığımız (ya da yeniden yayımlamaya izin veren bir kaynağın bildirdiği) tehditler girer; aksi halde zararsız bir sitedeki tek bir tehlikeli sayfa girmez. Bu yüzden diğer sayfalar ve istatistikler daha fazla gösterebilir.")}</p>}
           <ul className="feed-rows">{shownThreats.map((l) => <Row key={l.id} list={l} />)}</ul>
         </div>
       </>)}
