@@ -129,6 +129,14 @@ groups:
         annotations:
           summary: "No successful off-site backup for more than 36 hours (sudo ./deployment/scripts/offsite-backup.sh snapshots)"
           telegram: "36 saattir sunucu dışına yedek gönderilmedi (sudo ./deployment/scripts/offsite-backup.sh snapshots)."
+      # Only once the CVE watch was installed (make cve-timer; the heartbeat exists from its first run on).
+      - alert: CveScanStale
+        expr: time() - category_task_last_success_timestamp_seconds{task="security.cve_scan"} > 72 * 3600
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: "The CVE watch has not completed for 3 days (journalctl -u cat-egory-cve-watch)"
+          telegram: "CVE taraması 3 gündür tamamlanmadı (journalctl -u cat-egory-cve-watch)."
       # --- the host (node-exporter, docker-cleanup.sh) ---------------------------------------------------------------
       - alert: HostMetricsDown
         expr: up{job=~"node|processes"} == 0

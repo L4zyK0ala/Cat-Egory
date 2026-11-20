@@ -192,7 +192,8 @@ def build(session: Session, now: datetime, heartbeats: dict[str, float] | None =
     else:
         lines.append("• Henüz liste derlenmedi")
     beats = heartbeats or {}
-    for key, label, stale_hours in (("backup.nightly", "Yedek", 30), ("backup.offsite", "Sunucu dışı yedek", 36)):
+    for key, label, stale_hours in (("backup.nightly", "Yedek", 30), ("backup.offsite", "Sunucu dışı yedek", 36),
+                                    ("security.cve_scan", "CVE taraması", 72)):
         if key not in beats:
             lines.append(f"• {label}: kayıt yok" if key == "backup.nightly" else f"• {label}: kurulmadı")
             continue

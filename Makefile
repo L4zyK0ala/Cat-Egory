@@ -4,7 +4,7 @@ PUBLIC ?= $(shell grep -qsE '^CATEGORY_TUNNEL_TOKEN=.+' .env && echo 1)
 COMPOSE = docker compose -f deployment/docker-compose.yml $(if $(NOSANDBOX),-f deployment/docker-compose.nosandbox.yml) --env-file .env $(if $(PUBLIC),--profile public)
 PY ?= .venv/bin/python
 
-.PHONY: env up down logs ps test test-unit lint migrate seed sandbox-profile selftest backup backup-timer restore-test docker-after-vpn offsite-init offsite-check
+.PHONY: env up down logs ps test test-unit lint migrate seed sandbox-profile selftest backup backup-timer restore-test docker-after-vpn offsite-init offsite-check cve-timer cve-check
 
 env:            ## create .env with random secrets
 	./deployment/scripts/generate-env.sh
@@ -63,6 +63,15 @@ cleanup-timer:  ## install the weekly Docker housekeeping, its 80 % disk guard a
 docker-after-vpn: ## start Docker after WireGuard, so ports bound to the VPN address can open (needs sudo)
 	sudo install -D -m 644 deployment/systemd/docker-after-wireguard.conf /etc/systemd/system/docker.service.d/10-after-wireguard.conf
 	sudo systemctl daemon-reload
+
+cve-timer:      ## install the daily CVE watch (Trivy over the stack's images, new findings to Telegram; needs sudo)
+	sed 's#@ROOT@#$(CURDIR)#' deployment/systemd/cat-egory-cve-watch.service | sudo tee /etc/systemd/system/cat-egory-cve-watch.service > /dev/null
+	sudo cp deployment/systemd/cat-egory-cve-watch.timer /etc/systemd/system/
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now cat-egory-cve-watch.timer
+
+cve-check:      ## scan now and print what would be sent (sends and remembers nothing; needs sudo)
+	sudo python3 deployment/scripts/cve_watch.py --dry-run
 
 offsite-init:   ## create the encrypted off-site repository (needs /etc/cat-egory/offsite.env)
 	sudo ./deployment/scripts/offsite-backup.sh init

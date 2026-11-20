@@ -611,6 +611,24 @@ at most 80 % full, above that it cleans at once and keeps only 5 GB of build cac
 `sudo ./deployment/scripts/docker-cleanup.sh`. Images a stopped project no longer needs stay until removed by hand
 (`sudo docker image prune -a --filter until=168h`).
 
+**CVE watch.** `deployment/scripts/cve_watch.py` scans every image the compose project runs (ours and the
+third-party ones: Postgres, Redis, SeaweedFS, cloudflared, Prometheus, Grafana, …) with Trivy every morning at
+08:30 and sends what is **new** to the alert Telegram chat in one message; a day with nothing new sends nothing.
+- **What counts:** every CRITICAL finding, and HIGH ones that already have a fixed version. A finding (CVE,
+  package, installed version) is sent once. Accepted ones go into `/etc/cat-egory/cve-ignore.txt`, one CVE ID per
+  line with a `#` comment saying why.
+- **How:** each image is read once into a package list (CycloneDX, per image ID, in `/var/lib/cat-egory/cve-watch`);
+  the daily run compares the lists with Trivy's fresh database, so images are exported again only after they
+  change. Trivy runs pinned by digest, without the Docker socket and without capabilities.
+- **Setup:** `make cve-timer` installs the timer. Then run `make cve-check`: it prints the message and the full
+  list without sending or remembering anything. The first real run (`sudo systemctl start cat-egory-cve-watch`)
+  sends one summary of everything already known; after that only new findings arrive.
+- **Health:** the full list of the last run is in `/var/lib/cat-egory/cve-watch/last.txt`. The daily summary shows
+  when the watch last completed, and **CveScanStale** fires after 3 days without a complete run
+  (`journalctl -u cat-egory-cve-watch`).
+- **Fixing:** for our images, rebuild after the base image or `requirements/constraints.txt` moves (`make up`); for
+  third-party images, raise the tag in `deployment/docker-compose.yml`. Dependabot proposes both.
+
 **Threat fast lane.** Scan jobs at priority 0–2 (`CATEGORY_FAST_LANE_MAX_PRIORITY`): CT look-alikes, Octryx
 findings, and scans a person queues at that priority. They may use one crawl slot above
 `CATEGORY_MAX_IN_FLIGHT_SCANS` (`CATEGORY_FAST_LANE_EXTRA_SLOTS`). Their scan and classification steps run on
@@ -641,6 +659,7 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 - [ ] Public containers off the `edge` network (`docker-compose.public.yml`, step 5 below).
 - [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth).
 - [ ] Off-host backups (`offsite-backup.sh`, set up per section 4); restore drill once.
+- [ ] Daily CVE watch installed (`make cve-timer`, section 5).
 - [x] Alertmanager wired to Telegram (`CATEGORY_ALERT_TELEGRAM_CHAT_ID`; test message received 2026-11-09).
 - [ ] EVREN: terms questions answered (`EVREN_INTEGRATION.md`), live checklist done. (Project-specific key: done 2026-11-08.)
 - [ ] Legal review of the data licence (CC BY 4.0 for own data) and of each enabled source.
