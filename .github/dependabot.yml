@@ -7,6 +7,10 @@ updates:
     # Only the exact versions the images install (requirements/constraints.txt). pyproject.toml keeps loose lower
     # bounds; raising them there too opened a second PR that conflicted with the pins (2026-11-20).
     directory: /requirements
+    ignore:
+      # celery pins python-dateutil==2.9.0.post0 and botocore needs <3.0: 4.0 cannot be installed (2026-11-20)
+      - dependency-name: python-dateutil
+        update-types: [version-update:semver-major]
     schedule: {interval: weekly, day: monday}
     open-pull-requests-limit: 3
     groups:
