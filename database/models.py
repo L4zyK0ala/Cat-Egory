@@ -216,6 +216,12 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = _now()
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Second factor for password sign-in (backend/app/mfa.py): the TOTP secret encrypted with the app secret, the
+    # last time step accepted (no replay) and Argon2 hashes of unused backup codes.
+    totp_secret: Mapped[str | None] = mapped_column(Text)
+    totp_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)
+    totp_backup_codes: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
 
     __table_args__ = (CheckConstraint("email = lower(email)", name="email_lowercase"),)
 

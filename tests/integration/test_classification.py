@@ -31,7 +31,9 @@ from database.models import (
     ThreatIntelligence,
 )
 
-S = Settings(_env_file=None)
+# One publish threshold (0.90) here: these tests are about the bands, the second opinion and reviews;
+# test_ordinary_categories_publish_from_080 covers the lower threshold for ordinary categories.
+S = Settings(_env_file=None, confidence_auto_approve_ordinary=None)
 
 
 class Scripted(AIProvider):
@@ -349,8 +351,35 @@ def test_providers_and_calibration(engine, client, admin, monkeypatch):
         client.post(f"/api/v1/admin/reviews/{task['id']}/decision", headers=admin,
                     json={"action": decision, "primary": "blogs"} if decision == "set" else {"action": decision})
     report = client.get("/api/v1/admin/calibration", headers=admin).json()
-    band = report["models"]["scripted/scripted-1"][0]
+    model = report["models"]["scripted/scripted-1"]
+    band = model["bands"][0]
     assert report["samples"] == 2 and band["count"] == 2 and band["accuracy"] == 0.5 and band["reliable"] is False
+    # both answered at 0.65, one right: |0.5 - 0.65| = 0.15; Brier = ((0.65-1)^2 + 0.65^2) / 2
+    assert model["ece"] == 0.15 and model["brier"] == round((0.35 ** 2 + 0.65 ** 2) / 2, 4)
+    assert model["random"]["n"] == 0  # hard cases only, no random verification sample yet
+
+
+def test_category_balanced_sample_and_calibration(engine, client, admin):
+    """The balanced sample takes categories with the fewest checks first; its decisions count per category on the
+    accuracy page and in the calibration report's random view, never in the overall published-AI figure."""
+    sites = {"news1.example.com": "news", "news2.example.com": "news", "news3.example.com": "news",
+             "shop1.example.com": "e-commerce", "game1.example.com": "gaming"}
+    for name, primary in sites.items():
+        run(engine, make_scan(engine, name), Scripted(primary_category=primary, confidence=0.95))
+    r = client.post("/api/v1/admin/reviews/sample", headers=admin, json={"n": 3, "by_category": True})
+    assert r.json() == {"created": 3}
+    tasks = client.get("/api/v1/admin/reviews", headers=admin).json()["items"]
+    assert {t["reason"] for t in tasks} == {"verification_category"}
+    assert sorted(t["prediction"]["primary_category"] for t in tasks) == ["e-commerce", "gaming", "news"]
+    for t in tasks:
+        body = {"action": "approve"} if t["prediction"]["primary_category"] != "gaming" else \
+            {"action": "set", "primary": "entertainment"}
+        assert client.post(f"/api/v1/admin/reviews/{t['id']}/decision", headers=admin, json=body).status_code == 200
+    acc = client.get("/api/v1/accuracy").json()["published_ai"]
+    assert acc["n"] == 0  # the overall figure stays the uniform sample's
+    rand = client.get("/api/v1/admin/calibration", headers=admin).json()["models"]["scripted/scripted-1"]["random"]
+    assert rand["n"] == 3 and round(rand["accuracy"], 3) == 0.667
+    assert {c["category"]: c["accuracy"] for c in rand["categories"]} == {"news": 1.0, "e-commerce": 1.0, "gaming": 0.0}
 
 
 def test_feed_build_trigger(client, admin, make_key, monkeypatch):
@@ -426,3 +455,31 @@ def test_second_opinion_cli_needs_a_second_model(engine, clean, capsys, monkeypa
     monkeypatch.setattr(get_settings(), "evren_second_model", "deepseek-v4.1-flash")
     assert cli.main(["second-opinion"]) == 0
     assert "dry run: 1 open reviews" in capsys.readouterr().out
+
+
+def test_ordinary_categories_publish_from_080(engine, clean):
+    """With the default settings an 0.85 answer is published for news, but a gambling one waits for a second model."""
+    from backend.app.classify_tasks import policy_from
+
+    settings = Settings(_env_file=None)
+    assert settings.confidence_auto_approve_ordinary == 0.80
+    policy = policy_from(settings)
+    news = run_with_policy(engine, make_scan(engine, "haber-ornek.example.com"),
+                           Scripted(primary_category="news", confidence=0.85), policy)
+    casino = run_with_policy(engine, make_scan(engine, "casino-ornek.example.com"),
+                             Scripted(primary_category="gambling", confidence=0.85), policy)
+    assert news.action == "applied" and news.reason == "high_confidence"
+    assert (casino.action, casino.reason) == ("review", "needs_extra_validation")  # no second model in this test
+
+
+def run_with_policy(engine, scan_id, provider, policy):
+    from classification.engine import build_input, decide
+    from classification.taxonomy import default_taxonomy
+    from database.models import ScanResult
+
+    with Session(engine) as s, s.begin():
+        scan = s.get(ScanResult, scan_id)
+        domain = s.get(Domain, scan.domain_id)
+        data = build_input(s, scan, use_screenshot=False)
+        result = provider.classify(data)
+        return decide(s, domain, scan, result, taxonomy=default_taxonomy(), policy=policy, data=data)

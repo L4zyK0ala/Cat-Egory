@@ -210,7 +210,8 @@ def open_review(session: Session, domain: Domain, prediction: AIPrediction | Non
 
 # Reasons that only say "the model was not sure". A later confident (or two-model) classification answers them.
 # Risk claims, injection and model-requested reviews stay open for a person even then.
-SUPERSEDABLE_REASONS = ("low_confidence", "needs_extra_validation", "model_disagreement", "verification_sample")
+SUPERSEDABLE_REASONS = ("low_confidence", "needs_extra_validation", "model_disagreement", "verification_sample",
+                        "verification_category")
 
 
 def supersede_reviews(session: Session, domain: Domain, note: str, *, reasons=SUPERSEDABLE_REASONS) -> int:
@@ -367,7 +368,8 @@ def decide(session: Session, domain: Domain, scan: ScanResult | None, result: Pr
                                              ReviewTask.reason.in_(STICKY_REASONS)).values(ai_prediction_id=first.id))
     out = result.output
     decision = policy.decide(out.confidence, requires_human_review=out.requires_human_review,
-                             has_risk=bool(out.risk_categories), injection_suspected=bool(result.injection_signals))
+                             has_risk=bool(out.risk_categories), injection_suspected=bool(result.injection_signals),
+                             categories=[out.primary_category, *out.secondary_categories])
 
     human_rows = [r for r in current_assignments(session, domain.id)
                   if r.origin in (AssignmentOrigin.HUMAN, AssignmentOrigin.COMMUNITY)]

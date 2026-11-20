@@ -21,6 +21,7 @@ type Action = "approve" | "set" | "reject" | "withdraw";
 function reasonText(t: T, reason: string, lookalikeOf?: string | null) {
   const reasons: Record<string, string> = {
     verification_sample: t("published by the AI — verify", "yapay zekâ yayımladı — doğrulayın"),
+    verification_category: t("published by the AI — verify (category-balanced sample)", "yapay zekâ yayımladı — doğrulayın (kategoriye dengeli örnek)"),
     brand_lookalike: t("look-alike from the certificate watch — check for phishing", "sertifika izlemesinden taklit — oltalama mı bakın"),
     low_confidence: t("model unsure", "model emin değil"), model_requested_review: t("model asked for a person", "model bir kişiye sordu"),
     needs_extra_validation: t("needs a second opinion", "ikinci görüş gerekiyor"), model_disagreement: t("two models disagree", "iki model farklı düşünüyor"),
@@ -137,8 +138,9 @@ function Quick({ api }: { api: string }) {
     } else setMsg({ ok: false, text: `${res.message} (${res.code})` });
   }, [advance, api, busy, changed, choice, content, current, locale, name, risk, t]);
 
-  const sample = useCallback(async () => {
-    const r = await call<{ created: number }>(api, "/api/v1/admin/reviews/sample", { method: "POST", body: JSON.stringify({ n: 20 }) });
+  const sample = useCallback(async (byCategory = false) => {
+    const r = await call<{ created: number }>(api, "/api/v1/admin/reviews/sample",
+      { method: "POST", body: JSON.stringify({ n: 20, by_category: byCategory }) });
     setMsg(r.ok ? { ok: true, text: t(`${r.data.created} published AI answers added for verification.`, `Doğrulama için ${r.data.created} yayımlanmış YZ cevabı eklendi.`) }
                 : { ok: false, text: `${r.message} (${r.code})` });
     void load();
@@ -171,7 +173,10 @@ function Quick({ api }: { api: string }) {
           </select>
           <span><b>{done}</b> {t("decided", "karar")} · <b>{items.length}</b> {t("left", "kaldı")}</span>
         </span>
-        <button className="secondary" onClick={sample}>{t("Add 20 Published AI Answers to Verify", "Doğrulamak İçin 20 YZ Cevabı Ekle")}</button>
+        <button className="secondary" onClick={() => void sample()}>{t("Add 20 Published AI Answers to Verify", "Doğrulamak İçin 20 YZ Cevabı Ekle")}</button>
+        <button className="secondary" title={t("From the categories with the fewest checks so far: measures each category, not the overall figure",
+                                                "Şimdiye kadar en az kontrol edilen kategorilerden: her kategoriyi ölçer, genel oranı değil")}
+                onClick={() => void sample(true)}>{t("20, Balanced by Category", "20, Kategoriye Dengeli")}</button>
         <span className="muted keys"><kbd>A</kbd> {t("approve", "onayla")} · <kbd>S</kbd> {t("category", "kategori")} · <kbd>R</kbd> {t("reject", "reddet")} · <kbd>N</kbd> {t("skip", "atla")}</span>
       </div>
       {msg && <div className={`notice ${msg.ok ? "ok" : "error"}`} role="status">{msg.text}</div>}

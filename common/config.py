@@ -51,7 +51,10 @@ class Settings(BaseSettings):
     evren_second_model: str | None = Field(
         default=None, description="Second EVREN model asked for a second opinion in the 0.70-0.89 band")
     classify_use_screenshot: bool = True
-    confidence_auto_approve: float = 0.90
+    confidence_auto_approve: float = 0.90  # sensitive categories (classification/confidence.py SENSITIVE)
+    confidence_auto_approve_ordinary: float | None = Field(
+        default=0.80, description="publish from this confidence outside sensitive categories (calibration of "
+                                  "2026-11-20); empty = confidence_auto_approve everywhere")
     confidence_extra_validation: float = 0.70
     confidence_human_review: float = 0.50
     reanalyze_days: int = 1
@@ -235,6 +238,8 @@ class Settings(BaseSettings):
 
     # keyed hash for client fingerprints (IP addresses are never stored in clear). Unset = no fingerprints.
     fingerprint_secret: SecretStr | None = None
+    admin_mfa_required: bool = Field(default=False, description="refuse password sign-in to staff accounts without "
+                                                                 "a second factor (python -m backend.cli mfa-enroll)")
 
 
 @lru_cache

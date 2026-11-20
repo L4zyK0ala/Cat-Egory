@@ -51,7 +51,9 @@ MONTHS = ("Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağ
 DAYS = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
 # The review queue's own words (frontend/components/QuickReview.tsx), shortened.
 REASONS = {
-    "verification_sample": "doğrulama örneği", "brand_lookalike": "marka taklidi", "low_confidence": "model emin değil",
+    "verification_sample": "doğrulama örneği",
+    "verification_category": "kategoriye dengeli doğrulama",
+    "brand_lookalike": "marka taklidi", "low_confidence": "model emin değil",
     "model_requested_review": "model sordu", "needs_extra_validation": "ikinci görüş", "model_disagreement": "modeller ayrıştı",
     "prompt_injection": "sayfa modeli yönlendiriyor", "risk_claim": "tehdit iddiası",
     "conflicts_with_human_decision": "insan kararıyla çelişki", "threat_returned": "geri dönen tehdit",

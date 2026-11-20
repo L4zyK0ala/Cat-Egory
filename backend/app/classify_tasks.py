@@ -34,7 +34,8 @@ log = logging.getLogger("category.classify")
 def policy_from(settings: Settings) -> ConfidencePolicy:
     return ConfidencePolicy(auto_approve=settings.confidence_auto_approve,
                             extra_validation=settings.confidence_extra_validation,
-                            human_review=settings.confidence_human_review)
+                            human_review=settings.confidence_human_review,
+                            auto_approve_ordinary=settings.confidence_auto_approve_ordinary)
 
 
 def classify_scan(session: Session, scan_result_id: int, settings: Settings, *, provider: AIProvider,

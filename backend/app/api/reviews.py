@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from ai_providers.registry import available
 from classification import calibration
+from classification.confidence import SENSITIVE
 from classification.engine import (
     BRAND_WATCH_SOURCE,
     REVIEW_SOURCE,
@@ -208,6 +209,8 @@ def list_reviews(status: Literal["open", "done", "skipped"] = "open", limit: int
 
 class SampleIn(BaseModel):
     n: int = Field(20, ge=1, le=50, description="how many published AI classifications to add for verification")
+    by_category: bool = Field(False, description="spread over the categories with the fewest checks so far (random "
+                                                 "within each); counts per category, not towards the overall figure")
 
 
 @router.post("/reviews/sample", summary="Queue a random sample of published AI classifications for human verification")
@@ -223,13 +226,40 @@ def sample_for_verification(body: SampleIn, request: Request, principal: Princip
         .where(Domain.is_active, Domain.classification_status == ClassificationStatus.CLASSIFIED,
                DomainCategory.valid_to.is_(None), DomainCategory.is_primary,
                DomainCategory.origin == AssignmentOrigin.AI, DomainCategory.ai_prediction_id.is_not(None), ~open_task)
-        .order_by(func.random()).limit(body.n)).all()
+        .order_by(func.random()).limit(5000 if body.by_category else body.n)).all()
+    reason = "verification_sample"
+    if body.by_category:
+        rows = _spread_over_categories(session, rows, body.n)
+        reason = "verification_category"
     for domain, prediction_id in rows:
-        open_review(session, domain, session.get(AIPrediction, prediction_id), "verification_sample")
-    audit.record(session, action="review.sample", target_type="review", after={"created": len(rows)},
+        open_review(session, domain, session.get(AIPrediction, prediction_id), reason)
+    audit.record(session, action="review.sample", target_type="review",
+                 after={"created": len(rows), "by_category": body.by_category},
                  principal=principal, request_id=getattr(request.state, "request_id", None))
     session.commit()
     return {"created": len(rows)}
+
+
+def _spread_over_categories(session: Session, rows: list, n: int) -> list:
+    """From randomly ordered candidates, one per category at a time, categories with the fewest finished checks
+    first, until ``n``. Within a category the pick stays random, so each category's figure is unbiased."""
+    from classification.accuracy import CATEGORY_SAMPLE_REASON, SAMPLE_REASON
+
+    checked = dict(session.execute(
+        select(AIPrediction.primary_category_id, func.count())
+        .join(ReviewTask, ReviewTask.ai_prediction_id == AIPrediction.id)
+        .where(ReviewTask.status == ReviewStatus.DONE,
+               ReviewTask.reason.in_((SAMPLE_REASON, CATEGORY_SAMPLE_REASON)))
+        .group_by(AIPrediction.primary_category_id)).all())
+    by_category: dict[str, list] = {}
+    for domain, prediction_id in rows:
+        by_category.setdefault(domain.primary_category_id or "", []).append((domain, prediction_id))
+    picked: list = []
+    while len(picked) < n and any(by_category.values()):
+        category = min((c for c, left in by_category.items() if left), key=lambda c: (checked.get(c, 0), c))
+        picked.append(by_category[category].pop(0))
+        checked[category] = checked.get(category, 0) + 1
+    return picked
 
 
 @router.get("/reviews/{task_id}", response_model=ReviewOut, summary="One review task")
@@ -352,6 +382,8 @@ def providers(probe: bool = Query(False, description="send one small live reques
         "active": {k: active.get(k) for k in ("provider", "model", "status", "detail", "supports_images")},
         "second_opinion": active.get("second_opinion"),
         "policy": {"auto_approve": settings.confidence_auto_approve,
+                   "auto_approve_ordinary": settings.confidence_auto_approve_ordinary,
+                   "sensitive_categories": sorted(SENSITIVE),
                    "extra_validation": settings.confidence_extra_validation,
                    "human_review": settings.confidence_human_review},
     }

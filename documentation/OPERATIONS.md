@@ -25,6 +25,34 @@ scripts ("Use an API key").
 $DC exec api python -m backend.cli set-password --email you@example.org    # prompts twice, min. 12 characters
 ```
 
+**Second factor (TOTP).** Turn it on per account; sign-in then also asks for the 6-digit code from an authenticator
+app (Aegis, Google Authenticator, 1Password ...), or one of 8 single-use backup codes. A code is accepted once and
+within 30 seconds either side; wrong codes count towards the same 5-per-15-minutes limit. The secret is stored
+encrypted with `CATEGORY_FINGERPRINT_SECRET` (changing that secret means enrolling again) and backup codes as Argon2
+hashes. Once every staff account is enrolled, `CATEGORY_ADMIN_MFA_REQUIRED=true` refuses password sign-in without a
+second factor. API keys are separate credentials and are not affected: revoke long-lived ones you do not use.
+
+```bash
+$DC exec -it api python -m backend.cli mfa-enroll --email you@example.org   # shows the key and backup codes, asks for a code
+$DC exec api python -m backend.cli mfa-disable --email you@example.org --yes   # lost phone and backup codes
+```
+
+**Calibration.** `$DC exec -T api python -m backend.cli calibration` prints, per model, accuracy by stated-confidence
+band with the expected calibration error (ECE) and Brier score: once over every reviewed answer (mostly unsure ones,
+so lower by design) and once over the random verification samples only, with accuracy per main category and a 95 %
+interval. *Add 20, Balanced by Category* in Quick Review samples published AI answers from the categories with the
+fewest checks so far (random within each); those count per category and in the calibration report, never in the
+overall published-AI figure on the accuracy page, which stays the uniform sample's.
+
+**Publish thresholds by category (2026-11-20).** The first calibration report showed the model under-confident:
+99 % of 99 randomly sampled published answers right, reviewed answers stated 0.80-0.89 right 96 % of the time (426)
+and even 0.50-0.69 97 %. Its confidence barely separates right from wrong, so the thresholds mostly cost tokens and
+reviews. Answers are now published from `CATEGORY_CONFIDENCE_AUTO_APPROVE_ORDINARY` (0.80) in ordinary categories;
+`CATEGORY_CONFIDENCE_AUTO_APPROVE` (0.90) stays when the main or a secondary category is sensitive (restricted
+content, banking, finance, government: `SENSITIVE` in `classification/confidence.py`). Below the threshold the
+second model and people work as before. Watch the random verification samples for two weeks;
+`CATEGORY_CONFIDENCE_AUTO_APPROVE_ORDINARY=0.90` in `.env` (passed to the workers) brings back one threshold.
+
 Addresses (set `CATEGORY_PUBLIC_BIND` / `CATEGORY_ADMIN_BIND` in `.env`):
 
 | Service | Default | Notes |

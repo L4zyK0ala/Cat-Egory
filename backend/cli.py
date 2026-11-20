@@ -353,6 +353,86 @@ def _print_key(key: ApiKey, secret: str) -> None:
     print(f"prefix={key.prefix} scopes={','.join(key.scopes)} expires={key.expires_at or 'never'}")
 
 
+def calibration_text(session: Session) -> str:
+    from classification import calibration
+
+    def pct(v):
+        return "-" if v is None else f"{100 * v:.1f} %"
+
+    data = calibration.report(session)
+    lines = [f"Reviewed AI answers: {data['samples']} (a band is reliable from {data['min_samples_per_band']})", ""]
+    for name, m in data["models"].items():
+        r = m["random"]
+        lines += [f"== {name}", f"all reviewed answers: ECE {m['ece']}, Brier {m['brier']} "
+                  "(mostly unsure answers sent to a person: not the accuracy of what is published)"]
+        lines += [f"  {b['band']}: {b['count']:>5} answers, right {pct(b['accuracy'])}, stated {pct(b['mean_confidence'])}"
+                  + ("" if b["reliable"] else "  (few)") for b in m["bands"]]
+        lines += [f"random verification samples: {r['n']} answers, right {pct(r['accuracy'])} "
+                  f"(95 %: {pct(r['low'])} - {pct(r['high'])}), stated {pct(r['mean_confidence'])}, "
+                  f"ECE {r['ece']}, Brier {r['brier']}"]
+        lines += [f"  {c['category']:<24} {c['n']:>4}  right {pct(c['accuracy'])}  (95 %: {pct(c['low'])} - {pct(c['high'])})"
+                  for c in r["categories"]]
+        lines.append("")
+    return "\n".join(lines)
+
+
+def mfa_enroll(session: Session, email: str, app_secret: str, ask=input, say=print) -> bool:
+    """Show a new secret and backup codes, and save them only once the app's first code is right."""
+    from backend.app import audit, mfa
+
+    user = session.scalar(select(User).where(User.email == email.strip().lower()).with_for_update())
+    if user is None or not user.is_active:
+        raise CliError(f"no active user {email}")
+    secret = mfa.new_secret()
+    codes, hashes = mfa.new_backup_codes()
+    grouped = " ".join(secret[i:i + 4] for i in range(0, len(secret), 4))
+    say(f"Add this account to your authenticator app (Aegis, Google Authenticator, 1Password ...).\n"
+        f"  key (type it in):  {grouped}\n  or as a link/QR:   {mfa.otpauth_uri(secret, user.email)}\n"
+        f"Backup codes, each works once if the phone is lost. Keep them offline, not in a chat or a repo:")
+    for code in codes:
+        say(f"  {code}")
+    step = mfa.matching_step(secret, ask("6-digit code from the app: "), last_step=None)
+    if step is None:
+        say("That code is not right; nothing was changed. Run the command again.")
+        return False
+    user.totp_secret = mfa.seal(secret, app_secret)
+    user.totp_enabled_at = datetime.now(UTC)
+    user.totp_last_step = step
+    user.totp_backup_codes = hashes
+    audit.record(session, action="user.mfa_enabled", target_type="user", target_id=user.id,
+                 after={"backup_codes": len(hashes)})
+    say(f"Second factor is on for {user.email}. Sign-in now asks for a code.")
+    return True
+
+
+def mfa_disable(session: Session, email: str) -> None:
+    from backend.app import audit
+
+    user = session.scalar(select(User).where(User.email == email.strip().lower()).with_for_update())
+    if user is None:
+        raise CliError(f"no user {email}")
+    user.totp_secret, user.totp_enabled_at, user.totp_last_step, user.totp_backup_codes = None, None, None, []
+    audit.record(session, action="user.mfa_disabled", target_type="user", target_id=user.id)
+
+
+def mfa_command(args) -> int:
+    settings = get_settings()
+    app_secret = settings.fingerprint_secret.get_secret_value() if settings.fingerprint_secret else ""
+    try:
+        with session_factory()() as session, session.begin():
+            if args.command == "mfa-enroll":
+                return 0 if mfa_enroll(session, args.email, app_secret) else 1
+            if not args.yes:
+                print(f"dry run: would turn the second factor off for {args.email} (add --yes)")
+                return 0
+            mfa_disable(session, args.email)
+            print(f"second factor is off for {args.email}; enrol again with mfa-enroll")
+            return 0
+    except (CliError, EOFError) as exc:
+        print(f"error: {exc or 'no input'}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m backend.cli", description="Cat-egory administration")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -374,6 +454,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--scopes", help="comma separated; default: everything the user's role allows")
     p.add_argument("--rate-limit", type=int, help="requests per minute (default: server setting)")
     p.add_argument("--expires-days", type=int)
+
+    sub.add_parser("calibration", help="how well stated confidence matches people's decisions (ECE, Brier, bands)")
+
+    p = sub.add_parser("mfa-enroll", help="turn on the second factor (TOTP) for a staff account; interactive")
+    p.add_argument("--email", required=True)
+    p = sub.add_parser("mfa-disable", help="turn the second factor off for an account (lost phone and backup codes)")
+    p.add_argument("--email", required=True)
+    p.add_argument("--yes", action="store_true")
 
     p = sub.add_parser("list-keys", help="list API keys (never shows secrets)")
     p.add_argument("--email")
@@ -490,6 +578,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         print(f"checked {counts['checked']} domains, {counts['listed']} flagged by at least one vendor"
               + (" (stopped after an API error or a used-up quota; try again later)" if counts["errors"] else ""))
+        return 0
+    if args.command in ("mfa-enroll", "mfa-disable"):
+        return mfa_command(args)
+    if args.command == "calibration":
+        with session_factory()() as session:
+            print(calibration_text(session))
         return 0
     try:
         with session_factory()() as session, session.begin():

@@ -5,7 +5,9 @@ Measured against people, never against the model itself:
 * **Published AI answers.** Confident answers are published without a person; reviewers check a random sample of
   them ("verification_sample"). The share they kept is the accuracy of what the public sees from the AI. It is the
   only unbiased figure here, so it leads the page, with a 95% interval (Wilson) that shows how much a small
-  sample can be trusted.
+  sample can be trusted. Categories are reported from that sample plus the category-balanced one
+  ("verification_category": random within a category, but more from categories with few checks), which is
+  unbiased per category but not overall.
 * **Hard cases.** Answers the model was unsure about, or where two models disagreed, always go to a person. Their
   hit rate is shown apart: it is lower by design and must not be read as overall accuracy.
 * **Threat flags.** Our own records (a reviewer's or Octryx's): how many are active, how many were taken back, and how
@@ -37,6 +39,7 @@ from database.publication import published
 from .engine import OWN_THREAT_SOURCES
 
 SAMPLE_REASON = "verification_sample"
+CATEGORY_SAMPLE_REASON = "verification_category"  # random within a category; never part of the overall figure
 HARD_REASONS = ("low_confidence", "needs_extra_validation", "model_disagreement", "model_requested_review")
 MIN_PER_CATEGORY = 5  # below this a category's share says nothing
 
@@ -63,10 +66,11 @@ def report(session: Session, now: datetime | None = None) -> dict:
         .where(ReviewTask.status == ReviewStatus.DONE, AIPrediction.primary_category_id.is_not(None))
     ).all()
     sample = [(p, d) for reason, p, d in rows if reason == SAMPLE_REASON]
+    by_category = sample + [(p, d) for reason, p, d in rows if reason == CATEGORY_SAMPLE_REASON]
     hard = [(p, d) for reason, p, d in rows if reason in HARD_REASONS]
 
     per_category: dict[str, list[int]] = defaultdict(lambda: [0, 0])
-    for predicted, decided in sample:
+    for predicted, decided in by_category:
         per_category[predicted][0] += 1
         per_category[predicted][1] += int(predicted == decided)
     categories = sorted(({"category": c, **_share(k, n)} for c, (n, k) in per_category.items() if n >= MIN_PER_CATEGORY),

@@ -13,6 +13,8 @@ export default function KeyGate({ api, children }: { api: string; children: (me:
   const [mode, setMode] = useState<"password" | "key">("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [needOtp, setNeedOtp] = useState(false);  // the password was right; the account has a second factor
   const [remember, setRemember] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
@@ -42,10 +44,22 @@ export default function KeyGate({ api, children }: { api: string; children: (me:
     e.preventDefault();
     setBusy(true);
     const r = await call<{ key: string }>(api, "/api/v1/admin/session",
-      { method: "POST", body: JSON.stringify({ email, password, remember }), auth: false });
+      { method: "POST", body: JSON.stringify({ email, password, remember, ...(needOtp ? { otp } : {}) }), auth: false });
     setBusy(false);
+    setOtp("");
+    if (!r.ok) {
+      if (r.code === "otp_required") { setNeedOtp(true); setError(""); return; }  // keep the password for the second step
+      setPassword("");
+      setNeedOtp(r.code === "invalid_otp");
+      setError(r.code === "invalid_login" ? t("Wrong email or password.", "E-posta veya parola yanlış.")
+        : r.code === "invalid_otp" ? t("Wrong or already used code. Try the next code from the app.", "Kod yanlış ya da daha önce kullanılmış. Uygulamadaki bir sonraki kodu deneyin.")
+        : r.code === "too_many_attempts" ? t("Too many attempts; try again in 15 minutes.", "Çok fazla deneme; 15 dakika sonra tekrar deneyin.")
+        : r.code === "mfa_enrollment_required" ? t("This account needs a second factor first (mfa-enroll on the server).", "Bu hesap için önce iki adımlı doğrulama kurulmalı (sunucuda mfa-enroll).")
+        : `${r.message} (${r.code})`);
+      return;
+    }
     setPassword("");
-    if (!r.ok) { setError(r.code === "invalid_login" ? t("Wrong email or password.", "E-posta veya parola yanlış.") : `${r.message} (${r.code})`); return; }
+    setNeedOtp(false);
     setKey(r.data.key, remember);
     void check();
   }
@@ -65,6 +79,9 @@ export default function KeyGate({ api, children }: { api: string; children: (me:
                onChange={(e) => setEmail(e.target.value)} />
         <input type="password" autoComplete="current-password" placeholder={t("Password", "Parola")} required value={password}
                onChange={(e) => setPassword(e.target.value)} />
+        {needOtp && <input autoFocus inputMode="text" autoComplete="one-time-code" required value={otp} maxLength={14}
+                           placeholder={t("6-digit code (or a backup code)", "6 haneli kod (ya da bir yedek kod)")}
+                           aria-label={t("Authenticator code", "Doğrulama kodu")} onChange={(e) => setOtp(e.target.value)} />}
         <label className="muted"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />{" "}
           {t("Keep me signed in on this device for 7 days", "Bu cihazda 7 gün oturumum açık kalsın")}</label>
         <div className="row">
