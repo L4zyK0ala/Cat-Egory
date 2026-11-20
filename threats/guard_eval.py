@@ -5,6 +5,7 @@ No domain, category, threat flag or review changes, and nothing is stored. Run i
 
     python -m threats.guard_eval                    # dry run: how many pages each group has
     python -m threats.guard_eval --per-group 150 --yes > guard-eval.md
+    python -m threats.guard_eval --by-category --yes > guard-categories.md   # licensed vs unlicensed content
 
 Groups (each page is the newest stored scan of the domain that has text):
 
@@ -17,6 +18,11 @@ Groups (each page is the newest stored scan of the domain that has text):
 The report gives, per group, EVREN's verdict (``evren.safety``: Safe / Controversial / Unsafe) and its categories
 (``evren.guard_categories``; the OpenAI-style ``flagged`` stays false for "Controversial", so it is not used), and
 how well two simple rules would tell our threats from checked legitimate sites.
+
+``--by-category`` groups published sites by main category instead (default: licensed and illegal gambling,
+streaming media and piracy, and a few ordinary categories as a baseline) and shows whether "Non-violent Illegal
+Acts" tells the unlicensed side of each pair from the licensed one. The labels are the published ones (mostly the
+AI's), so a few may be wrong; the report counts the person-checked ones apart.
 """
 from __future__ import annotations
 
@@ -56,6 +62,10 @@ FINANCE_GOV = ("banking", "finance", "government")
 GROUPS = ("threat", "legit_finance_gov", "legit_other", "injection", "adult")
 LEGIT = ("legit_finance_gov", "legit_other")
 ILLEGAL = "Non-violent Illegal Acts"
+CATEGORY_GROUPS = ("gambling", "illegal-gambling", "streaming-media", "piracy", "video", "file-sharing",
+                   "software-downloads", "news", "education", "e-commerce")
+PAIRS = (("gambling", "illegal-gambling"), ("streaming-media", "piracy"), ("software-downloads", "piracy"))
+PUBLISHED = (ClassificationStatus.CLASSIFIED, ClassificationStatus.VERIFIED)
 
 Ask = Callable[[list[str]], list[dict]]
 
@@ -65,11 +75,14 @@ class Page:
     group: str
     domain: str
     text: str
+    checked: bool = False  # a person verified its category
 
 
 @dataclass
 class Tally:
     n: int = 0
+    checked: int = 0
+    checked_illegal: int = 0
     safety: Counter = field(default_factory=Counter)
     categories: Counter = field(default_factory=Counter)
     not_safe: int = 0
@@ -123,6 +136,24 @@ def pages(session: Session, per_group: int) -> list[Page]:
     return out
 
 
+def pages_by_category(session: Session, per_group: int, categories: Iterable[str] = CATEGORY_GROUPS) -> list[Page]:
+    """Published sites by main category, the same fixed sample on every run; person-checked ones first."""
+    newest = _newest_text_scans()
+    verified = Domain.classification_status == ClassificationStatus.VERIFIED
+    text = (select(Domain.normalized_domain, ScanResult.page_title, ExtractedContent.text_excerpt, verified)
+            .join(newest, newest.c.domain_id == Domain.id)
+            .join(ScanResult, ScanResult.id == newest.c.scan_id)
+            .join(ExtractedContent, ExtractedContent.scan_result_id == ScanResult.id)
+            .where(Domain.is_active, Domain.classification_status.in_(PUBLISHED)))
+    out: list[Page] = []
+    for category in categories:
+        rows = session.execute(text.where(Domain.primary_category_id == category)
+                               .order_by(verified.desc(), func.md5(Domain.normalized_domain)).limit(per_group)).all()
+        out += [Page(category, name, (f"{title or ''}\n{excerpt or ''}").strip()[:MAX_CHARS], bool(checked))
+                for name, title, excerpt, checked in rows]
+    return out
+
+
 def http_ask(http: httpx.Client, base_url: str, key: str) -> Ask:
     def ask(texts: list[str]) -> list[dict]:
         r = http.post(f"{base_url.rstrip('/')}/v1/moderations", json={"model": MODEL, "input": texts},
@@ -138,7 +169,7 @@ def http_ask(http: httpx.Client, base_url: str, key: str) -> Ask:
 def judge(items: list[Page], ask: Ask, *, pause: float = 0.5,
           sleep: Callable[[float], None] = time.sleep) -> tuple[dict[str, Tally], str | None]:
     """Ask in batches; stop at the first error and report what was answered (the error is returned)."""
-    tallies = {g: Tally() for g in GROUPS}
+    tallies = {g: Tally() for g in dict.fromkeys([*GROUPS, *(p.group for p in items)])}
     for start in range(0, len(items), BATCH):
         if start:
             sleep(pause)
@@ -154,6 +185,8 @@ def judge(items: list[Page], ask: Ask, *, pause: float = 0.5,
             cats = [str(c) for c in evren.get("guard_categories") or []]
             t = tallies[page.group]
             t.n += 1
+            t.checked += page.checked
+            t.checked_illegal += page.checked and ILLEGAL in cats
             t.safety[safety] += 1
             t.categories.update(cats)
             t.not_safe += safety != "Safe"
@@ -195,6 +228,28 @@ def report(tallies: dict[str, Tally], error: str | None) -> str:
     return "\n".join(lines)
 
 
+def report_by_category(tallies: dict[str, Tally], error: str | None) -> str:
+    lines = [f"# Guard model by main category ({MODEL})", ""]
+    if error:
+        lines += [f"**Incomplete:** {error}.", ""]
+    lines += [f"| category | pages (person-checked) | Safe | Controversial | Unsafe | \"{ILLEGAL}\" | "
+              "on person-checked | most frequent categories |", "|---|---|---|---|---|---|---|---|"]
+    for g, t in tallies.items():
+        if not t.n:
+            continue
+        top = ", ".join(f"{c} {n}" for c, n in t.categories.most_common(3)) or "–"
+        lines.append(f"| {g} | {t.n} ({t.checked}) | {t.safety['Safe']} | {t.safety['Controversial']} | "
+                     f"{t.safety['Unsafe']} | {_pct(t.illegal, t.n)} | {_pct(t.checked_illegal, t.checked)} | {top} |")
+    lines += ["", f"## Does \"{ILLEGAL}\" tell the unlicensed side apart?", "",
+              "| licensed | unlicensed | caught on the unlicensed side | false alarms on the licensed side |",
+              "|---|---|---|---|"]
+    for legal, illegal in PAIRS:
+        a, b = tallies.get(legal), tallies.get(illegal)
+        if a and b and a.n and b.n:
+            lines.append(f"| {legal} | {illegal} | {_pct(b.illegal, b.n)} | {_pct(a.illegal, a.n)} |")
+    return "\n".join(lines + [""])
+
+
 def main(argv: list[str] | None = None) -> int:
     from database.session import session_factory
 
@@ -202,11 +257,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--per-group", type=int, default=150, help="pages per group at most (default 150)")
     parser.add_argument("--yes", action="store_true", help="ask the guard model (without it: a dry run)")
     parser.add_argument("--pause", type=float, default=0.5, help="seconds between requests (default 0.5)")
+    parser.add_argument("--by-category", action="store_true", help="group published sites by main category")
+    parser.add_argument("--categories", help=f"comma-separated, with --by-category (default: {','.join(CATEGORY_GROUPS)})")
     args = parser.parse_args(argv)
+    categories = [c.strip() for c in (args.categories or "").split(",") if c.strip()] or list(CATEGORY_GROUPS)
     with session_factory()() as session:
-        items = pages(session, max(1, args.per_group))
+        items = (pages_by_category(session, max(1, args.per_group), categories) if args.by_category
+                 else pages(session, max(1, args.per_group)))
     counts = Counter(p.group for p in items)
-    print(" · ".join(f"{g}: {counts[g]}" for g in GROUPS), file=sys.stderr)
+    print(" · ".join(f"{g}: {counts[g]}" for g in (categories if args.by_category else GROUPS)), file=sys.stderr)
     if not args.yes:
         print(f"dry run: {len(items)} pages, {-(-len(items) // BATCH)} requests (add --yes to ask {MODEL})",
               file=sys.stderr)
@@ -218,7 +277,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0), follow_redirects=False) as http:
         tallies, error = judge(items, http_ask(http, s.evren_base_url, key), pause=args.pause)
-    print(report(tallies, error))
+    print((report_by_category if args.by_category else report)(tallies, error))
     return 2 if error else 0
 
 

@@ -105,3 +105,35 @@ def test_an_error_stops_and_keeps_what_was_answered(engine, clean, monkeypatch):
     assert error == "stopped after 4 pages: HTTPStatusError (HTTP 429)"
     assert sum(t.n for t in tallies.values()) == 4
     assert "**Incomplete:** stopped after 4 pages" in guard_eval.report(tallies, error)
+
+
+def test_by_category_compares_licensed_and_unlicensed(engine, clean):
+    sites = {"lisansli-loto.com": ("gambling", ClassificationStatus.VERIFIED, "Milli Piyango resmi bilet"),
+             "kacak-bahis.net": ("illegal-gambling", ClassificationStatus.CLASSIFIED, "Kaçak bahis, bonus"),
+             "kacak-bahis2.net": ("illegal-gambling", ClassificationStatus.VERIFIED, "Kaçak bahis, canlı casino"),
+             "dizi-film.com": ("streaming-media", ClassificationStatus.CLASSIFIED, "Lisanslı diziler"),
+             "korsan-film.net": ("piracy", ClassificationStatus.CLASSIFIED, "Full HD film izle bedava"),
+             "waiting.net": ("piracy", ClassificationStatus.NEEDS_REVIEW, "Not published yet")}
+    for name, (primary, status, text) in sites.items():
+        make_scan(engine, name, text=text, title=name)
+        with Session(engine) as s, s.begin():
+            d = s.scalar(select(Domain).where(Domain.normalized_domain == name))
+            apply_categories(s, d, primary=primary, secondary=[], confidence=0.9, origin=AssignmentOrigin.AI,
+                             taxonomy=default_taxonomy(), status=status)
+    with Session(engine) as s:
+        items = guard_eval.pages_by_category(s, per_group=10)
+    by = {p.domain: p for p in items}
+    assert "waiting.net" not in by and by["kacak-bahis2.net"].checked and not by["kacak-bahis.net"].checked
+    illegal = {"kacak-bahis.net", "kacak-bahis2.net", "korsan-film.net"}
+
+    def ask(texts):
+        return [{"evren": {"safety": "Controversial", "guard_categories": [guard_eval.ILLEGAL]}}
+                if any(n in t for n in illegal) else {"evren": {"safety": "Safe", "guard_categories": []}}
+                for t in texts]
+
+    tallies, error = guard_eval.judge(items, ask, sleep=lambda _: None)
+    assert error is None and tallies["illegal-gambling"].illegal == 2 and tallies["illegal-gambling"].checked_illegal == 1
+    out = guard_eval.report_by_category(tallies, error)
+    assert "| gambling | illegal-gambling | 2/2 (100 %) | 0/1 (0 %) |" in out
+    assert "| streaming-media | piracy | 1/1 (100 %) | 0/1 (0 %) |" in out
+    assert "| illegal-gambling | 2 (1) |" in out and "| news |" not in out  # empty categories are left out

@@ -109,6 +109,19 @@ read `evren.safety` and `evren.guard_categories`. Limit: 1,200 requests a minute
 phishing and scams, person-checked banking/finance/government and other sites, pages with text aimed at the model,
 adult content) and prints how often each group is called Safe, Controversial or Unsafe, and how well "not Safe" or
 "Non-violent Illegal Acts" would tell our threats from checked legitimate sites. It stores nothing.
+`--by-category` groups published sites by main category instead (gambling / illegal gambling, streaming media /
+piracy, and a few ordinary categories) and shows whether that signal tells the unlicensed side apart.
+
+First run (2026-11-20, 513 pages): it does **not** find phishing (10 % of our confirmed phishing and scams were not
+Safe, against 15 % of person-checked legitimate sites; banking, finance and government 0 of 55) and called none of
+8 pages with text aimed at the model Jailbreak. It does find adult content: "Sexual Content" on 149 of 150 adult
+sites and on none of 205 person-checked other sites.
+
+By category (2026-11-20, 748 pages): "Non-violent Illegal Acts" on 50 % of illegal-gambling sites but also 27 %
+of licensed ones (29 % of the person-checked), on 11 % of piracy sites and none of 44 streaming sites, and on at
+most 2 % of news, education and e-commerce sites. So it does not tell licensed from unlicensed: it reacts to the
+subject (betting) more than to the licence, and rarely to piracy. Conclusion: use the guard model, if at all, for
+adult content only; licensed-or-not questions go to a decision model (`clef`) next.
 
 ## Timeouts and retries
 
