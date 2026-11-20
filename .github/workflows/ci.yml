@@ -145,7 +145,7 @@ jobs:
           image-ref: cat-egory/${{ matrix.name }}:ci
           format: cyclonedx
           output: sbom-${{ matrix.name }}.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ matrix.name }}
           path: sbom-${{ matrix.name }}.cdx.json
