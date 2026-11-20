@@ -231,6 +231,12 @@ $DC exec -T worker python -m classification.evaluation compare --models qwen3.8-
     > model-comparison-$(date +%F).md
 ```
 
+The bundled sets are small (36 and 30 sites) and every current model gets nearly all of them right. Two sets
+drawn from the database separate the models better, with a person's decision as the answer:
+`--set verified:120` (random person-checked sites) and `--set hard:60` (sites where a person changed the AI's main
+category). `--seed` (default 2026) fixes which sites are drawn. In `verified`, the person saw the production
+model's answer first, which can favour that model; say so when quoting the figures.
+
 The dry run prints how many EVREN calls a real run makes; pairs with a valid answer are skipped on re-runs (so
 an interrupted run resumes). Calls are sequential and count towards `CATEGORY_AI_DAILY_TOKEN_CAP`. Details and
 the report's contents: [EVREN_INTEGRATION.md](EVREN_INTEGRATION.md#comparing-models-on-the-same-sites).

@@ -6,6 +6,8 @@
     ... --set evaluation_holdout.yaml   # bundled set of sites never used to tune the prompt
     python -m classification.evaluation compare --models qwen3.8-flash-next,glm-5.3 [--yes] [--again]
     python -m classification.evaluation compare-report --models qwen3.8-flash-next,glm-5.3
+    ... --set verified:150   # 150 random sites a person checked (reproducible: --seed), from the database
+    ... --set hard:80        # 80 sites where a person changed the AI's main category
 
 ``report`` reads the latest prediction of the given provider for every site, compares its primary category with
 the accepted answers and prints a Markdown report: crawl failures, valid-answer rate, strict / lenient accuracy,
@@ -14,6 +16,11 @@ accuracy per confidence band, wrong answers that were published automatically, a
 production predictions (see ``classification/model_compare.py``); ``compare-report`` prints the side-by-side report
 from what is stored, without calling any model.
 Nothing here is shown publicly; it is an operator tool.
+
+Sets from the database (``verified:N``, ``hard:N``) take a person's decision as the answer: the site's current main
+category first, then its other current categories. They are drawn in a fixed order from ``--seed``, so the same
+command picks the same sites again (as long as no site enters or leaves the pool). Caveat for ``verified``: the
+person saw the production model's answer first, which can favour that model; ``hard`` is where it was overruled.
 """
 from __future__ import annotations
 
@@ -24,10 +31,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import func, literal, select
 from sqlalchemy.orm import Session
 
 from database.models import AIPrediction, Domain, ScanJob, ScanResult
+
+DB_SETS = ("verified", "hard")
 
 SET_PATH = Path(__file__).with_name("evaluation_set.yaml")
 BANDS = ((0.90, 1.01, ">= 0.90 (auto-publish)"), (0.70, 0.90, "0.70-0.89 (second model)"),
@@ -103,6 +112,50 @@ def load_set(path: Path = SET_PATH, taxonomy=None) -> list[Site]:
             raise ValueError(f"{site.domain}: unknown or missing categories {unknown}")
         sites.append(site)
     return sites
+
+
+def db_set(spec: str) -> tuple[str, int] | None:
+    """``verified:150`` -> ("verified", 150); a file name -> None."""
+    kind, _, size = str(spec).partition(":")
+    if kind not in DB_SETS:
+        return None
+    if not size.isdigit() or not 1 <= int(size) <= 2000:
+        raise ValueError(f"{spec}: expected {kind}:N with N from 1 to 2000")
+    return kind, int(size)
+
+
+def load_db_set(session: Session, kind: str, size: int, *, seed: int = 2026, taxonomy=None) -> list[Site]:
+    """Person-checked sites with a successful whole-site scan, in a fixed pseudo-random order."""
+    from database.models import ClassificationStatus, DomainCategory, JobStatus, ReviewStatus, ReviewTask
+
+    from .accuracy import HARD_REASONS
+    from .taxonomy import default_taxonomy
+
+    content = set((taxonomy or default_taxonomy()).assignable_ids("content"))
+    scanned = (select(ScanResult.id).join(ScanJob, ScanJob.id == ScanResult.scan_job_id)
+               .where(ScanResult.domain_id == Domain.id, ScanJob.status == JobStatus.SUCCEEDED,
+                      ScanResult.url_id.is_(None)).exists())
+    stmt = select(Domain.id, Domain.normalized_domain, Domain.primary_category_id).where(
+        Domain.is_active, Domain.classification_status == ClassificationStatus.VERIFIED,
+        Domain.primary_category_id.in_(content), scanned)
+    if kind == "hard":
+        overruled = (select(ReviewTask.id).join(AIPrediction, AIPrediction.id == ReviewTask.ai_prediction_id)
+                     .where(ReviewTask.domain_id == Domain.id, ReviewTask.status == ReviewStatus.DONE,
+                            ReviewTask.reason.in_(HARD_REASONS), ReviewTask.decision_primary_id == Domain.primary_category_id,
+                            AIPrediction.primary_category_id.is_not(None),
+                            AIPrediction.primary_category_id != ReviewTask.decision_primary_id).exists())
+        stmt = stmt.where(overruled)
+    order = func.md5(func.concat(Domain.normalized_domain, literal(f":{seed}")))
+    rows = session.execute(stmt.order_by(order).limit(size)).all()
+    others: dict[int, list[str]] = {}
+    for domain_id, category in session.execute(
+            select(DomainCategory.domain_id, DomainCategory.category_id)
+            .where(DomainCategory.domain_id.in_([r.id for r in rows]), DomainCategory.valid_to.is_(None),
+                   DomainCategory.is_primary.is_(False))
+            .order_by(DomainCategory.domain_id, DomainCategory.category_id)):
+        if category in content:
+            others.setdefault(domain_id, []).append(category)
+    return [Site(r.normalized_domain, [r.primary_category_id, *others.get(r.id, [])]) for r in rows]
 
 
 def add(session: Session, sites: list[Site], *, dry_run: bool = False) -> tuple[int, int]:
@@ -216,25 +269,31 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--yes", action="store_true", help="really do it (default is a dry run)")
     p.add_argument("--failed", action="store_true", help="only sites whose latest answer is missing or invalid")
     p.add_argument("--provider", default="evren", help="provider whose answers --failed looks at")
-    p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
+    p.add_argument("--set", default=str(SET_PATH), help="evaluation set: a YAML file, verified:N or hard:N")
     p = sub.add_parser("report", help="print a Markdown report")
     p.add_argument("--provider", default="evren")
-    p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
+    p.add_argument("--set", default=str(SET_PATH), help="evaluation set: a YAML file, verified:N or hard:N")
     p = sub.add_parser("compare", help="ask several EVREN models about the same scanned sites (dry run without --yes)")
     p.add_argument("--models", required=True, help="comma-separated EVREN model names")
-    p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
+    p.add_argument("--set", default=str(SET_PATH), help="evaluation set: a YAML file, verified:N or hard:N")
     p.add_argument("--yes", action="store_true", help="really call the models (default is a dry run)")
     p.add_argument("--again", action="store_true", help="ask again where a valid answer for this prompt exists")
     p.add_argument("--pause", type=float, default=2.0, help="seconds between two calls (default 2)")
+    p.add_argument("--seed", type=int, default=2026, help="which sites verified:N / hard:N pick (default 2026)")
     p = sub.add_parser("compare-report", help="Markdown report of stored comparison answers (no model calls)")
     p.add_argument("--models", required=True, help="comma-separated EVREN model names")
-    p.add_argument("--set", type=Path, default=SET_PATH, help="evaluation set (YAML)")
+    p.add_argument("--set", default=str(SET_PATH), help="evaluation set: a YAML file, verified:N or hard:N")
+    p.add_argument("--seed", type=int, default=2026, help="which sites verified:N / hard:N pick (default 2026)")
     args = parser.parse_args(argv)
 
     from database.session import session_factory
 
+    spec = str(getattr(args, "set", SET_PATH))
     try:
-        sites = load_set(getattr(args, "set", SET_PATH))
+        from_db = db_set(spec)
+        if from_db and args.command not in ("compare", "compare-report"):
+            raise ValueError("verified:N / hard:N work with compare and compare-report only")
+        sites = [] if from_db else load_set(spec)
         if args.command in ("compare", "compare-report"):
             from .model_compare import check_models
 
@@ -244,6 +303,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.command in ("compare", "compare-report"):
         with session_factory()() as session:
+            if from_db:
+                sites = load_db_set(session, *from_db, seed=args.seed)
+                if not sites:
+                    print(f"error: no person-checked sites for {spec}", file=sys.stderr)
+                    return 1
             return compare_command(session, sites, args)
     with session_factory()() as session, session.begin():
         if args.command == "add":
@@ -266,7 +330,8 @@ def compare_command(session: Session, sites: list[Site], args: argparse.Namespac
     from . import model_compare
     from .taxonomy import default_taxonomy
 
-    set_name = resolve_set(args.set).name
+    set_name = (f"{args.set}, seed {args.seed}, {len(sites)} sites, answer: a person's decision" if db_set(args.set)
+                else resolve_set(args.set).name)
     code = 0
     if args.command == "compare":
         p = model_compare.plan(session, sites, args.models, prompt_version=PROMPT_VERSION,

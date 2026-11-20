@@ -294,3 +294,49 @@ def test_compare_cli_checks(engine, clean, monkeypatch, capsys):
     assert "run this in the worker container" in capsys.readouterr().err
     assert evaluation.main(["compare-report", "--models", QWEN]) == 0
     assert "| news.example.com | news, media | – |" in capsys.readouterr().out
+
+
+def test_db_sets_take_a_persons_decision(engine, clean, monkeypatch, capsys):
+    """verified:N / hard:N: person-checked, scanned sites; the answer is the person's; the pick is reproducible."""
+    import database.session
+    from classification.engine import apply_categories
+    from database.models import AssignmentOrigin, ClassificationStatus, ReviewStatus
+
+    sites = {"kept.example.com": ("news", ClassificationStatus.VERIFIED, "news"),
+             "changed.example.com": ("blogs", ClassificationStatus.VERIFIED, "news"),
+             "auto.example.com": ("news", ClassificationStatus.CLASSIFIED, None),
+             "threat.example.com": ("news", ClassificationStatus.VERIFIED, None)}
+    for name in sites:
+        make_scan(engine, name)
+    with Session(engine) as s, s.begin():
+        for name, (primary, status, ai_said) in sites.items():
+            d = s.scalar(select(Domain).where(Domain.normalized_domain == name))
+            apply_categories(s, d, primary=primary, secondary=["media"] if name == "kept.example.com" else [],
+                             confidence=0.9, origin=AssignmentOrigin.HUMAN, taxonomy=default_taxonomy(), status=status)
+            if ai_said:
+                p = AIPrediction(domain_id=d.id, provider="evren", model=QWEN, prompt_version="x", taxonomy_version="3.0.0",
+                                 validation_status="valid", primary_category_id=ai_said, confidence=0.6)
+                s.add(p)
+                s.flush()
+                s.add(ReviewTask(domain_id=d.id, ai_prediction_id=p.id, reason="low_confidence", status=ReviewStatus.DONE,
+                                 decision_primary_id=primary))
+        s.execute(Domain.__table__.update().where(Domain.normalized_domain == "threat.example.com")
+                  .values(is_active=False))
+
+    with Session(engine) as s:
+        picked = evaluation.load_db_set(s, "verified", 10)
+        assert {x.domain for x in picked} == {"kept.example.com", "changed.example.com"}
+        assert next(x for x in picked if x.domain == "kept.example.com").accept == ["news", "media"]
+        assert [x.domain for x in evaluation.load_db_set(s, "hard", 10)] == ["changed.example.com"]
+        assert [x.domain for x in evaluation.load_db_set(s, "verified", 2, seed=7)] == \
+               [x.domain for x in evaluation.load_db_set(s, "verified", 2, seed=7)]  # same seed, same pick
+        assert len(evaluation.load_db_set(s, "verified", 1)) == 1
+
+    assert evaluation.db_set("verified:150") == ("verified", 150) and evaluation.db_set("evaluation_set.yaml") is None
+    with pytest.raises(ValueError):
+        evaluation.db_set("hard:0")
+    monkeypatch.setattr(database.session, "session_factory", lambda: sessionmaker(bind=engine))
+    assert evaluation.main(["compare-report", "--models", QWEN, "--set", "hard:5"]) == 0
+    out = capsys.readouterr().out
+    assert "hard:5, seed 2026, 1 sites, answer: a person's decision" in out and "changed.example.com" in out
+    assert evaluation.main(["report", "--set", "verified:5"]) == 1  # file sets only
