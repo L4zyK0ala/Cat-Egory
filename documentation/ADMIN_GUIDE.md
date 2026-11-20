@@ -13,9 +13,14 @@ API=http://127.0.0.1:8111                                              # the ADM
 $DC exec api python -m backend.cli create-admin --email you@example.org --name "Your Name"
 $DC exec api python -m backend.cli create-user --email mod@example.org --name Mod --role moderator
 $DC exec api python -m backend.cli create-key --email mod@example.org --name import-script --scopes domains:write --expires-days 90
-$DC exec api python -m backend.cli list-keys
+$DC exec api python -m backend.cli list-keys [--active]
 $DC exec api python -m backend.cli revoke-key --prefix abcdefghij
+$DC exec api python -m backend.cli revoke-sessions [--email you@example.org]
 ```
+
+`list-keys` shows each key as `active`, `expired` (past its expiry date; no longer accepted) or `revoked`;
+`--active` lists only the keys that still work. Every admin UI sign-in creates a `web sign-in` key (12 hours,
+7 days with "remember me"); `revoke-sessions` revokes all of them, signing every browser out.
 
 The key (`cat_<prefix>_<secret>`) is printed **once**; only its hash is stored. Keep it in a password
 manager or an environment variable, never in the repository. A key's effective permissions are its scopes

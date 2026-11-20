@@ -3,8 +3,9 @@
     python -m backend.cli create-admin --email you@example.org --name "Your Name"
     python -m backend.cli create-user  --email mod@example.org --name Mod --role moderator [--password]
     python -m backend.cli create-key   --email mod@example.org --name laptop --scopes scans:read,scans:write
-    python -m backend.cli list-keys    [--email mod@example.org]
+    python -m backend.cli list-keys    [--email mod@example.org] [--active]
     python -m backend.cli revoke-key   --prefix abcdefghij
+    python -m backend.cli revoke-sessions [--email you@example.org]    # sign out of the admin UI everywhere
     python -m backend.cli reclassify-provider --provider mock [--yes]
     python -m backend.cli reclassify-category --category gambling [--matching WORDS|piracy] [--limit N] [--yes]
     python -m backend.cli suggest-robots-blocked [--yes]
@@ -81,6 +82,32 @@ def revoke_key(session: Session, prefix: str) -> ApiKey:
         audit.record(session, action="api_key.revoke", target_type="api_key", target_id=key.id,
                      after={"prefix": prefix})
     return key
+
+
+def key_state(key: ApiKey, now: datetime) -> str:
+    """revoked, expired (past ``expires_at``: no longer accepted) or active."""
+    if key.revoked_at is not None:
+        return "revoked"
+    if key.expires_at is not None and key.expires_at <= now:
+        return "expired"
+    return "active"
+
+
+def revoke_sessions(session: Session, email: str | None = None) -> int:
+    """Revoke every admin UI sign-in key not yet revoked (still valid or expired). Returns how many."""
+    from backend.app.api.session import SESSION_KEY_NAME
+
+    stmt = select(ApiKey).where(ApiKey.name == SESSION_KEY_NAME, ApiKey.revoked_at.is_(None))
+    if email:
+        stmt = stmt.where(ApiKey.user_id == _user(session, email).id)
+    keys = list(session.scalars(stmt))
+    now = datetime.now(UTC)
+    for key in keys:
+        key.revoked_at = now
+    if keys:
+        audit.record(session, action="api_key.revoke_sessions", target_type="api_key", target_id=len(keys),
+                     after={"prefixes": [k.prefix for k in keys], "email": email})
+    return len(keys)
 
 
 def deactivate_source_domains(session: Session, slug: str, *, dry_run: bool = False) -> tuple[int, int]:
@@ -472,9 +499,13 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("list-keys", help="list API keys (never shows secrets)")
     p.add_argument("--email")
+    p.add_argument("--active", action="store_true", help="only keys that still work (not revoked, not expired)")
 
     p = sub.add_parser("revoke-key", help="revoke an API key")
     p.add_argument("--prefix", required=True)
+
+    p = sub.add_parser("revoke-sessions", help="revoke all admin UI sign-in keys (signs out every browser)")
+    p.add_argument("--email", help="only this user's sign-ins")
 
     p = sub.add_parser("deactivate-source-domains",
                        help="hide domains known ONLY from one source (e.g. a test import) and cancel their scans")
@@ -612,10 +643,14 @@ def main(argv: list[str] | None = None) -> int:
                 stmt = select(ApiKey, User.email).join(User, User.id == ApiKey.user_id).order_by(ApiKey.id)
                 if args.email:
                     stmt = stmt.where(User.email == args.email.strip().lower())
+                now = datetime.now(UTC)
                 for key, email in session.execute(stmt):
-                    state = "revoked" if key.revoked_at else "active"
+                    state = key_state(key, now)
+                    if args.active and state != "active":
+                        continue
+                    expires = key.expires_at.strftime("%Y-%m-%d %H:%M") if key.expires_at else "never"
                     print(f"{key.prefix}  {state:7}  {email:30}  {key.name:20}  {','.join(key.scopes)}  "
-                          f"last_used={key.last_used_at or '-'}")
+                          f"expires={expires}  last_used={key.last_used_at or '-'}")
             elif args.command == "set-password":
                 user = _user(session, args.email)
                 user.password_hash = hash_password(_password(argparse.Namespace(password=True)) or "")
@@ -624,6 +659,8 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "revoke-key":
                 key = revoke_key(session, args.prefix)
                 print(f"revoked {key.prefix}")
+            elif args.command == "revoke-sessions":
+                print(f"revoked {revoke_sessions(session, args.email)} sign-in keys; sign in again at the admin UI")
             elif args.command == "deactivate-source-domains":
                 domains, cancelled = deactivate_source_domains(session, args.source, dry_run=not args.yes)
                 if args.yes:

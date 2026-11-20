@@ -25,6 +25,41 @@ def test_cli_lifecycle(engine, clean, monkeypatch, capsys):
     assert cli.main(["revoke-key", "--prefix", "nonexistent"]) == 1
 
 
+def test_key_states_and_revoke_sessions(engine, clean, monkeypatch, capsys):
+    from datetime import UTC, datetime, timedelta
+
+    from backend.app.api.session import SESSION_KEY_NAME
+    from database.models import ApiKey
+    monkeypatch.setattr(cli, "session_factory", lambda: __import__("sqlalchemy.orm", fromlist=["sessionmaker"])
+                        .sessionmaker(bind=engine))
+    assert cli.main(["create-admin", "--email", "a@example.org", "--name", "A"]) == 0
+    assert cli.main(["create-user", "--email", "b@example.org", "--name", "B", "--role", "moderator"]) == 0
+    with Session(engine) as s, s.begin():
+        admin = cli._user(s, "a@example.org")
+        other = cli._user(s, "b@example.org")
+        now = datetime.now(UTC)
+        for name, user, prefix, expires in [(SESSION_KEY_NAME, admin, "sessold", now - timedelta(days=1)),
+                                            (SESSION_KEY_NAME, admin, "sessnew", now + timedelta(hours=12)),
+                                            (SESSION_KEY_NAME, other, "sessoth", now + timedelta(hours=12)),
+                                            ("script", admin, "scriptx", now - timedelta(days=1))]:
+            s.add(ApiKey(user_id=user.id, name=name, prefix=prefix, key_hash=prefix * 4, scopes=[], expires_at=expires))
+    capsys.readouterr()
+    assert cli.main(["list-keys"]) == 0
+    rows = {line.split()[0]: line.split()[1] for line in capsys.readouterr().out.splitlines()}
+    assert rows["sessold"] == "expired" and rows["sessnew"] == "active" and rows["scriptx"] == "expired"
+    assert cli.main(["list-keys", "--active"]) == 0
+    active = capsys.readouterr().out
+    assert "sessnew" in active and "sessold" not in active and "scriptx" not in active
+
+    assert cli.main(["revoke-sessions", "--email", "a@example.org"]) == 0
+    assert "revoked 2 sign-in keys" in capsys.readouterr().out
+    with Session(engine) as s:
+        revoked = {k.prefix for k in s.scalars(select(ApiKey).where(ApiKey.revoked_at.is_not(None)))}
+    assert revoked == {"sessold", "sessnew"}  # the other user's sign-in and the script key are untouched
+    assert cli.main(["revoke-sessions"]) == 0
+    assert "revoked 1 sign-in keys" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("email", ["no-at-sign", "x" * 400 + "@a.org"])
 def test_cli_rejects_bad_email(engine, clean, monkeypatch, email):
     from sqlalchemy.orm import sessionmaker
