@@ -1,18 +1,18 @@
 # syntax=docker/dockerfile:1.7
 # Next.js web UI (standalone output). Build context: ./frontend
-FROM node:22.23.4-alpine3.24 AS deps
+FROM node:22.23.5-alpine3.24 AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-FROM node:22.23.4-alpine3.24 AS build
+FROM node:22.23.5-alpine3.24 AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:22.23.4-alpine3.24
+FROM node:22.23.5-alpine3.24
 # The server needs only node: drop the package managers and their bundled dependencies (where image scanners find
 # most critical findings, 2026-11-20), and take the Alpine fixes published since the base image was built.
 RUN apk upgrade --no-cache \
