@@ -71,3 +71,71 @@ def test_a_month_of_numbers(engine, clean, client, admin):
 def test_needs_a_reader_key(client, make_key):
     contributor, _ = make_key("contributor")
     assert client.get("/api/v1/admin/infographic", headers=contributor).status_code == 403
+
+
+def test_the_kpi_sections(engine, clean, client, admin):
+    """Funnel, threat flow, AI quality, crawler and usage: each counted the way the KPI report defines it."""
+    import uuid
+
+    from classification.engine import REVIEW_SOURCE  # noqa: F401 - the reviewer's source
+    from database.models import AIPrediction, AuditLog, JobStatus, ReviewStatus, ReviewTask, ScanJob, ScanReason
+
+    names = ["a.example.net", "b.example.net", "c.example.net", "lookalike.example.net", "old.example.net"]
+    client.post("/api/v1/admin/domains", headers=admin, json={"domains": names, "scan": "none"})
+    at = OCTOBER
+    with Session(engine) as s, s.begin():
+        ids = {n: s.scalar(select(Domain.id).where(Domain.normalized_domain == n)) for n in names}
+        s.execute(update(Domain).values(first_seen=at))
+        s.execute(update(Domain).where(Domain.normalized_domain == "old.example.net").values(first_seen=EARLIER))
+        for n in ("a.example.net", "b.example.net"):
+            d = s.get(Domain, ids[n])
+            apply_categories(s, d, primary="news", secondary=[], confidence=0.9, origin=AssignmentOrigin.AI,
+                             taxonomy=default_taxonomy(), status=ClassificationStatus.CLASSIFIED)
+        # crawler: a twice-tried success, a plain success (same domain again), a failure and a robots block
+        for n, status, attempts, code in (("a.example.net", JobStatus.SUCCEEDED, 2, None),
+                                          ("a.example.net", JobStatus.SUCCEEDED, 1, None),
+                                          ("b.example.net", JobStatus.SUCCEEDED, 1, None),
+                                          ("c.example.net", JobStatus.FAILED, 3, "dns_error"),
+                                          ("old.example.net", JobStatus.BLOCKED, 1, "robots_disallowed")):
+            s.add(ScanJob(id=uuid.uuid4(), domain_id=ids[n], reason=ScanReason.MANUAL, status=status, attempts=attempts,
+                          error_code=code, finished_at=at))
+        # AI: two answers in October (one invalid), a random-sample review kept, a hard case changed
+        preds = []
+        for n, valid in (("a.example.net", "valid"), ("b.example.net", "invalid_json")):
+            p = AIPrediction(domain_id=ids[n], provider="evren", model="qwen3.8-flash-next", prompt_version="x",
+                             taxonomy_version="3.0.0", validation_status=valid, primary_category_id="news",
+                             confidence=0.95, created_at=at)
+            s.add(p)
+            preds.append(p)
+        s.flush()
+        s.add_all([ReviewTask(domain_id=ids["a.example.net"], ai_prediction_id=preds[0].id, reason="verification_sample",
+                              status=ReviewStatus.DONE, decision_primary_id="news", decided_at=at, created_at=at),
+                   ReviewTask(domain_id=ids["b.example.net"], ai_prediction_id=preds[1].id, reason="low_confidence",
+                              status=ReviewStatus.DONE, decision_primary_id="blogs", decided_at=at, created_at=at)])
+        # threat flow: two look-alike candidates opened, one decided with a threat, one still open
+        t1 = ReviewTask(domain_id=ids["lookalike.example.net"], reason="brand_lookalike", status=ReviewStatus.DONE,
+                        decided_at=at, created_at=at)
+        t2 = ReviewTask(domain_id=ids["c.example.net"], reason="lookalike_of:amazon.com", status=ReviewStatus.OPEN,
+                        created_at=at)
+        s.add_all([t1, t2])
+        s.flush()
+        s.add(AuditLog(action="review.decide", target_type="domain", target_id="lookalike.example.net",
+                       after={"task_id": t1.id, "risk": ["phishing"]}, occurred_at=at))
+        s.add_all([FeedDownloadDaily(day=date(2026, 10, 9), feed="phishing.rpz", downloads=5, callers=2),
+                   FeedDownloadDaily(day=date(2026, 10, 9), feed="profile-family.txt", downloads=3, callers=1)])
+
+    j = client.get("/api/v1/admin/infographic", headers=admin, params={"month": "2026-10"}).json()
+    assert j["funnel"] == {"known": 5, "new_known": 4, "scanned": 2, "published": 2, "verified": 0}
+    assert j["threat_flow"] == {"candidates": 2, "decided": 1, "confirmed": 1, "labels": 0}
+    ai = j["ai"]
+    assert (ai["answers"], ai["valid"], ai["models"]) == (2, 1, ["qwen3.8-flash-next"])
+    assert (ai["sample_n"], ai["sample_kept"], ai["hard_n"], ai["hard_kept"]) == (1, 1, 1, 0)
+    c = j["crawler"]
+    assert (c["jobs"], c["succeeded"], c["failed"], c["blocked"], c["unique_succeeded"]) == (5, 3, 1, 1, 2)
+    assert (c["retried"], c["recovered"]) == (2, 1)
+    assert {e["key"] for e in c["errors"]} == {"dns_error", "robots_disallowed"}
+    assert c["daily"] == [{"key": "2026-10-15", "count": 2}]
+    u = j["usage"]
+    assert (u["feed_downloads"], u["feed_clients"]) == (8, 3)
+    assert {f["key"]: f["count"] for f in u["formats"]} == {"rpz": 5, "txt": 3}
+    assert j["generated_at"]

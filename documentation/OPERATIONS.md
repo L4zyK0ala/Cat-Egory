@@ -296,14 +296,25 @@ per-day totals. Cloudflare may answer some feed downloads from its cache; those 
 ### Monthly infographic (admin "İnfografik" tab)
 
 `GET /api/v1/admin/infographic?month=YYYY-MM` (default: the last finished month, Türkiye time; `scans:read`) returns
-one month's totals: published sites and how many were first seen that month, .tr sites by main category, new threat
-records by type with the brands they imitate and their endings, and visitor demand as category totals with a daily
-line. The tab draws four 1080×1350 cards (cover, .tr categories, threats, visitor lookups) in Turkish or English,
-saves each as PNG in the browser, and writes a post text to go with them. Cards can be left out one by one.
+one month's figures, defined as the KPI report of 2026-11-20 asks: unique domains apart from events, stocks apart
+from monthly flows, and every rate with its numerator and denominator.
+
+| Card | What it shows | How it is counted |
+|---|---|---|
+| Cover | known, discovered this month, newly categorized, new threat domains | unique registrable domains |
+| Discovery | known → successfully scanned this month → published → checked by a person | stock at the snapshot except "scanned" (whole-site scans finished in the month); not a funnel of subsets |
+| .tr categories | main category of published .tr domains | at the snapshot |
+| Threats | new threat domains by type, the number of labels, candidates opened → decided → confirmed, imitated brands, endings | a domain once per type; candidates are review tasks a person decides |
+| AI quality | published answers a reviewer kept (random sample, Wilson 95 %), hard cases right first time, valid answers | the month's sample when it has 20 or more, else all months (said on the card); "valid" is format, not correctness |
+| Crawler | unique domains scanned, technical success, policy refusals, retries recovered, domains per day | succeeded ÷ (succeeded + technical errors); robots.txt and policy refusals apart |
+| Feeds and API | block-list download requests by format, site and API lookups | requests, not installations or users |
+
+Every card carries a footnote: its definition, the period, when it was made and the source. Not measured (so not
+shown): the delay from a certificate log entry to our detection, and API response times. The tab draws the cards at
+1080×1350 in Turkish or English, saves each as PNG in the browser, and writes a post text; cards can be left out.
 
 Only what is published anyway goes in: never a looked-up name, the national (USOM) list or VirusTotal answers.
-"Confirmed by us" counts records from our reviewers, the detector and Octryx. The site address printed on the cards
-is `CATEGORY_PUBLIC_SITE_URL` (also passed to the admin UI).
+The site address printed on the cards is `CATEGORY_PUBLIC_SITE_URL` (also passed to the admin UI).
 
 ### Two review queues
 
