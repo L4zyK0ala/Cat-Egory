@@ -32,7 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ai_providers.base import AIProvider
-from ai_providers.evren import KNOWN_MODELS
+from ai_providers.evren import KNOWN_MODELS, RETIRED_MODELS
 from ai_providers.schemas import ProviderResult
 from database.models import Domain, JobStatus, ModelComparison, ScanJob, ScanResult
 
@@ -49,6 +49,9 @@ def check_models(raw: str) -> list[str]:
     models = list(dict.fromkeys(m.strip() for m in raw.split(",") if m.strip()))
     if not models:
         raise ValueError("no models given")
+    retired = [m for m in models if m in RETIRED_MODELS]
+    if retired:
+        raise ValueError("; ".join(f"{m} is {RETIRED_MODELS[m]}" for m in retired))
     unknown = [m for m in models if m not in KNOWN_MODELS]
     if unknown:
         raise ValueError(f"unknown model(s) {', '.join(unknown)}; known: {', '.join(KNOWN_MODELS)}")

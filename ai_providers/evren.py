@@ -22,13 +22,19 @@ import httpx
 from .base import AIProvider, ProviderError
 from .schemas import ClassificationInput, Completion, ProviderHealth
 
-# Models seen working through the gateway on 2026-10-31. Availability can change without notice.
+# Models seen working through the gateway on 2026-10-31. Availability can change without notice: list what the
+# gateway serves now with `python -m ai_providers.evren_probe models` (in the worker).
 KNOWN_MODELS: dict[str, dict] = {
     "qwen3.8-flash-next": {"images": True, "max_output": 16384},
     "deepseek-v4.1-flash": {"images": True, "max_output": 65536},
-    "mimo-v2.6-pro": {"images": True, "max_output": 16384},
     "gemma-4-31b": {"images": True, "max_output": 16384},
     "glm-5.3": {"images": False, "max_output": 16384},
+}
+# Taken out of service. EVREN's user poll of 2-6 Nov 2026 retired mimo-v2.6-pro; requests for it are answered by
+# deepseek-v4.1-flash until 2027-01-01, then fail. Our 2026-11-15 comparison agrees: the two picked the same
+# primary category on 35 of 35 sites, so "mimo" results there are deepseek's.
+RETIRED_MODELS: dict[str, str] = {
+    "mimo-v2.6-pro": "retired by EVREN in Nov 2026; answered by deepseek-v4.1-flash until 2027-01-01, then fails",
 }
 _RETRY_STATUSES = (502, 503, 504)
 _ERROR_KINDS = {401: "auth", 402: "credit", 403: "permission", 429: "rate"}
@@ -69,6 +75,9 @@ class EvrenProvider(AIProvider):
     def health(self) -> ProviderHealth:
         if not self._api_key:
             return ProviderHealth(self.name, "unconfigured", "CATEGORY_EVREN_API_KEY is not set")
+        if self._model in RETIRED_MODELS:
+            return ProviderHealth(self.name, "error", f"model {self._model!r} is {RETIRED_MODELS[self._model]}",
+                                  [self._model])
         if self._model not in KNOWN_MODELS:
             return ProviderHealth(self.name, "unverified", f"model {self._model!r} has not been verified",
                                   [self._model])

@@ -26,9 +26,15 @@ Models seen working then:
 |---|---|---|
 | `qwen3.8-flash-next` (default here: fast, vision) | yes | 16384 |
 | `deepseek-v4.1-flash` | yes | 65536 |
-| `mimo-v2.6-pro` | yes | 16384 |
+| ~~`mimo-v2.6-pro`~~ | yes | 16384 |
 | `gemma-4-31b` | yes | 16384 |
 | `glm-5.3` | no | 16384 |
+
+**Retired:** EVREN's user poll of 2–6 November 2026 retired `mimo-v2.6-pro`. Requests for it are answered by
+`deepseek-v4.1-flash` until 2027-01-01 and fail after that, so `RETIRED_MODELS` refuses it. Our comparison of
+2026-11-15 agrees: the two picked the same primary category on 35 of 35 sites, so its "mimo" row is deepseek's.
+Models EVREN names as current (forum, 2026-11-19; check with the probe below): `qwen3.8-flash-next`,
+`deepseek-v4.1-flash`, `gemma-4-31b`, `qwen3-vl-30b`, and `clef` (a decision model on `/v1/systemone`).
 
 ## What is NOT verified (and how the code handles it)
 
@@ -82,6 +88,16 @@ Admin → *AI provider* (and `GET /api/v1/admin/providers`) therefore asks the w
 $DC exec -T worker python -c "from ai_providers.registry import report; print(report(probe=True))"
 ```
 
+## Probing the gateway
+
+`python -m ai_providers.evren_probe models` lists the models the gateway serves now; `... moderation` sends three
+fixed sample texts (no site content) to `/v1/moderations` with `qwen3-guard-4b` and prints the answer, its `usage`
+and any rate-limit or credit headers. Run both in the worker (`$DC exec -T worker ... < /dev/null`); the key is
+never printed. A forum post (2026-11-19) says the moderation endpoint is free and outside the token quota, takes
+up to 32 texts per request and flags page text that tries to instruct the model as `Jailbreak`; check the answer
+and EVREN's usage page before relying on it. It judges content safety, not phishing: a copy of a bank's login
+page reads as harmless text.
+
 ## Timeouts and retries
 
 Answers are slow: 24–53 s for one classification with `qwen3.8-flash-next` (2026-11-08), sometimes more than
@@ -124,7 +140,7 @@ the same scan of a site. It needs the EVREN key, so it runs in the worker; run `
 are scanned.
 
 ```bash
-MODELS=qwen3.8-flash-next,deepseek-v4.1-flash,mimo-v2.6-pro,gemma-4-31b,glm-5.3
+MODELS=qwen3.8-flash-next,deepseek-v4.1-flash,gemma-4-31b,glm-5.3
 $DC exec -T worker python -m classification.evaluation compare --models $MODELS          # dry run: counts calls
 $DC exec -T worker python -m classification.evaluation compare --models $MODELS --yes \
     > model-comparison-$(date +%F).md                                                   # progress goes to stderr

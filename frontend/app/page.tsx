@@ -41,7 +41,10 @@ export default async function Dashboard() {
           <p className="lead">{t("Look up how a website is categorized, download category lists, or help correct the data.",
                                  "Bir sitenin hangi kategoride olduğuna bakın, kategori listelerini indirin ya da verinin düzeltilmesine yardım edin.")}</p>
           <SearchBox />
-          <p className="muted hero-more" style={{ fontSize: 14 }}><Link href="/lookup">{t("Many domains? Bulk lookup →", "Birden çok alan adı mı? Toplu sorgu →")}</Link></p>
+          <p className="muted hero-more" style={{ fontSize: 14 }}>
+            {t("Searches the sites we have already scanned and categorized; it does not scan a site on the spot.",
+               "Daha önce taranıp sınıflandırılmış siteler arasında arar; siteyi o anda taramaz.")}{" "}
+            <Link href="/lookup">{t("Many domains? Bulk lookup →", "Birden çok alan adı mı? Toplu sorgu →")}</Link></p>
         </div>
         <Mascot />
       </section>

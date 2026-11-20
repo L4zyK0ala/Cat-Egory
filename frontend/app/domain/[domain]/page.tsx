@@ -155,8 +155,11 @@ export default async function DomainPage({ params, searchParams }: {
         <SearchBox initial={name} />
         <h1>{name}</h1>
         <div className={`notice ${error?.status === 404 ? "" : "error"}`}>
-          {error?.status === 404 ? <>{t("This domain is not in the database yet.", "Bu alan adı henüz veri tabanında yok.")}{" "}
-            <Link href={`/submit?domain=${encodeURIComponent(name)}`}>{t("Suggest it", "Önerin")}</Link>.</>
+          {error?.status === 404 ? <>{t("This domain is not in the database yet. Sites are not scanned on the spot: ",
+                                      "Bu alan adı henüz veri tabanında yok. Siteler anında taranmaz: ")}
+            <Link href={`/submit?domain=${encodeURIComponent(name)}`}>{t("suggest it", "önerebilirsiniz")}</Link>
+            {t(", and a site several different visitors look up on the same day is queued for a scan the next day by itself.",
+               "; aynı gün birkaç farklı ziyaretçinin aradığı siteler de ertesi gün kendiliğinden tarama sırasına alınır.")}</>
             : error?.status === 422 ? `${t("Not a valid public domain", "Geçerli bir alan adı değil")}: ${error.message}`
             : t("The API is not reachable right now.", "API'ye şu an ulaşılamıyor.")}
         </div>
