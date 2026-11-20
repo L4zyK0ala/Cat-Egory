@@ -125,7 +125,7 @@ jobs:
         run: docker build --file "${{ matrix.file }}" --tag "cat-egory/${{ matrix.name }}:ci" "${{ matrix.context }}"
       # Fails on a critical vulnerability that has a fix (an upgrade away); the full list is in the job log.
       - name: Scan ${{ matrix.name }} (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: cat-egory/${{ matrix.name }}:ci
           severity: CRITICAL,HIGH
@@ -133,14 +133,14 @@ jobs:
           exit-code: "0"
           format: table
       - name: Fail on critical, fixable findings
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: cat-egory/${{ matrix.name }}:ci
           severity: CRITICAL
           ignore-unfixed: true
           exit-code: "1"
       - name: SBOM for ${{ matrix.name }} (CycloneDX)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: cat-egory/${{ matrix.name }}:ci
           format: cyclonedx

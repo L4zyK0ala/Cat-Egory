@@ -4,8 +4,9 @@
 version: 2
 updates:
   - package-ecosystem: pip
-    # pyproject.toml (ranges) and requirements/constraints.txt (the exact versions the images install)
-    directories: ["/", "/requirements"]
+    # Only the exact versions the images install (requirements/constraints.txt). pyproject.toml keeps loose lower
+    # bounds; raising them there too opened a second PR that conflicted with the pins (2026-11-20).
+    directory: /requirements
     schedule: {interval: weekly, day: monday}
     open-pull-requests-limit: 3
     groups:
