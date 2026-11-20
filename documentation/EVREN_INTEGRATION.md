@@ -98,6 +98,18 @@ up to 32 texts per request and flags page text that tries to instruct the model 
 and EVREN's usage page before relying on it. It judges content safety, not phishing: a copy of a bank's login
 page reads as harmless text.
 
+First answers (2026-11-20): `GET /v1/models` lists every model at price 0 with `"free_until": "2026-12-01"`, the
+guard model included, so "free after December" is not confirmed; it also lists `qwen3-vl-30b` (vision chat, added
+to `KNOWN_MODELS`), the decision models `clef` (text and images) and `laya` (text), and no `mimo-v2.6-pro`. On the
+three samples the guard model answered Safe / Controversial "Unethical Acts" (the instruction to the model, not
+"Jailbreak") / Controversial "Non-violent Illegal Acts" (the phishing sentence), with `flagged` false each time:
+read `evren.safety` and `evren.guard_categories`. Limit: 1,200 requests a minute; no `usage` in the answer.
+
+`python -m threats.guard_eval [--per-group 150] [--yes]` measures it on pages we already know (our confirmed
+phishing and scams, person-checked banking/finance/government and other sites, pages with text aimed at the model,
+adult content) and prints how often each group is called Safe, Controversial or Unsafe, and how well "not Safe" or
+"Non-violent Illegal Acts" would tell our threats from checked legitimate sites. It stores nothing.
+
 ## Timeouts and retries
 
 Answers are slow: 24–53 s for one classification with `qwen3.8-flash-next` (2026-11-08), sometimes more than

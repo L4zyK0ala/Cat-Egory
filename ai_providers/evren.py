@@ -29,6 +29,7 @@ KNOWN_MODELS: dict[str, dict] = {
     "deepseek-v4.1-flash": {"images": True, "max_output": 65536},
     "gemma-4-31b": {"images": True, "max_output": 16384},
     "glm-5.3": {"images": False, "max_output": 16384},
+    "qwen3-vl-30b": {"images": True, "max_output": 16384},  # listed by GET /v1/models on 2026-11-20 (vision_chat)
 }
 # Taken out of service. EVREN's user poll of 2-6 Nov 2026 retired mimo-v2.6-pro; requests for it are answered by
 # deepseek-v4.1-flash until 2027-01-01, then fail. Our 2026-11-15 comparison agrees: the two picked the same
