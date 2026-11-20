@@ -89,7 +89,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         lifespan=lifespan,
         title="Cat-egory API",
-        version="0.1.0",
+        version="0.2.0",
         description="Open web categorisation database. Code: Apache-2.0. Own classification data: CC BY 4.0; "
                     "own threat confirmations (threat lists, security.rpz, threats.csv/json): CC0 1.0; "
                     "third-party data keeps its source licence.",

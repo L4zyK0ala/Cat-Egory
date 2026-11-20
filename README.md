@@ -60,8 +60,8 @@ flowchart TD
     Q --> BR["Sandboxed Chromium<br/>behind an SSRF-safe proxy"]
     BR --> PG["Page text · HTML<br/>screenshot"]
     PG --> AI{"AI classification<br/>EVREN + validation"}
-    AI -- "confidence ≥ 0.90" --> PUB[("Open database")]
-    AI -- "0.70 – 0.89" --> SM{"Second model<br/>agrees?"}
+    AI -- "confidence ≥ 0.80<br/>(≥ 0.90 sensitive)" --> PUB[("Open database")]
+    AI -- "0.70 up to that" --> SM{"Second model<br/>agrees?"}
     SM -- yes --> PUB
     SM -- no --> HR["Human review"]
     AI -- "below 0.70 · injection<br/>threat claim" --> HR
@@ -89,6 +89,9 @@ flowchart TD
 
 - AI classification with [EVREN](https://evren.ssyz.org.tr/), a confidence policy, a second opinion and human
   review; accuracy measured against people on a [public page](https://cat-egory.org/accuracy) (95 % interval).
+  Answers publish from 0.80 confidence, 0.90 in sensitive ones (adult, gambling, piracy, banking, government…); the
+  thresholds come from a calibration against people's decisions.
+- EVREN's guard model looks for adult content the AI did not name; every hit goes to a person.
 - Automatic re-scans: daily for threats, weekly for changed or unreachable sites, monthly otherwise. An unchanged
   page keeps its answer instead of asking the model again.
 - Discovery: popular sites first ([Majestic Million](https://majestic.com/reports/majestic-million), CC BY 3.0),
@@ -106,6 +109,7 @@ flowchart TD
   "investment", under a brand it does not belong to, on a suspicious name.
 - Confirmed threat pages open with a plain warning for the visitor: what not to enter, what to do if they already
   did, and where to report it. Listed addresses are never clickable links.
+- Confirmed threats can be reported to USOM (Türkiye's national CERT) from the threats page, in batches.
 
 **Data and integrations**
 
@@ -120,8 +124,11 @@ flowchart TD
 
 - Admin console: quick review with screenshots, moderation, confirmed threats, the detector's track record,
   demand trends (daily totals, never who asked) and a monthly infographic for social media.
-- Prometheus, Grafana and alert rules, backup and restore scripts, Turkish alerts and a daily summary on Telegram.
-- Public instance behind a Cloudflare Tunnel with TLS; the admin console is never published.
+- Prometheus, Grafana and alert rules, Turkish alerts and a daily summary on Telegram.
+- Nightly backups with a restore test, and an encrypted off-site copy (restic, any S3 bucket).
+- Public instance behind a Cloudflare Tunnel with TLS; the admin console is never published and requires a second
+  factor (TOTP). Strict Content-Security-Policy with per-request nonces; the crawler has its own narrow
+  credentials; images are scanned for vulnerabilities in CI.
 
 ## Use the data
 
@@ -235,7 +242,7 @@ tests/           unit, integration and browser tests
 | [Architecture and security model](documentation/ARCHITECTURE.md) | [Operations](documentation/OPERATIONS.md) |
 | [API design](documentation/API_DESIGN.md) · [ER diagram](documentation/ER_DIAGRAM.md) | [Admin guide](documentation/ADMIN_GUIDE.md) |
 | [Taxonomy](documentation/TAXONOMY.md) | [Threats and the detector](documentation/THREATS.md) |
-| [EVREN integration](documentation/EVREN_INTEGRATION.md) | [Roadmap](documentation/ROADMAP.md) |
+| [EVREN integration](documentation/EVREN_INTEGRATION.md) | [Roadmap](documentation/ROADMAP.md) · [Changelog](CHANGELOG.md) |
 
 ## Licences
 
@@ -259,6 +266,8 @@ AdGuard / uBlock, DNS RPZ, CSV, JSON) olarak yayımlar.
   sayfasında ziyaretçiye açık bir "Bu siteye girmeyin" uyarısı çıkar.
 - **Kullanım:** Router'lar için hazır güvenlik ve aile profilleri, toplu sorgu, geliştirici anahtarları ve insan
   kontrolüyle ölçülen bir [doğruluk sayfası](https://cat-egory.org/accuracy) vardır.
+- **Güvenlik:** Yönetim paneli internete açılmaz ve iki aşamalı doğrulama (TOTP) ister; yedekler şifreli olarak
+  makine dışına da kopyalanır. Doğrulanmış tehditler USOM'a bildirilebilir.
 - **Yaş Mama:** Yerel sınıflandırıcı şimdilik gölge modda yapay zekâyla karşılaştırılmaktadır.
 
 Proje alfa aşamasındadır; tüm bileşenler tek makinede Docker üzerinde, gerçek tarama ve gerçek yapay zekâ

@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     # classification
     taxonomy_path: str | None = None  # defaults to the bundled classification/taxonomy.yaml
     evren_second_model: str | None = Field(
-        default=None, description="Second EVREN model asked for a second opinion in the 0.70-0.89 band")
+        default=None, description="Second EVREN model asked for a second opinion between 0.70 and the publish threshold")
     classify_use_screenshot: bool = True
     confidence_auto_approve: float = 0.90  # sensitive categories (classification/confidence.py SENSITIVE)
     confidence_auto_approve_ordinary: float | None = Field(
