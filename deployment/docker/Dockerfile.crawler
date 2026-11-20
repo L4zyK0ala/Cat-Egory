@@ -5,6 +5,8 @@ FROM python:3.12.16-slim-bookworm AS build
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /src
 COPY pyproject.toml README.md ./
+# Exact versions of every Python package (requirements/constraints.txt): the same build every time.
+COPY requirements/constraints.txt ./
 COPY common common
 COPY database database
 COPY ai_providers ai_providers
@@ -14,7 +16,7 @@ COPY integrations integrations
 COPY feeds feeds
 COPY threats threats
 COPY backend backend
-RUN python -m venv /opt/venv && /opt/venv/bin/pip install ".[crawler]"
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install -c constraints.txt ".[crawler]"
 
 FROM python:3.12.16-slim-bookworm
 ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
@@ -27,5 +29,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
     && groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --home /tmp --shell /usr/sbin/nologin app
 WORKDIR /tmp
 USER 10001:10001
+# No gossip, mingle or heartbeat events: the crawler's Redis user may only touch its own queues (redis/crawler.acl).
 CMD ["celery", "-A", "crawler.tasks:celery_app", "worker", "-Q", "crawl-fast,crawl", "--concurrency", "2", \
-     "--max-tasks-per-child", "50", "--loglevel", "INFO"]
+     "--max-tasks-per-child", "50", "--without-gossip", "--without-mingle", "--without-heartbeat", "--loglevel", "INFO"]

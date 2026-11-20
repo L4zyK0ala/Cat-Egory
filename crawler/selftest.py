@@ -1,7 +1,9 @@
 """Crawler container self-test: ``python -m crawler.selftest``.
 
 Checks (1) whether Chromium starts WITH its sandbox, (2) that the container has no direct internet route,
-(3) that the egress proxy refuses an internal target and (4) allows a public site. Prints one line per check.
+(3) that the egress proxy refuses an internal target and (4) allows a public site, and that its credentials are
+the narrow ones: (5) its Redis user cannot read the core's keys and (6) its object-store key can write an
+artefact but not read or list them. Prints one line per check.
 """
 from __future__ import annotations
 
@@ -54,7 +56,51 @@ def main() -> int:
         except httpx.HTTPError as exc:
             print(f"proxy allows public   : FAILED ({type(exc).__name__})")
             failures += 1
-    return 1 if failures else 0
+    return 1 if (failures + credentials(settings)) else 0
+
+
+def credentials(settings) -> int:
+    """The crawler's Redis user and object-store key must be the narrow ones (deployment/redis/crawler.acl,
+    the storage service's "crawler" identity). Returns the number of failed checks."""
+    import redis
+
+    failures = 0
+    client = redis.Redis.from_url(settings.redis_url, socket_timeout=5)
+    try:
+        client.keys("category:*")
+        print("redis: core keys      : READABLE  <-- the crawler must use its own Redis user")
+        failures += 1
+    except redis.exceptions.NoPermissionError:
+        print("redis: core keys      : refused (good)")
+    except redis.RedisError as exc:
+        print(f"redis: core keys      : ERROR ({type(exc).__name__})")
+        failures += 1
+
+    from botocore.exceptions import BotoCoreError, ClientError
+
+    from .storage import S3Store
+
+    store = S3Store(settings)
+    key = "selftest/crawler-write-check.txt"
+    try:
+        store.put(key, b"ok", "text/plain")
+        print("s3: write artefact    : OK")
+    except Exception as exc:  # noqa: BLE001 - StorageError or a client error: report and go on
+        print(f"s3: write artefact    : FAILED ({exc})")
+        failures += 1
+    for label, call in (("read artefact", lambda: store.get(key)),
+                        ("list bucket", lambda: store.client.list_objects_v2(Bucket=store.bucket, MaxKeys=1))):
+        try:
+            call()
+            print(f"s3: {label:<17}: ALLOWED  <-- the crawler's key must be write-only")
+            failures += 1
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            print(f"s3: {label:<17}: refused (good: {code})")
+        except BotoCoreError as exc:
+            print(f"s3: {label:<17}: ERROR ({type(exc).__name__})")
+            failures += 1
+    return failures
 
 
 if __name__ == "__main__":

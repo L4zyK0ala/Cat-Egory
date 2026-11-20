@@ -43,7 +43,7 @@ class S3Store:
                           request_checksum_calculation="when_required",
                           response_checksum_validation="when_required"),
         )
-        self._bucket_ready = False
+        self._bucket_ready = settings.s3_assume_bucket  # the crawler's write-only key cannot check or create it
 
     def _ensure_bucket(self) -> None:
         if self._bucket_ready:

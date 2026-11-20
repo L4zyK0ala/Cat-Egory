@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     s3_endpoint_url: str | None = None
     s3_bucket: str = "category-artifacts"
+    s3_assume_bucket: bool = Field(default=False, description="skip HeadBucket/CreateBucket (the crawler's key may "
+                                                               "only write objects; the core creates the bucket)")
     s3_access_key: SecretStr | None = None
     s3_secret_key: SecretStr | None = None
 

@@ -196,7 +196,7 @@ Another model can be added by subclassing `ai_providers.base.AIProvider` and reg
 ## Development
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+python3 -m venv .venv && .venv/bin/pip install -c requirements/constraints.txt -e '.[dev]'
 .venv/bin/ruff check .
 .venv/bin/python -m pytest tests/unit                          # no services needed
 CATEGORY_TEST_DATABASE_URL=postgresql+psycopg://user:pass@host:5432/empty_test_db \

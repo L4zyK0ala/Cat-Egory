@@ -100,10 +100,13 @@ services:
 
   redis:
     image: redis:8.6.8-alpine
-    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction"]
+    # The core uses the default user; the crawler has its own user limited to its queues (redis/crawler.acl;
+    # set -f: the rules contain * patterns the shell must not expand).
+    command: ["sh", "-c", "set -f; exec redis-server --requirepass \"$$REDIS_PASSWORD\" --user crawler on \">$$REDIS_CRAWLER_PASSWORD\" $$(cat /etc/redis/crawler.acl) --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction"]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
-    volumes: [redisdata:/data]
+      REDIS_CRAWLER_PASSWORD: ${REDIS_CRAWLER_PASSWORD:?set REDIS_CRAWLER_PASSWORD in .env}
+    volumes: [redisdata:/data, ./redis/crawler.acl:/etc/redis/crawler.acl:ro]
     networks: [core, crawl]
     security_opt: ["no-new-privileges:true"]
     healthcheck:
@@ -125,13 +128,16 @@ services:
     command:
       - >-
         umask 077 &&
-        printf '{"identities":[{"name":"category","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
-        "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+        printf '{"identities":[{"name":"category","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]},{"name":"crawler","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Write:category-artifacts"]}]}'
+        "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" "$$S3_CRAWLER_ACCESS_KEY" "$$S3_CRAWLER_SECRET_KEY" > /tmp/s3.json &&
         exec weed server -dir=/data -ip=storage -ip.bind=0.0.0.0 -s3 -s3.port=8333 -s3.config=/tmp/s3.json
         -master.volumeSizeLimitMB=1024 -volume.max=100
     environment:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      # the crawler's key may only write objects into the artefact bucket (no read, list or admin)
+      S3_CRAWLER_ACCESS_KEY: ${S3_CRAWLER_ACCESS_KEY:?set S3_CRAWLER_ACCESS_KEY in .env}
+      S3_CRAWLER_SECRET_KEY: ${S3_CRAWLER_SECRET_KEY:?set S3_CRAWLER_SECRET_KEY in .env}
     volumes: [objectdata:/data]
     networks: [core, crawl]
     security_opt: ["no-new-privileges:true"]
@@ -315,10 +321,13 @@ services:
     environment:
       TZ: "<+03>-3"
       CATEGORY_LOG_LEVEL: ${CATEGORY_LOG_LEVEL:-INFO}
-      CATEGORY_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
+      # Its own Redis user (only its queues; deployment/redis/crawler.acl) and a write-only object-store key:
+      # a page that escaped Chromium's sandbox still cannot read the core's data or the stored artefacts.
+      CATEGORY_REDIS_URL: redis://crawler:${REDIS_CRAWLER_PASSWORD:?set REDIS_CRAWLER_PASSWORD in .env}@redis:6379/0
       CATEGORY_S3_ENDPOINT_URL: http://storage:8333
-      CATEGORY_S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
-      CATEGORY_S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      CATEGORY_S3_ACCESS_KEY: ${S3_CRAWLER_ACCESS_KEY:?set S3_CRAWLER_ACCESS_KEY in .env}
+      CATEGORY_S3_SECRET_KEY: ${S3_CRAWLER_SECRET_KEY:?set S3_CRAWLER_SECRET_KEY in .env}
+      CATEGORY_S3_ASSUME_BUCKET: "true"
       CATEGORY_CRAWLER_PROXY_URL: http://egress-proxy:3128
       CATEGORY_EGRESS_PROXY_TOKEN: ${CATEGORY_EGRESS_PROXY_TOKEN:?set CATEGORY_EGRESS_PROXY_TOKEN in .env}
       CATEGORY_CRAWLER_CHROMIUM_SANDBOX: "true"

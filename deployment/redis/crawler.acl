@@ -1,0 +1,1 @@
+resetkeys resetchannels +@all -@admin -@dangerous ~crawl* ~_kombu.binding* ~unacked ~unacked_index ~unacked_mutex ~*.celery.pidbox* %W~scan* %W~fast* %W~category:task-heartbeat &*

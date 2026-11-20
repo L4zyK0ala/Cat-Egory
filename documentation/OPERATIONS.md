@@ -542,6 +542,24 @@ listening only on 10.250.62.1:9101, the gateway of the internal `hostmetrics` ne
 `deployment/prometheus/process-exporter.yml`). Alerts: **HostDiskFull** (system disk > 90 %, critical), disk > 80 %
 (system or backup disk), memory < 10 % available, host metrics not scraped, and a stale Docker cleanup (warnings).
 
+**Pinned Python packages.** The images install `requirements/constraints.txt`: the exact version of every package
+(taken with `pip freeze` from a crawler image that worked, so it also holds Playwright). Dependabot proposes updates to
+it weekly; CI builds the images from it, checks it for known vulnerabilities (`pip-audit`), scans the built images
+with Trivy (fails on a critical finding that has a fix) and keeps a CycloneDX SBOM of each image for 30 days. To
+change a dependency on purpose: edit `pyproject.toml`, rebuild, and refresh the file from the running crawler:
+`$DC exec -T crawler pip freeze --exclude-editable | grep -v '^cat-egory' > requirements/constraints.txt`.
+
+**Crawler credentials.** The crawler opens hostile pages, so it does not hold the core's secrets. Its Redis user
+(`crawler`, rules in `deployment/redis/crawler.acl`, password `REDIS_CRAWLER_PASSWORD`) may take jobs from `crawl` and
+`crawl-fast`, write results to `scan` and `fast` and the task heartbeat, and nothing else: no reading the core's keys,
+no other queue, no admin command (`tests/unit/test_crawler_redis_acl.py` starts Redis the way compose does and runs a
+real Celery worker against it). Its object-store key (`S3_CRAWLER_ACCESS_KEY` / `S3_CRAWLER_SECRET_KEY`, the
+storage service's `crawler` identity) may only write into the artefact bucket. Gossip, mingle and worker heartbeat
+events are off in the crawler (Dockerfile), since its user may not use those keys. `python -m crawler.selftest` in the
+crawler container checks both. Older `.env` files need the three new values (32, 20 and 40 random letters and digits);
+`generate-env.sh` writes them for new installs. Residual risk: Celery keeps unacknowledged messages of every queue in
+one `unacked` hash, which the crawler's user must be able to use.
+
 **Docker housekeeping.** Every rebuild leaves build cache behind; on 2026-11-17 it had reached ~130 GB and the system
 disk 85 %. `deployment/scripts/docker-cleanup.sh` keeps the build cache to 20 GB (most recently used layers) and
 removes dangling images; it never touches containers, volumes, networks or tagged images. `make cleanup-timer` installs

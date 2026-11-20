@@ -41,7 +41,8 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          pip install -c requirements/constraints.txt -e '.[dev]'   # the versions the images use
+          sudo apt-get install -y --no-install-recommends redis-server   # tests/unit/test_crawler_redis_acl.py
           python -m playwright install --with-deps chromium
       - name: Lint
         run: ruff check .
@@ -80,11 +81,28 @@ jobs:
         run: |
           cp .env.example .env
           for v in POSTGRES_PASSWORD REDIS_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY GRAFANA_ADMIN_PASSWORD \
-                   CATEGORY_FINGERPRINT_SECRET CATEGORY_EGRESS_PROXY_TOKEN; do
+                   CATEGORY_FINGERPRINT_SECRET CATEGORY_EGRESS_PROXY_TOKEN \
+                   REDIS_CRAWLER_PASSWORD S3_CRAWLER_ACCESS_KEY S3_CRAWLER_SECRET_KEY; do
             sed -i "s|^$v=.*|$v=ci-dummy-value|" .env
           done
           docker compose -f deployment/docker-compose.yml --env-file .env config -q
           docker compose -f deployment/docker-compose.yml -f deployment/docker-compose.nosandbox.yml --env-file .env config -q
+
+  audit:
+    name: Known vulnerabilities in Python packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: pip-audit on the pinned versions (fails on a known vulnerability)
+        run: |
+          python -m pip install pip-audit==2.7.3
+          pip-audit -r requirements/constraints.txt --no-deps --disable-pip --progress-spinner off
 
   images:
     name: Docker images build
@@ -105,3 +123,30 @@ jobs:
           persist-credentials: false
       - name: Build ${{ matrix.name }}
         run: docker build --file "${{ matrix.file }}" --tag "cat-egory/${{ matrix.name }}:ci" "${{ matrix.context }}"
+      # Fails on a critical vulnerability that has a fix (an upgrade away); the full list is in the job log.
+      - name: Scan ${{ matrix.name }} (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cat-egory/${{ matrix.name }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          format: table
+      - name: Fail on critical, fixable findings
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cat-egory/${{ matrix.name }}:ci
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: SBOM for ${{ matrix.name }} (CycloneDX)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cat-egory/${{ matrix.name }}:ci
+          format: cyclonedx
+          output: sbom-${{ matrix.name }}.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.name }}
+          path: sbom-${{ matrix.name }}.cdx.json
+          retention-days: 30

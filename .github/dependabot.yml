@@ -4,7 +4,8 @@
 version: 2
 updates:
   - package-ecosystem: pip
-    directory: /
+    # pyproject.toml (ranges) and requirements/constraints.txt (the exact versions the images install)
+    directories: ["/", "/requirements"]
     schedule: {interval: weekly, day: monday}
     open-pull-requests-limit: 3
     groups:
