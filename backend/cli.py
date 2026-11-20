@@ -377,7 +377,10 @@ def calibration_text(session: Session) -> str:
 
 
 def mfa_enroll(session: Session, email: str, app_secret: str, ask=input, say=print) -> bool:
-    """Show a new secret and backup codes, and save them only once the app's first code is right."""
+    """Show a new secret and backup codes, and save them only once the app's first code is right.
+
+    The secret and the codes are shown once, on purpose, to the person enrolling. They must reach a terminal only,
+    never a file or a log: mfa_command refuses to run when the output is redirected."""
     from backend.app import audit, mfa
 
     user = session.scalar(select(User).where(User.email == email.strip().lower()).with_for_update())
@@ -421,6 +424,10 @@ def mfa_command(args) -> int:
     try:
         with session_factory()() as session, session.begin():
             if args.command == "mfa-enroll":
+                if not (sys.stdin.isatty() and sys.stdout.isatty()):
+                    print("error: mfa-enroll shows a secret; run it in a terminal (docker compose exec -it), "
+                          "not with its output redirected or piped", file=sys.stderr)
+                    return 1
                 return 0 if mfa_enroll(session, args.email, app_secret) else 1
             if not args.yes:
                 print(f"dry run: would turn the second factor off for {args.email} (add --yes)")

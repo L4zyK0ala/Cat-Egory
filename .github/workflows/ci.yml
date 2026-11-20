@@ -42,6 +42,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -c requirements/constraints.txt -e '.[dev]'   # the versions the images use
+          sudo apt-get update -qq   # a stale package index made the install fail (exit 100)
           sudo apt-get install -y --no-install-recommends redis-server   # tests/unit/test_crawler_redis_acl.py
           python -m playwright install --with-deps chromium
       - name: Lint

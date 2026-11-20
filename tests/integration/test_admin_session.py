@@ -163,3 +163,15 @@ def test_enrolment_saves_nothing_on_a_wrong_code(engine, clean):
     with Session(engine) as s:
         u = s.scalar(select(User).where(User.email == "mod@example.org"))
         assert (u.totp_secret, u.totp_backup_codes) == (None, [])
+
+
+def test_enrolment_refuses_redirected_output(monkeypatch, capsys):
+    """The secret must reach a terminal only: with output redirected (a file, a pipe, a log) nothing is shown."""
+    import io
+
+    from backend import cli
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    monkeypatch.setattr("sys.stdout", io.StringIO())
+    assert cli.main(["mfa-enroll", "--email", "mod@example.org"]) == 1
+    assert "run it in a terminal" in capsys.readouterr().err
