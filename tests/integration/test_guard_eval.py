@@ -137,3 +137,35 @@ def test_by_category_compares_licensed_and_unlicensed(engine, clean):
     assert "| gambling | illegal-gambling | 2/2 (100 %) | 0/1 (0 %) |" in out
     assert "| streaming-media | piracy | 1/1 (100 %) | 0/1 (0 %) |" in out
     assert "| illegal-gambling | 2 (1) |" in out and "| news |" not in out  # empty categories are left out
+
+
+def test_adult_candidates_open_reviews_only_where_none_is_open(engine, clean):
+    from database.models import ReviewStatus, ReviewTask
+
+    sites = {"tatil-sitesi.net": ("travel", "Tatil, otel, plaj"),
+             "gizli-yetiskin.net": ("entertainment", "Explicit adult videos"),
+             "yetiskin2.net": ("adult-content", "Adult videos"),            # already adult: not asked
+             "busy-adult.net": ("entertainment", "Explicit adult chat")}     # has an open review: not asked
+    for name, (primary, text) in sites.items():
+        run(engine, make_scan(engine, name, text=text, title=name), Scripted(primary_category=primary, confidence=0.95))
+    with Session(engine) as s, s.begin():
+        busy = s.scalar(select(Domain).where(Domain.normalized_domain == "busy-adult.net"))
+        s.add(ReviewTask(domain_id=busy.id, reason="low_confidence", status=ReviewStatus.OPEN))
+    with Session(engine) as s:
+        items = guard_eval.adult_candidate_pages(s, limit=100)
+    assert sorted(p.domain for p in items) == ["gizli-yetiskin.net", "tatil-sitesi.net"]
+
+    def ask(texts):
+        return [{"evren": {"safety": "Unsafe", "guard_categories": ["Sexual Content or Sexual Acts"]}}
+                if "Explicit" in t else {"evren": {"safety": "Safe", "guard_categories": []}} for t in texts]
+
+    found, asked, error = guard_eval.sexual(items, ask, sleep=lambda _: None)
+    assert ([p.domain for p in found], asked, error) == (["gizli-yetiskin.net"], 2, None)
+    with Session(engine) as s, s.begin():
+        assert guard_eval.open_adult_reviews(s, found) == 1
+        assert guard_eval.open_adult_reviews(s, found) == 0  # open now: not twice
+    with Session(engine) as s:
+        task = s.scalar(select(ReviewTask).where(ReviewTask.reason == guard_eval.ADULT_REASON))
+        assert task.ai_prediction_id is not None and task.status == ReviewStatus.OPEN
+        name = s.scalar(select(Domain.normalized_domain).where(Domain.id == task.domain_id))
+        assert name == "gizli-yetiskin.net"

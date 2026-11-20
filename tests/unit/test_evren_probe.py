@@ -68,3 +68,20 @@ def test_a_retired_model_is_refused_with_the_reason():
         check_models("qwen3.8-flash-next,mimo-v2.6-pro")
     health = EvrenProvider(api_key="k", base_url="https://x.example", model="mimo-v2.6-pro").health()
     assert health.status == "error" and "retired" in health.detail
+
+
+def test_clef_and_quota_probes(key, capsys):
+    seen = []
+
+    def answer(request):
+        if request.url.path == "/v1/quota":
+            return httpx.Response(200, json={"daily_used_tokens": 10, "remaining_cr": "0"})
+        return httpx.Response(422, json={"detail": [{"loc": ["body", "questions", "kind"], "msg": "options: required"}]})
+    with client(seen, answer) as http:
+        assert evren_probe.quota(http) == 0
+        assert evren_probe.decision(http) == 1
+    sent = json.loads(seen[1].content)
+    assert seen[1].url.path == "/v1/systemone" and sent["model"] == "clef"
+    assert {q["type"] for q in sent["questions"].values()} == {"noul", "choice", "score"}
+    out = capsys.readouterr().out
+    assert '"remaining_cr": "0"' in out and "options: required" in out and KEY not in out

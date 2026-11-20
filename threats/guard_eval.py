@@ -6,6 +6,7 @@ No domain, category, threat flag or review changes, and nothing is stored. Run i
     python -m threats.guard_eval                    # dry run: how many pages each group has
     python -m threats.guard_eval --per-group 150 --yes > guard-eval.md
     python -m threats.guard_eval --by-category --yes > guard-categories.md   # licensed vs unlicensed content
+    python -m threats.guard_eval --adult-candidates --yes [--open-reviews]   # adult content the AI missed
 
 Groups (each page is the newest stored scan of the domain that has text):
 
@@ -23,6 +24,12 @@ how well two simple rules would tell our threats from checked legitimate sites.
 streaming media and piracy, and a few ordinary categories as a baseline) and shows whether "Non-violent Illegal
 Acts" tells the unlicensed side of each pair from the licensed one. The labels are the published ones (mostly the
 AI's), so a few may be wrong; the report counts the person-checked ones apart.
+
+``--adult-candidates`` is the one use the measurement supports (sexual content on 149 of 150 adult sites, on none
+of 205 person-checked others): it asks about published sites whose categories do not include adult content and
+lists those the guard model calls sexual. ``--open-reviews`` opens a category review for each (reason
+``guard_sexual``, the newest AI answer attached) unless the domain already has an open review. Nothing is published
+by it: a person decides.
 """
 from __future__ import annotations
 
@@ -76,6 +83,7 @@ class Page:
     domain: str
     text: str
     checked: bool = False  # a person verified its category
+    domain_id: int | None = None
 
 
 @dataclass
@@ -152,6 +160,68 @@ def pages_by_category(session: Session, per_group: int, categories: Iterable[str
         out += [Page(category, name, (f"{title or ''}\n{excerpt or ''}").strip()[:MAX_CHARS], bool(checked))
                 for name, title, excerpt, checked in rows]
     return out
+
+
+ADULT = "adult-content"
+ADULT_REASON = "guard_sexual"
+
+
+def adult_candidate_pages(session: Session, limit: int) -> list[Page]:
+    """Published sites without adult content among their categories and without an open review."""
+    from database.models import ReviewStatus, ReviewTask
+
+    newest = _newest_text_scans()
+    open_task = exists(select(ReviewTask.id).where(ReviewTask.domain_id == Domain.id,
+                                                   ReviewTask.status == ReviewStatus.OPEN))
+    rows = session.execute(
+        select(Domain.id, Domain.normalized_domain, ScanResult.page_title, ExtractedContent.text_excerpt)
+        .join(newest, newest.c.domain_id == Domain.id)
+        .join(ScanResult, ScanResult.id == newest.c.scan_id)
+        .join(ExtractedContent, ExtractedContent.scan_result_id == ScanResult.id)
+        .where(Domain.is_active, Domain.classification_status.in_(PUBLISHED), Domain.primary_category_id != ADULT,
+               ~Domain.secondary_categories.contains([ADULT]), ~open_task)
+        .order_by(func.md5(Domain.normalized_domain)).limit(limit)).all()
+    return [Page("candidate", name, (f"{title or ''}\n{excerpt or ''}").strip()[:MAX_CHARS], domain_id=did)
+            for did, name, title, excerpt in rows]
+
+
+def sexual(items: list[Page], ask: Ask, *, pause: float = 0.5,
+           sleep: Callable[[float], None] = time.sleep) -> tuple[list[Page], int, str | None]:
+    """The pages the guard model calls sexual, how many were asked about, and the error that stopped it."""
+    found: list[Page] = []
+    for start in range(0, len(items), BATCH):
+        if start:
+            sleep(pause)
+        batch = items[start:start + BATCH]
+        try:
+            answers = ask([p.text for p in batch])
+        except (httpx.HTTPError, ValueError) as exc:
+            status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+            return found, start, f"stopped after {start} pages: {type(exc).__name__}" + (f" (HTTP {status})" if status else "")
+        for page, answer in zip(batch, answers, strict=True):
+            cats = (answer.get("evren") or {}).get("guard_categories") or []
+            if any("sexual" in str(c).lower() for c in cats):
+                found.append(page)
+    return found, len(items), None
+
+
+def open_adult_reviews(session: Session, found: list[Page]) -> int:
+    """A category review for each candidate (newest AI answer attached), unless one is open by now."""
+    from classification.engine import open_review
+    from database.models import ReviewStatus, ReviewTask
+
+    opened = 0
+    for page in found:
+        domain = session.get(Domain, page.domain_id)
+        busy = session.scalar(select(ReviewTask.id).where(ReviewTask.domain_id == page.domain_id,
+                                                          ReviewTask.status == ReviewStatus.OPEN))
+        if domain is None or busy is not None:
+            continue
+        prediction = session.scalar(select(AIPrediction).where(AIPrediction.domain_id == domain.id)
+                                    .order_by(AIPrediction.id.desc()).limit(1))
+        open_review(session, domain, prediction, ADULT_REASON)
+        opened += 1
+    return opened
 
 
 def http_ask(http: httpx.Client, base_url: str, key: str) -> Ask:
@@ -259,7 +329,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pause", type=float, default=0.5, help="seconds between requests (default 0.5)")
     parser.add_argument("--by-category", action="store_true", help="group published sites by main category")
     parser.add_argument("--categories", help=f"comma-separated, with --by-category (default: {','.join(CATEGORY_GROUPS)})")
+    parser.add_argument("--adult-candidates", action="store_true",
+                        help="list published non-adult sites the guard model calls sexual")
+    parser.add_argument("--limit", type=int, default=7000, help="sites asked about with --adult-candidates")
+    parser.add_argument("--open-reviews", action="store_true", help="with --adult-candidates: open a review for each")
     args = parser.parse_args(argv)
+    if args.adult_candidates:
+        return adult_main(args)
     categories = [c.strip() for c in (args.categories or "").split(",") if c.strip()] or list(CATEGORY_GROUPS)
     with session_factory()() as session:
         items = (pages_by_category(session, max(1, args.per_group), categories) if args.by_category
@@ -278,6 +354,38 @@ def main(argv: list[str] | None = None) -> int:
     with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0), follow_redirects=False) as http:
         tallies, error = judge(items, http_ask(http, s.evren_base_url, key), pause=args.pause)
     print((report_by_category if args.by_category else report)(tallies, error))
+    return 2 if error else 0
+
+
+def adult_main(args: argparse.Namespace) -> int:
+    from backend.app import audit
+    from database.session import session_factory
+
+    with session_factory()() as session:
+        items = adult_candidate_pages(session, max(1, args.limit))
+    print(f"{len(items)} published sites without adult content and without an open review", file=sys.stderr)
+    if not args.yes:
+        print(f"dry run: {-(-len(items) // BATCH)} requests (add --yes to ask {MODEL})", file=sys.stderr)
+        return 0
+    s = get_settings()
+    key = s.evren_api_key.get_secret_value().strip() if s.evren_api_key else ""
+    if not key:
+        print("CATEGORY_EVREN_API_KEY is not set here (run this in the worker container)", file=sys.stderr)
+        return 1
+    with httpx.Client(timeout=httpx.Timeout(120.0, connect=15.0), follow_redirects=False) as http:
+        found, asked, error = sexual(items, http_ask(http, s.evren_base_url, key), pause=args.pause)
+    print(f"# Adult content the AI did not name ({MODEL})\n")
+    if error:
+        print(f"**Incomplete:** {error}.\n")
+    print(f"{len(found)} of {asked} published sites called sexual:\n")
+    for page in found:
+        print(f"- {page.domain}")
+    if args.open_reviews and found:
+        with session_factory()() as session, session.begin():
+            opened = open_adult_reviews(session, found)
+            audit.record(session, action="guard.adult_reviews", target_type="domains", target_id=len(found),
+                         after={"opened": opened, "found": [p.domain for p in found][:200], "asked": asked})
+        print(f"\nopened {opened} category reviews (reason {ADULT_REASON})")
     return 2 if error else 0
 
 

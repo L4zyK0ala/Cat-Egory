@@ -123,6 +123,16 @@ most 2 % of news, education and e-commerce sites. So it does not tell licensed f
 subject (betting) more than to the licence, and rarely to piracy. Conclusion: use the guard model, if at all, for
 adult content only; licensed-or-not questions go to a decision model (`clef`) next.
 
+`python -m threats.guard_eval --adult-candidates --yes [--open-reviews]` is that use: it asks about published
+sites without adult content among their categories (and without an open review), lists those called sexual and,
+with `--open-reviews`, opens a category review for each (reason `guard_sexual`). A person decides; nothing is
+published by it.
+
+The probe also has `clef` (one sample text to `/v1/systemone` with a yes/no, a choice and a score question; the
+schema publishes only `type` and `instructions`, so a wrong field shows up as a validation error) and `quota`
+(`GET /v1/quota`: daily tokens used and left, credit balance `remaining_cr`, concurrency). The gateway's OpenAPI
+document is public at `https://evren-llmapi.ssyz.org.tr/openapi.json`.
+
 ## Timeouts and retries
 
 Answers are slow: 24–53 s for one classification with `qwen3.8-flash-next` (2026-11-08), sometimes more than
