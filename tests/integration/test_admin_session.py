@@ -1,6 +1,7 @@
 """Admin UI sign-in with email and password: a short-lived key instead of pasting a cat_ key."""
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,17 @@ from database.models import ApiKey, Role
 
 PASSWORD = "correct horse battery staple"
 SIGN_IN = "/api/v1/admin/session"
+
+
+@pytest.fixture(autouse=True)
+def mfa_not_required(monkeypatch):
+    """The local .env may require MFA (the server folder); these tests set it themselves where they need it."""
+    from common.config import get_settings
+
+    monkeypatch.setenv("CATEGORY_ADMIN_MFA_REQUIRED", "false")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def user(engine, email="mod@example.org", role=Role.MODERATOR, password=PASSWORD):

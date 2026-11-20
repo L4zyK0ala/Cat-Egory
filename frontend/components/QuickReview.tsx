@@ -122,11 +122,13 @@ function Quick({ api }: { api: string }) {
       if (!primary) { setMsg({ ok: false, text: t("Choose a category from the list first (press S).", "Önce listeden bir kategori seçin (S tuşu).") }); picker.current?.focus(); return; }
     }
     setBusy(true);
-    const body = { action, ...(primary ? { primary, secondary: [] } : {}), risk };
+    // Reject and withdraw never carry threats: ticked boxes are ignored there (a "not a threat" must not flag one).
+    const body = { action, ...(primary ? { primary, secondary: [] } : {}),
+                   risk: action === "reject" || action === "withdraw" ? [] : risk };
     const res = await postConfirmed(api, `/api/v1/admin/reviews/${current.id}/decision`, body);
     setBusy(false);
     if (res.ok || res.code === "already_decided") {
-      const flags = risk.length ? ` · ${t("threat", "tehdit")}: ${risk.map(name).join(", ")}` : "";
+      const flags = risk.length && action !== "reject" ? ` · ${t("threat", "tehdit")}: ${risk.map(name).join(", ")}` : "";
       const verb = action === "approve" ? (primary || current.prediction?.primary_category ? t("approved", "onaylandı")
                                            : t("threat confirmed", "tehdit onaylandı")) : action === "set" ? t(`set to ${name(primary!)}`, `${name(primary!)} olarak atandı`)
         : action === "withdraw" ? t("threat flag withdrawn", "tehdit işareti kaldırıldı")

@@ -483,3 +483,17 @@ def run_with_policy(engine, scan_id, provider, policy):
         data = build_input(s, scan, use_screenshot=False)
         result = provider.classify(data)
         return decide(s, domain, scan, result, taxonomy=default_taxonomy(), policy=policy, data=data)
+
+
+def test_reject_never_flags_a_threat(engine, client, admin):
+    """Rejecting means "not this answer" ("not a threat" on a candidate): ticked threat boxes must not be recorded."""
+    from database.models import ThreatIntelligence
+
+    queue_review(engine, "maybe.example.com", risk_categories=["phishing"])
+    task = client.get("/api/v1/admin/reviews", headers=admin, params={"queue": "all"}).json()["items"][0]
+    url = f"/api/v1/admin/reviews/{task['id']}/decision"
+    r = client.post(url, headers=admin, json={"action": "reject", "risk": ["phishing"]})
+    assert r.status_code == 422 and "reject takes no risk" in r.json()["error"]["message"]
+    assert client.post(url, headers=admin, json={"action": "reject"}).status_code == 200
+    with Session(engine) as s:
+        assert s.scalar(select(func.count()).select_from(ThreatIntelligence)) == 0

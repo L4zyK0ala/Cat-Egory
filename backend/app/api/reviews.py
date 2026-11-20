@@ -291,6 +291,10 @@ def decide_review(task_id: int, body: DecisionIn, request: Request,
     if body.risk and not body.confirm_protected:
         guard_protected(session, domain.normalized_domain)
     withdrawn = 0
+    if body.action == "reject" and body.risk:
+        # "Reject" means "not this answer" (on a threat candidate: "not a threat"); it must never flag one.
+        raise ApiError(422, "validation_error", "reject takes no risk categories; use approve or set to confirm "
+                                                "a threat")
     if body.action == "withdraw":
         if body.risk:
             raise ApiError(422, "validation_error", "withdraw takes no risk categories")
