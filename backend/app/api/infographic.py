@@ -23,6 +23,7 @@ from database.models import (
     DemandDaily,
     DetectorVerdict,
     Domain,
+    DomainCategory,
     FeedDownloadDaily,
     JobStatus,
     ReviewStatus,
@@ -51,7 +52,7 @@ class Count(BaseModel):
 
 class Totals(BaseModel):
     published: int       # published at the end of the month (classified or verified now, first seen by then)
-    new_published: int   # of those, first seen during the month
+    new_published: int   # of those, given their first main category during the month
     verified: int        # published and checked by a person
     tr_published: int    # published .tr names
     categories_used: int
@@ -80,6 +81,8 @@ class Funnel(BaseModel):
     scanned: int           # unique domains with a successful whole-site scan in the month
     published: int         # with a published main category at the snapshot
     verified: int          # of those, checked by a person
+    tracking_since: date | None  # first domain ever seen: in the first month every count is also a total
+    first_month: bool      # tracking began in this month (known == new_known by construction)
 
 
 class ThreatFlow(BaseModel):
@@ -102,6 +105,8 @@ class AiQuality(BaseModel):
     all_sample_kept: int
     hard_n: int            # unsure / disputed answers decided in the month
     hard_kept: int
+    hard_low: float | None = None   # Wilson 95 % interval of hard_kept / hard_n
+    hard_high: float | None = None
 
 
 class Crawler(BaseModel):
@@ -179,9 +184,13 @@ def infographic(month: str | None = Query(None, description="YYYY-MM (Türkiye t
                  Domain.primary_category_id.is_not(None))
     tr = (Domain.public_suffix == "tr") | Domain.public_suffix.like("%.tr")
     count = func.count(Domain.id)
+    first_category = (select(DomainCategory.domain_id, func.min(DomainCategory.valid_from).label("first"))
+                      .where(DomainCategory.is_primary).group_by(DomainCategory.domain_id).subquery())
     totals = Totals(
         published=session.scalar(select(count).where(*published)) or 0,
-        new_published=session.scalar(select(count).where(*published, Domain.first_seen >= start)) or 0,
+        new_published=session.scalar(
+            select(count).join(first_category, first_category.c.domain_id == Domain.id)
+            .where(*published, first_category.c.first >= start, first_category.c.first < end)) or 0,
         verified=session.scalar(select(count).where(*published, Domain.classification_status
                                                     == ClassificationStatus.VERIFIED)) or 0,
         tr_published=session.scalar(select(count).where(*published, tr)) or 0,
@@ -235,20 +244,23 @@ def infographic(month: str | None = Query(None, description="YYYY-MM (Türkiye t
     return InfographicOut(month=first.strftime("%Y-%m"), start=start.isoformat(), end=end.isoformat(),
                           complete=following <= today, generated_at=datetime.now(UTC).isoformat(), totals=totals,
                           categories=categories, tr_categories=tr_categories, threats=threats, demand=demand,
-                          funnel=funnel(session, start, end, totals),
+                          funnel=funnel(session, start, end, totals, offset),
                           threat_flow=threat_flow(session, start, end, sum(c.count for c in threats.by_type)),
                           ai=ai_quality(session, start, end), crawler=crawler(session, start, end, offset),
                           usage=usage(session, first, following, demand))
 
 
-def funnel(session: Session, start: datetime, end: datetime, totals: Totals) -> Funnel:
+def funnel(session: Session, start: datetime, end: datetime, totals: Totals, offset: timedelta = timedelta()) -> Funnel:
     known = (Domain.is_active, Domain.first_seen < end)
     scanned = (select(func.count(func.distinct(ScanJob.domain_id)))
                .where(ScanJob.status == JobStatus.SUCCEEDED, ScanJob.url_id.is_(None),
                       ScanJob.finished_at >= start, ScanJob.finished_at < end))
+    since = session.scalar(select(func.min(Domain.first_seen)))
     return Funnel(known=session.scalar(select(func.count(Domain.id)).where(*known)) or 0,
                   new_known=session.scalar(select(func.count(Domain.id)).where(*known, Domain.first_seen >= start)) or 0,
-                  scanned=session.scalar(scanned) or 0, published=totals.published, verified=totals.verified)
+                  scanned=session.scalar(scanned) or 0, published=totals.published, verified=totals.verified,
+                  tracking_since=(since + offset).date() if since else None,  # Türkiye's calendar day
+                  first_month=since is not None and since >= start)
 
 
 def threat_flow(session: Session, start: datetime, end: datetime, labels: int) -> ThreatFlow:
@@ -288,11 +300,14 @@ def ai_quality(session: Session, start: datetime, end: datetime) -> AiQuality:
     hard = [r for r in month if r.reason in HARD_REASONS]
     kept = sum(r.primary_category_id == r.decision_primary_id for r in sample)
     interval = wilson(kept, len(sample))
+    hard_kept = sum(r.primary_category_id == r.decision_primary_id for r in hard)
+    hard_interval = wilson(hard_kept, len(hard))
     return AiQuality(answers=answers, valid=valid, models=models, sample_n=len(sample), sample_kept=kept,
                      sample_low=interval[0] if interval else None, sample_high=interval[1] if interval else None,
                      all_sample_n=len(every_sample),
                      all_sample_kept=sum(r.primary_category_id == r.decision_primary_id for r in every_sample),
-                     hard_n=len(hard), hard_kept=sum(r.primary_category_id == r.decision_primary_id for r in hard))
+                     hard_n=len(hard), hard_kept=hard_kept, hard_low=hard_interval[0] if hard_interval else None,
+                     hard_high=hard_interval[1] if hard_interval else None)
 
 
 def crawler(session: Session, start: datetime, end: datetime, offset: timedelta) -> Crawler:

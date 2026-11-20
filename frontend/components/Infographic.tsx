@@ -13,10 +13,12 @@ export type Data = {
   threats: { new_domains: number; own_domains: number; by_type: Count[]; brands: Count[]; suffixes: Count[] };
   demand: { lookups: number; domains: number; feed_downloads: number; by_category: Count[]; daily: Count[] };
   generated_at: string;
-  funnel: { known: number; new_known: number; scanned: number; published: number; verified: number };
+  funnel: { known: number; new_known: number; scanned: number; published: number; verified: number;
+            tracking_since?: string | null; first_month?: boolean };
   threat_flow: { candidates: number; decided: number; confirmed: number; labels: number };
   ai: { answers: number; valid: number; models: string[]; sample_n: number; sample_kept: number; sample_low: number | null;
-        sample_high: number | null; all_sample_n: number; all_sample_kept: number; hard_n: number; hard_kept: number };
+        sample_high: number | null; all_sample_n: number; all_sample_kept: number; hard_n: number; hard_kept: number;
+        hard_low?: number | null; hard_high?: number | null };
   crawler: { jobs: number; succeeded: number; failed: number; blocked: number; unique_succeeded: number; retried: number;
              recovered: number; errors: Count[]; daily: Count[] };
   usage: { feed_downloads: number; feed_clients: number; formats: Count[]; lists: Count[]; lookups: number; lookup_daily: Count[] };
@@ -79,7 +81,7 @@ function wrap(text: string, max: number): string[] {
 /** Header, footer, page number and the card's footnote (what was measured, from where, when). */
 function Frame({ c, page, pages, id, note, children }: { c: Ctx; page: number; pages: number; id: string; note: string;
   children: React.ReactNode }) {
-  const lines = wrap(note, 92).slice(0, 3);
+  const lines = wrap(note, 84).slice(0, 4);
   return (<>
     <rect width={W} height={H} fill={C.bg} />
     <Icon x={PAD} y={64} size={72} id={`icon-${id}`} />
@@ -88,7 +90,7 @@ function Frame({ c, page, pages, id, note, children }: { c: Ctx; page: number; p
     <text x={W - PAD} y={116} textAnchor="end" fontFamily={SANS} fontSize="28" fill={C.muted}>{monthName(c.month, c.lang)}</text>
     <line x1={PAD} x2={W - PAD} y1={168} y2={168} stroke={C.line} strokeWidth="2" />
     {children}
-    {lines.map((l, i) => <text key={i} x={PAD} y={H - 122 - (lines.length - 1 - i) * 24} fontFamily={SANS} fontSize="19"
+    {lines.map((l, i) => <text key={i} x={PAD} y={H - 124 - (lines.length - 1 - i) * 27} fontFamily={SANS} fontSize="21"
                                 fill={C.muted}>{l}</text>)}
     <line x1={PAD} x2={W - PAD} y1={H - 110} y2={H - 110} stroke={C.line} strokeWidth="2" />
     <text x={PAD} y={H - 62} fontFamily={SANS} fontSize="26" fill={C.muted}>
@@ -137,22 +139,36 @@ function Empty({ text, y }: { text: string; y: number }) {
   return <text x={PAD} y={y} fontFamily={SANS} fontSize="32" fill={C.muted}>{text}</text>;
 }
 
+function dayName(day: string | null | undefined, lang: Locale): string {
+  if (!day) return "";
+  const [y, m, dd] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, dd)).toLocaleDateString(intl(lang), { day: "numeric", month: "long", timeZone: "UTC" });
+}
+
 function Cover({ d, c }: { d: Data; c: Ctx }) {
   const { t, n } = c;
-  const w = (W - 2 * PAD - 32) / 2, h = 250;
+  const w = (W - 2 * PAD - 32) / 2, h = 236;
+  const first = Boolean(d.funnel.first_month);
+  const since = dayName(d.funnel.tracking_since, c.lang);
   return (<>
     <text x={PAD} y={300} fontFamily={SANS} fontSize="32" fontWeight="700" fill={C.red} letterSpacing="4">
-      {t("MONTHLY REPORT", "AYLIK BÜLTEN")}</text>
+      {t("MONTHLY INTERNET REPORT", "AYLIK İNTERNET RAPORU")}</text>
     <Title y={392} lines={[monthName(d.month, c.lang)]} />
     <text x={PAD} y={460} fontFamily={SANS} fontSize="32" fill={C.muted}>
       {t("Website categories and threats, from Türkiye", "Türkiye'den site kategorileri ve tehditler")}</text>
     <Stat x={PAD} y={530} w={w} h={h} value={n(d.funnel.known)} label={t("known,domains", "bilinen,alan adı").split(",")} />
-    <Stat x={PAD + w + 32} y={530} w={w} h={h} value={n(d.funnel.new_known)} label={t("discovered,this month", "bu ay,keşfedilen").split(",")} />
-    <Stat x={PAD} y={530 + h + 32} w={w} h={h} value={n(d.totals.new_published)} label={t("newly categorized,this month", "bu ay yeni,kategorilendirilen").split(",")} />
+    {first
+      ? <Stat x={PAD + w + 32} y={530} w={w} h={h} value={n(d.totals.published)} label={t("with a published,category", "kategorisi,yayında").split(",")} />
+      : <Stat x={PAD + w + 32} y={530} w={w} h={h} value={n(d.funnel.new_known)} label={t("discovered,this month", "bu ay,keşfedilen").split(",")} />}
+    {first
+      ? <Stat x={PAD} y={530 + h + 32} w={w} h={h} value={n(d.totals.verified)} label={t("checked,by a person", "insan,doğrulamalı").split(",")} />
+      : <Stat x={PAD} y={530 + h + 32} w={w} h={h} value={n(d.totals.new_published)} label={t("newly categorized,this month", "bu ay ilk kez,kategorilendirilen").split(",")} />}
     <Stat x={PAD + w + 32} y={530 + h + 32} w={w} h={h} value={n(d.threats.new_domains)} label={t("new threat,domains", "yeni tehdit,alan adı").split(",")} />
-    <text x={PAD} y={530 + 2 * h + 32 + 90} fontFamily={SANS} fontSize="30" fill={C.muted}>
-      {t(`${n(d.totals.published)} published · ${n(d.totals.categories_used)} categories · ${n(d.totals.verified)} checked by a person`,
-         `${n(d.totals.published)} site yayında · ${n(d.totals.categories_used)} kategori · ${n(d.totals.verified)} insan doğrulamalı`)}</text>
+    <text x={PAD} y={530 + 2 * h + 32 + 70} fontFamily={SANS} fontSize="28" fill={C.muted}>
+      {first ? t(`First month · tracking since ${since} · monthly counts are totals`,
+                 `İlk ay · takip başlangıcı ${since} · aylık sayılar aynı zamanda toplam`)
+        : t(`${n(d.totals.published)} published · ${n(d.totals.categories_used)} categories · ${n(d.totals.verified)} checked by a person`,
+            `${n(d.totals.published)} site yayında · ${n(d.totals.categories_used)} kategori · ${n(d.totals.verified)} insan doğrulamalı`)}</text>
   </>);
 }
 
@@ -174,11 +190,15 @@ function Threats({ d, c }: { d: Data; c: Ctx }) {
     <Title lines={t("Threats,this month", "Bu ayın,tehditleri").split(",")} />
     <Empty y={520} text={t("No new threat records this month.", "Bu ay yeni tehdit kaydı yok.")} />
   </>);
-  const types = th.by_type.slice(0, 4);
-  const flowY = 560 + types.length * 72 + 30;
-  const brandsY = flowY + 110;
+  const shown = th.by_type.slice(0, 4);
+  const rest = th.by_type.slice(4).reduce((sum, x) => sum + x.count, 0);
+  const types = rest ? [...shown, { key: "other", count: rest }] : shown;
+  const outside = th.new_domains - th.own_domains;
+  const rowH = 70, barsY = 520;
+  const flowY = barsY + types.length * rowH + 25;
+  const brandsY = flowY + 105;
   let bx = PAD, by = brandsY + 40;
-  const suffixY = H - 200;
+  const suffixY = H - 222;
   const f = d.threat_flow;
   const pills = th.brands.slice(0, 8).map((b) => {
     const text = `${b.key}  ${n(b.count)}`;
@@ -189,19 +209,22 @@ function Threats({ d, c }: { d: Data; c: Ctx }) {
     return pill;
   }).filter((p) => p.y + 52 <= suffixY - 36);  // only the rows that fit above the endings line
   return (<>
-    <text x={PAD} y={300} fontFamily={SERIF} fontSize="120" fontWeight="700" fill={C.red}>{n(th.new_domains)}</text>
-    <text x={PAD} y={360} fontFamily={SANS} fontSize="36" fontWeight="700" fill={C.text}>
+    <text x={PAD} y={285} fontFamily={SERIF} fontSize="120" fontWeight="700" fill={C.red}>{n(th.new_domains)}</text>
+    <text x={PAD} y={340} fontFamily={SANS} fontSize="36" fontWeight="700" fill={C.text}>
       {t("new threat domains this month", "bu ay yeni tehdit alan adı")}</text>
-    <text x={PAD} y={410} fontFamily={SANS} fontSize="28" fill={C.muted}>
-      {t(`${n(th.own_domains)} confirmed by our reviewers and our page detector`, `${n(th.own_domains)} tanesini inceleyicilerimiz ve sayfa dedektörümüz doğruladı`)}</text>
-    <text x={PAD} y={500} fontFamily={SANS} fontSize="26" fontWeight="700" fill={C.muted} letterSpacing="2">
-      {t(`DOMAINS BY TYPE (${n(f.labels)} LABELS)`, `TÜRE GÖRE ALAN ADI (${n(f.labels)} ETİKET)`)}</text>
-    <Bars y={560} rowH={72} items={types} label={c.cat} value={(it) => n(it.count)} />
-    <text x={PAD} y={flowY} fontFamily={SANS} fontSize="26" fontWeight="700" fill={C.muted} letterSpacing="2">{t("CANDIDATES FOR A PERSON", "İNSAN KARARI BEKLEYEN ADAYLAR")}</text>
+    <text x={PAD} y={383} fontFamily={SANS} fontSize="28" fill={C.muted}>
+      {t(`${n(th.own_domains)} confirmed by our reviewers, page detector or Octryx`,
+         `${n(th.own_domains)} tanesini inceleyicilerimiz, sayfa dedektörü ya da Octryx doğruladı`)}</text>
+    {outside > 0 && <text x={PAD} y={419} fontFamily={SANS} fontSize="28" fill={C.muted}>
+      {t(`${n(outside)} come from licensed threat lists only`, `${n(outside)} tanesi yalnızca lisanslı tehdit listelerinden`)}</text>}
+    <text x={PAD} y={474} fontFamily={SANS} fontSize="26" fontWeight="700" fill={C.muted} letterSpacing="2">
+      {t(`DOMAINS BY TYPE · ${n(f.labels)} LABELS IN ALL`, `TÜRE GÖRE ALAN ADI · TOPLAM ${n(f.labels)} ETİKET`)}</text>
+    <Bars y={barsY} rowH={rowH} items={types} label={c.cat} value={(it) => n(it.count)} />
+    <text x={PAD} y={flowY} fontFamily={SANS} fontSize="26" fontWeight="700" fill={C.muted} letterSpacing="2">{t("HUMAN REVIEW FLOW", "İNSAN İNCELEME AKIŞI")}</text>
     <text x={PAD} y={flowY + 52} fontFamily={SANS} fontSize="30" fill={C.text}>
       {t(`${n(f.candidates)} opened → ${n(f.decided)} decided → ${n(f.confirmed)} confirmed`,
          `${n(f.candidates)} açıldı → ${n(f.decided)} karara bağlandı → ${n(f.confirmed)} doğrulandı`)}
-      {f.decided > 0 && <tspan fill={C.muted}>{`  (${c.pct(f.confirmed, f.decided)})`}</tspan>}</text>
+      {f.decided > 0 && <tspan dx="10" fill={C.muted}>{`(${c.pct(f.confirmed, f.decided)})`}</tspan>}</text>
     {pills.length > 0 && <>
       <text x={PAD} y={brandsY} fontFamily={SANS} fontSize="26" fontWeight="700" fill={C.muted} letterSpacing="2">
         {t("MOST IMITATED BRANDS", "EN ÇOK TAKLİT EDİLEN MARKALAR")}</text>
@@ -232,7 +255,10 @@ function Funnel({ d, c }: { d: Data; c: Ctx }) {
   const width = W - 2 * PAD;
   return (<>
     <Title lines={t("From discovery,to verification", "Keşiften,doğrulamaya").split(",")}
-           sub={t(`${n(f.new_known)} domains discovered this month`, `Bu ay ${n(f.new_known)} yeni alan adı keşfedildi`)} />
+           sub={f.first_month
+             ? t(`First month: tracking since ${dayName(f.tracking_since, c.lang)}, so all ${n(f.known)} are new`,
+                 `İlk ay (takip başlangıcı ${dayName(f.tracking_since, c.lang)}): ${n(f.known)} alan adının hepsi yeni`)
+             : t(`${n(f.new_known)} of them discovered this month`, `Bunların ${n(f.new_known)} tanesi bu ay keşfedildi`)} />
     {stages.map(([label, value], i) => {
       const top = 520 + i * 130;
       const w = Math.max(8, (value / max) * width);
@@ -271,17 +297,17 @@ function AiQuality({ d, c }: { d: Data; c: Ctx }) {
     </g>
   );
   return (<>
-    <Title lines={t("How right is,the AI?", "Yapay zekâ,ne kadar doğru?").split(",")}
+    <Title lines={t("How right is,the AI?", "Yapay zeka,ne kadar doğru?").split(",")}
            sub={t("Measured against people, not against the model", "Modelin kendisiyle değil, insan kararıyla ölçülür")} />
     {card(PAD, sn ? pct(sk, sn) : "–", t("of published answers,kept by a reviewer", "yayımlanmış cevabı,insan değiştirmedi").split(","),
           `n=${n(sn)}${monthly ? ci(a.sample_low, a.sample_high) : t(" · all months", " · tüm aylar")}`)}
     {card(PAD + w + 32, a.hard_n ? pct(a.hard_kept, a.hard_n) : "–", t("of hard cases,right first time", "zor vakada,ilk cevap doğru").split(","),
-          `n=${n(a.hard_n)} · ${t("unsure or disputed answers", "emin olunmayan cevaplar")}`)}
+          `n=${n(a.hard_n)}${ci(a.hard_low ?? null, a.hard_high ?? null)}`)}
     <text x={PAD} y={920} fontFamily={SANS} fontSize="26" fontWeight="700" fill={C.muted} letterSpacing="2">{t("VALID ANSWERS (FORMAT, NOT CORRECTNESS)", "GEÇERLİ YANIT (BİÇİM, DOĞRULUK DEĞİL)")}</text>
     <rect x={PAD} y={945} width={W - 2 * PAD} height={30} rx="4" fill={C.beige} />
     <rect x={PAD} y={945} width={Math.max(8, (a.valid / Math.max(1, a.answers)) * (W - 2 * PAD))} height={30} rx="4" fill={C.red} />
     <text x={PAD} y={1020} fontFamily={SANS} fontSize="28" fill={C.text}>
-      {t(`${pct(a.valid, a.answers)} of ${n(a.answers)} AI answers this month`, `Bu ayki ${n(a.answers)} yapay zekâ cevabında oran ${pct(a.valid, a.answers)}`)}</text>
+      {t(`${pct(a.valid, a.answers)} of ${n(a.answers)} AI answers this month`, `Bu ayki ${n(a.answers)} yapay zeka cevabında oran ${pct(a.valid, a.answers)}`)}</text>
     <text x={PAD} y={1070} fontFamily={SANS} fontSize="24" fill={C.muted}>{t("Models", "Modeller")}: {a.models.join(", ") || "–"}</text>
   </>);
 }
@@ -299,13 +325,19 @@ function Crawler({ d, c }: { d: Data; c: Ctx }) {
                                             [t("technical error", "teknik hata"), k.failed, "#8A6F62"],
                                             [t("robots / policy", "robots / politika"), k.blocked, "#D9C3A5"]];
   let x = PAD;
-  const chartTop = 900, chartH = 150, chartW = W - 2 * PAD;
+  const chartTop = 880, chartH = 130, chartW = W - 2 * PAD;
   const peak = Math.max(1, ...k.daily.map((p) => p.count));
   const [y, m] = d.month.split("-").map(Number);
   const days = new Date(y, m, 0).getDate();
   const pts = k.daily.map((p) => [PAD + ((Number(p.key.slice(8, 10)) - 1) / Math.max(1, days - 1)) * chartW,
                                   chartTop + chartH - (p.count / peak) * chartH] as const);
   const line = pts.map(([px, py], i) => `${i ? "L" : "M"}${px.toFixed(1)} ${py.toFixed(1)}`).join(" ");
+  const last = k.daily[k.daily.length - 1] ?? { key: "0000-00-01", count: 0 };
+  const lastDay = Number(last.key.slice(8, 10));
+  const inWeek = (from: number, to: number) => k.daily.filter((p) => { const x = Number(p.key.slice(8, 10)); return x > from && x <= to; })
+    .reduce((sum, p) => sum + p.count, 0);
+  const week = inWeek(lastDay - 7, lastDay), prevWeek = lastDay > 14 ? inWeek(lastDay - 14, lastDay - 7) : 0;
+  const ticks = [1, 8, 15, 22, days].filter((x, i, all) => all.indexOf(x) === i && (x === days || days - x >= 3));
   return (<>
     <Title lines={t("Crawling,capacity", "Tarama,kapasitesi").split(",")} />
     {stats.map(([v, l], i) => (
@@ -333,9 +365,23 @@ function Crawler({ d, c }: { d: Data; c: Ctx }) {
     {pts.length > 1 && <>
       <text x={PAD} y={chartTop - 30} fontFamily={SANS} fontSize="26" fontWeight="700" fill={C.muted} letterSpacing="2">
         {t("DOMAINS SCANNED PER DAY", "GÜNLÜK TARANAN ALAN ADI")}</text>
+      <line x1={PAD} x2={W - PAD} y1={chartTop} y2={chartTop} stroke={C.line} strokeWidth="1.5" strokeDasharray="6 6" />
+      <text x={W - PAD} y={chartTop - 8} textAnchor="end" fontFamily={SANS} fontSize="22" fill={C.muted}>
+        {t(`peak ${n(peak)} a day`, `en yüksek: günde ${n(peak)}`)}</text>
       <line x1={PAD} x2={W - PAD} y1={chartTop + chartH} y2={chartTop + chartH} stroke={C.line} strokeWidth="2" />
       <path d={`${line} L${pts[pts.length - 1][0].toFixed(1)} ${chartTop + chartH} L${pts[0][0].toFixed(1)} ${chartTop + chartH} Z`} fill={C.redSoft} />
       <path d={line} fill="none" stroke={C.red} strokeWidth="3" strokeLinejoin="round" />
+      <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="7" fill={C.red} stroke={C.bg} strokeWidth="2" />
+      {ticks.map((day) => (
+        <text key={day} x={PAD + ((day - 1) / Math.max(1, days - 1)) * chartW} y={chartTop + chartH + 34}
+              textAnchor={day === 1 ? "start" : day === days ? "end" : "middle"} fontFamily={SANS} fontSize="22" fill={C.muted}>
+          {day === 1 ? `${day} ${monthName(d.month, c.lang).split(" ")[0]}` : day}</text>
+      ))}
+      <text x={PAD} y={chartTop + chartH + 72} fontFamily={SANS} fontSize="24" fill={C.text}>
+        {t(`Last day (${Number(last.key.slice(8, 10))}): ${n(last.count)} domains`,
+           `Son gün (${Number(last.key.slice(8, 10))}): ${n(last.count)} alan adı`)}
+        {prevWeek > 0 && <tspan dx="10" fill={C.muted}>{t(`·  ${week >= prevWeek ? "+" : "−"}${pct(Math.abs(week - prevWeek), prevWeek)} vs the week before`,
+                                                   `·  önceki haftaya göre ${week >= prevWeek ? "+" : "−"}${pct(Math.abs(week - prevWeek), prevWeek)}`)}</tspan>}</text>
     </>}
   </>);
 }
@@ -388,17 +434,17 @@ function period(d: Data, c: Ctx): string {
 
 type Note = (d: Data, c: Ctx) => string;
 const NOTES: Record<string, Note> = {
-  cover: (d, c) => c.t("Domains counted once each (registrable domain). Threat: a domain first recorded as a threat this month.",
-                       "Alan adları birer kez sayılır (kayıtlı alan adı). Tehdit: bu ay ilk kez tehdit olarak kaydedilen alan adı."),
+  cover: (d, c) => c.t("Domains counted once each (registrable domain). Newly categorized: first main category given this month. Threat: first recorded as one this month.",
+                       "Alan adları birer kez sayılır (kayıtlı alan adı). İlk kez kategorilendirilen: ilk ana kategorisi bu ay verilen. Tehdit: bu ay ilk kez tehdit kaydı açılan."),
   funnel: (d, c) => c.t("Known: active domains seen by the end of the month. Scanned: at least one successful whole-site scan in the month. Published and checked: status when made.",
                         "Bilinen: ay sonuna kadar görülen etkin alan adı. Taranan: ay içinde en az bir başarılı tam site taraması. Yayında ve doğrulanan: üretim anındaki durum."),
   tr: (d, c) => c.t("Main category of published .tr domains, status when made.", "Yayımlanmış .tr alan adlarının ana kategorisi, üretim anındaki durum."),
-  threats: (d, c) => c.t("Domains counted once each; one domain can carry several threat types (labels). Candidates: look-alikes, list hits and model claims a person decides on.",
-                         "Alan adları birer kez sayılır; bir alan adı birden çok tehdit türü (etiket) taşıyabilir. Aday: insanın karar verdiği taklit, liste ve model işaretleri."),
-  ai: (d, c) => c.t("Kept: published answers sampled at random and left unchanged by a reviewer (Wilson 95 %). Valid: the answer's format only, not its correctness.",
-                    "Kabul: yayımlanmış cevaplardan rastgele örneklenip insanın değiştirmediği oran (Wilson %95). Geçerli: yalnızca cevabın biçimi, doğruluğu değil."),
-  crawler: (d, c) => c.t("Whole-site scan jobs finished in the month. Technical success: succeeded ÷ (succeeded + technical errors); robots.txt and policy refusals are counted apart.",
-                         "Ay içinde biten tam site tarama işleri. Teknik başarı: başarılı ÷ (başarılı + teknik hata); robots.txt ve politika engelleri ayrı sayılır."),
+  threats: (d, c) => c.t("One domain can carry several types, so labels outnumber domains. Review flow: candidates a person decides on.",
+                         "Bir alan adı birden çok tür taşıyabilir, bu yüzden etiket sayısı alan adından fazladır. İnceleme akışı: insanın karar verdiği adaylar."),
+  ai: (d, c) => c.t("Kept: published answers sampled at random, left unchanged by a reviewer. Hard cases: unsure answers and ones the second model disputed, compared with the reviewer's category. Intervals: Wilson 95 %. Valid: format only.",
+                    "Kabul: rastgele örneklenen yayımlanmış cevaplardan insanın değiştirmediği oran. Zor vaka: modelin emin olmadığı ya da ikinci modelin itiraz ettiği cevap, inceleyicinin seçtiği kategoriyle karşılaştırılır. Aralıklar: Wilson %95. Geçerli: yalnızca biçim."),
+  crawler: (d, c) => c.t("Jobs: whole-site scans finished in the month (one domain can be scanned several times); domains: each counted once. Technical success: succeeded ÷ (succeeded + technical errors). Chart: unique domains scanned successfully per day.",
+                         "İş: ay içinde biten tam site taramaları (bir alan adı birkaç kez taranabilir); alan adı: her biri bir kez. Teknik başarı: başarılı ÷ (başarılı + teknik hata). Grafik: günde başarıyla taranan farklı alan adı."),
   usage: (d, c) => c.t("Download and lookup counts are requests, not installations or users; nothing records who asked.",
                        "İndirme ve sorgu sayıları istektir, kurulum ya da kullanıcı sayısı değildir; kimin sorduğu kaydedilmez."),
 };
@@ -449,10 +495,13 @@ function postText(d: Data, c: Ctx): string {
   const brand = d.threats.brands[0];
   const a = d.ai;
   const lines = [
-    t(`Cat-Egory, ${monthName(d.month, c.lang)} in numbers`, `Cat-Egory ${monthName(d.month, c.lang)} bülteni`),
+    t(`Cat-Egory Internet Report · ${monthName(d.month, c.lang)}`, `Cat-Egory Aylık İnternet Raporu · ${monthName(d.month, c.lang)}`),
     "",
-    t(`• ${n(d.funnel.known)} known domains, ${n(d.funnel.new_known)} discovered this month; ${n(d.totals.published)} have a published category, ${n(d.totals.new_published)} of them new.`,
-      `• ${n(d.funnel.known)} bilinen alan adı, bu ay ${n(d.funnel.new_known)} yeni keşif; ${n(d.totals.published)} sitenin kategorisi yayında, ${n(d.totals.new_published)} tanesi bu ay eklendi.`),
+    d.funnel.first_month
+      ? t(`• Our first month: ${n(d.funnel.known)} domains discovered since ${dayName(d.funnel.tracking_since, c.lang)}; ${n(d.totals.published)} have a published category.`,
+          `• İlk ayımız: ${dayName(d.funnel.tracking_since, c.lang)} tarihinden bu yana ${n(d.funnel.known)} alan adı keşfedildi; ${n(d.totals.published)} sitenin kategorisi yayında.`)
+      : t(`• ${n(d.funnel.known)} known domains, ${n(d.funnel.new_known)} discovered this month; ${n(d.totals.published)} have a published category, ${n(d.totals.new_published)} of them categorized for the first time this month.`,
+          `• ${n(d.funnel.known)} bilinen alan adı, bu ay ${n(d.funnel.new_known)} yeni keşif; ${n(d.totals.published)} sitenin kategorisi yayında, ${n(d.totals.new_published)} tanesi bu ay ilk kez kategorilendirildi.`),
     ...(top ? [t(`• The largest category among .tr websites: ${c.cat(top.key)} (${pct(top.count, d.totals.tr_published)}).`,
                  `• .tr siteleri arasında en büyük kategori: ${c.cat(top.key)} (${pct(top.count, d.totals.tr_published)}).`)] : []),
     ...(d.threats.new_domains ? [t(`• ${n(d.threats.new_domains)} new threat domains were recorded${brand ? `; the most imitated brand: ${brand.key}` : ""}.`,

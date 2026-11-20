@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 from backend.app.api.infographic import month_bounds
 from classification.engine import DETECTOR_SOURCE, apply_categories, record_threats
 from classification.taxonomy import default_taxonomy
-from database.models import AssignmentOrigin, ClassificationStatus, DemandDaily, Domain, FeedDownloadDaily, ThreatIntelligence
+from database.models import (
+    AssignmentOrigin,
+    ClassificationStatus,
+    DemandDaily,
+    Domain,
+    DomainCategory,
+    FeedDownloadDaily,
+    ThreatIntelligence,
+)
 
 OCTOBER = datetime(2026, 10, 15, 12, tzinfo=UTC)
 EARLIER = datetime(2026, 8, 1, tzinfo=UTC)
@@ -28,7 +36,7 @@ def test_bad_or_future_months_are_refused(client, admin, month):
 def test_a_month_of_numbers(engine, clean, client, admin):
     sites = {"news.example.com": ("news", OCTOBER, ClassificationStatus.CLASSIFIED),
              "haber.com.tr": ("news", EARLIER, ClassificationStatus.VERIFIED),
-             "oyun.com.tr": ("gaming", OCTOBER, ClassificationStatus.CLASSIFIED),
+             "oyun.com.tr": ("gaming", OCTOBER, ClassificationStatus.CLASSIFIED),  # known since August, see below
              "ziraatbank-giris.com": ("banking", OCTOBER, ClassificationStatus.CLASSIFIED),
              "later.com.tr": ("news", datetime(2026, 11, 5, tzinfo=UTC), ClassificationStatus.CLASSIFIED),
              "waiting.com.tr": ("news", OCTOBER, ClassificationStatus.NEEDS_REVIEW)}
@@ -39,6 +47,9 @@ def test_a_month_of_numbers(engine, clean, client, admin):
             apply_categories(s, d, primary=primary, secondary=[], confidence=0.9, origin=AssignmentOrigin.AI,
                              taxonomy=default_taxonomy(), status=status)
             d.first_seen = seen
+            s.execute(update(DomainCategory).where(DomainCategory.domain_id == d.id).values(valid_from=seen))
+        # known long before, first categorised in October: new this month (by its category, not its discovery)
+        s.execute(update(Domain).where(Domain.normalized_domain == "oyun.com.tr").values(first_seen=EARLIER))
         bank = s.scalar(select(Domain).where(Domain.normalized_domain == "ziraatbank-giris.com"))
         record_threats(s, bank, ["phishing", "lookalike-domain"], source_slug=DETECTOR_SOURCE)
         s.flush()
@@ -125,11 +136,13 @@ def test_the_kpi_sections(engine, clean, client, admin):
                    FeedDownloadDaily(day=date(2026, 10, 9), feed="profile-family.txt", downloads=3, callers=1)])
 
     j = client.get("/api/v1/admin/infographic", headers=admin, params={"month": "2026-10"}).json()
-    assert j["funnel"] == {"known": 5, "new_known": 4, "scanned": 2, "published": 2, "verified": 0}
+    assert j["funnel"] == {"known": 5, "new_known": 4, "scanned": 2, "published": 2, "verified": 0,
+                           "tracking_since": "2026-08-01", "first_month": False}
     assert j["threat_flow"] == {"candidates": 2, "decided": 1, "confirmed": 1, "labels": 0}
     ai = j["ai"]
     assert (ai["answers"], ai["valid"], ai["models"]) == (2, 1, ["qwen3.8-flash-next"])
     assert (ai["sample_n"], ai["sample_kept"], ai["hard_n"], ai["hard_kept"]) == (1, 1, 1, 0)
+    assert ai["hard_low"] == 0 and 0 < ai["hard_high"] < 1  # Wilson interval of 0 / 1
     c = j["crawler"]
     assert (c["jobs"], c["succeeded"], c["failed"], c["blocked"], c["unique_succeeded"]) == (5, 3, 1, 1, 2)
     assert (c["retried"], c["recovered"]) == (2, 1)
@@ -139,3 +152,12 @@ def test_the_kpi_sections(engine, clean, client, admin):
     assert (u["feed_downloads"], u["feed_clients"]) == (8, 3)
     assert {f["key"]: f["count"] for f in u["formats"]} == {"rpz": 5, "txt": 3}
     assert j["generated_at"]
+
+
+def test_the_first_month_says_so(engine, clean, client, admin):
+    """In the month tracking began, every domain is new: the card must not present a total as monthly growth."""
+    client.post("/api/v1/admin/domains", headers=admin, json={"domains": ["first.example.net"], "scan": "none"})
+    with Session(engine) as s, s.begin():
+        s.execute(update(Domain).values(first_seen=OCTOBER))
+    f = client.get("/api/v1/admin/infographic", headers=admin, params={"month": "2026-10"}).json()["funnel"]
+    assert (f["known"], f["new_known"], f["first_month"], f["tracking_since"]) == (1, 1, True, "2026-10-15")
