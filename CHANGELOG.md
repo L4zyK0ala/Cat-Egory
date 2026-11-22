@@ -3,6 +3,26 @@
 All notable changes to Cat-Egory. Versions follow [Semantic Versioning](https://semver.org/); until 1.0 any
 release may contain breaking changes.
 
+## [Unreleased]
+
+### Security and operations
+- Daily CVE watch: Trivy scans every image the stack runs (ours and third-party ones) and sends only new
+  CRITICAL findings, and HIGH ones with a fix, to the alert Telegram chat (`make cve-timer`, `make cve-check`).
+- Feed downloads answer `HEAD` (headers only, not counted as a download).
+
+### Measurement
+- Model comparison on person-checked sites: `--set verified:N` and `--set hard:N` (where a person changed the AI's
+  main category), drawn reproducibly from `--seed`. A model that hits a rate limit sits out the rest of the run
+  instead of stopping it.
+- `python -m threats.clef_eval`: EVREN's decision model `clef` on phishing and licensed/unlicensed sites, one call
+  per page with the domain, text and screenshot.
+
+### Site
+- Monthly infographic: monthly and cumulative counts kept apart ("first month" when they coincide), every threat
+  type counted, crawler chart axes, an interval for hard cases; titled "Aylık İnternet Raporu".
+- Privacy notice: off-site encrypted backups (Cloudflare R2, up to 12 months). Localised titles for the privacy
+  and suggestion pages; the home page states the current publish thresholds.
+
 ## [0.2.0] – 2026-11-20
 
 ### Classification
@@ -44,5 +64,6 @@ confidence policy, second opinion and human review, REST API, web UI and block l
 DNS RPZ), community reports and moderation, Docker Compose deployment with Prometheus, Grafana and backups, and
 the shadow-mode local classifier Yaş Mama.
 
+[Unreleased]: https://github.com/L4zyK0ala/Cat-Egory/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/L4zyK0ala/Cat-Egory/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/L4zyK0ala/Cat-Egory/releases/tag/v0.1.0

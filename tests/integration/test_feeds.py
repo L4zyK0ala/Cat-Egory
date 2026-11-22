@@ -115,6 +115,10 @@ def test_feed_api(engine, client, admin, store, feed_client):
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
     assert r.headers["X-Feed-Version"] and {"casino.example.com"} <= set(names(r.text))
     assert feed_client.get("/api/v1/feeds/gambling.txt", headers={"If-None-Match": r.headers["ETag"]}).status_code == 304
+    h = feed_client.head("/api/v1/feeds/gambling.txt")  # link checkers and monitors: headers, no body
+    assert h.status_code == 200 and h.headers["ETag"] == r.headers["ETag"] and h.content == b""
+    assert feed_client.head("/api/v1/feeds/gambling.txt", headers={"If-None-Match": r.headers["ETag"]}).status_code == 304
+    assert feed_client.head("/api/v1/feeds/nope.txt").status_code == 404
     assert {"bad.example.com"} <= set(names(feed_client.get("/api/v1/feeds/rpz").text))
     assert feed_client.get("/api/v1/feeds/all-domains.csv").headers["content-type"].startswith("text/csv")
     for bad in ("../etc/passwd", "gambling.exe", "UPPER.txt", "nope.txt"):

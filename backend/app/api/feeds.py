@@ -71,3 +71,18 @@ def download(name: str, request: Request, session: Session = Depends(get_session
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)
     return Response(store.get(release.object_key), media_type=MEDIA_TYPES[name.rsplit(".", 1)[-1]], headers=headers)
+
+
+@router.head("/{name}", include_in_schema=False)
+def head(name: str, request: Request, session: Session = Depends(get_session)) -> Response:
+    """Link checkers and uptime monitors ask with HEAD first: the same headers as a download, no body, not counted."""
+    name = ALIASES.get(name, name)
+    release = (session.scalar(select(FeedRelease).where(FeedRelease.feed == name).order_by(FeedRelease.id.desc()).limit(1))
+               if FEED_NAME_RE.match(name) else None)
+    if release is None:
+        return Response(status_code=404)
+    etag = f'"{release.sha256}"'
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=900", "X-Feed-Version": release.version,
+               "Last-Modified": format_datetime(release.generated_at.astimezone(UTC), usegmt=True),
+               "Content-Type": MEDIA_TYPES[name.rsplit(".", 1)[-1]]}
+    return Response(status_code=304 if request.headers.get("if-none-match") == etag else 200, headers=headers)

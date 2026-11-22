@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { api, publicApiUrl } from "@/lib/api";
 import type { Category } from "@/lib/types";
 import SuggestForm from "@/components/SuggestForm";
@@ -6,6 +7,13 @@ import { categoryName } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t("Suggest a site", "Site öner"),
+           description: t("Suggest a website and, if you like, its category; a moderator checks it before it is scanned.",
+                          "Bir web sitesini ve isterseniz kategorisini önerin; site taranmadan önce bir moderatör inceler.") };
+}
 
 export default async function Submit({ searchParams }: { searchParams: Promise<{ domain?: string }> }) {
   const { domain } = await searchParams;

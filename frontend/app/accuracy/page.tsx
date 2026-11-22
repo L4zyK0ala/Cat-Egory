@@ -103,7 +103,7 @@ export default async function AccuracyPage() {
         <div className="tiles">
           <div className="panel tile"><div className="label">{t("Active", "Aktif")}</div><div className="value">{th.active}</div></div>
           <div className="panel tile"><div className="label">{t("Taken back", "Geri çekilen")}</div><div className="value">{th.withdrawn}</div>
-            <div className="muted" style={{ fontSize: 13 }}>{t(`${pct(locale, th.withdrawn_share)} of all flags`, `tüm işaretlerin ${pct(locale, th.withdrawn_share)}'i`)}</div></div>
+            <div className="muted" style={{ fontSize: 13 }}>{t(`${pct(locale, th.withdrawn_share)} of all flags`, `tüm işaretlere oranı ${pct(locale, th.withdrawn_share)}`)}</div></div>
           <div className="panel tile"><div className="label">{t("Expired (site gone)", "Süresi dolan (site kapandı)")}</div><div className="value">{th.expired}</div></div>
           <div className="panel tile"><div className="label">{t("Median time to take back", "Geri çekme süresi (ortanca)")}</div>
             <div className="value">{th.median_hours_to_withdraw == null ? "–" : th.median_hours_to_withdraw < 48

@@ -73,8 +73,8 @@ export default async function Dashboard() {
                   hint={t("Every domain Cat-Egory knows: added by hand, found in public top-site lists, caught by the certificate watch or suggested by the community. Most are waiting for their first scan.",
                           "Cat-Egory'nin bildiği tüm alan adları: elle eklenenler, popüler site listelerinden gelenler, sertifika izlemenin yakaladıkları ve topluluğun önerdikleri. Çoğu ilk taramasını bekliyor.")} />
             <Tile locale={locale} label={t("Categorized", "Kategorilendirilmiş")} value={stats.categorized_domains}
-                  hint={t("Domains with a published category: from the AI (at least 90% sure, or two models agree), a reviewer, the community or a registry rule such as .gov.tr.",
-                          "Kategorisi yayımlanmış alan adları: yapay zekâdan (en az %90 emin ya da iki model aynı fikirde), bir inceleyiciden, topluluktan veya .gov.tr gibi bir tahsis kuralından.")} />
+                  hint={t("Domains with a published category: from the AI (at least 80% sure, 90% in sensitive categories such as gambling or adult content, or two models agree), a reviewer, the community or a registry rule such as .gov.tr.",
+                          "Kategorisi yayımlanmış alan adları: yapay zekâdan (en az %80 emin, kumar ya da yetişkin içerik gibi hassas kategorilerde %90, ya da iki model aynı fikirde), bir inceleyiciden, topluluktan veya .gov.tr gibi bir tahsis kuralından.")} />
             <Tile locale={locale} label={t("Verified", "Doğrulanmış")} value={stats.verified_domains}
                   hint={t("Categorized domains whose category a person confirmed: a reviewer, or an accepted community report.",
                           "Kategorisini bir kişinin onayladığı alan adları: bir inceleyici ya da kabul edilmiş bir topluluk bildirimi.")} />

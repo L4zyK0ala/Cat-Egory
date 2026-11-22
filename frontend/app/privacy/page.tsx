@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getT } from "@/lib/locale";
 import { contactEmail, operatorName } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Privacy", description: "What personal data Cat-Egory handles, and your rights under KVKK." };
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t("Privacy", "Gizlilik"),
+           description: t("What personal data Cat-Egory handles, and your rights under KVKK.",
+                          "Cat-Egory hangi kişisel verileri işliyor ve KVKK kapsamındaki haklarınız neler.") };
+}
 
 export default function Privacy() {
   const email = contactEmail();
@@ -11,7 +18,7 @@ export default function Privacy() {
   return (
     <div className="about" lang="tr">
       <h1>Gizlilik ve KVKK Aydınlatma Metni</h1>
-      <p className="muted">Son güncelleme: 16 Kasım 2026 · <span lang="en">An English summary is at the end of this page.</span></p>
+      <p className="muted">Son güncelleme: 22 Kasım 2026 · <span lang="en">An English summary is at the end of this page.</span></p>
 
       <h2>Veri Sorumlusu</h2>
       <div className="panel stack">
@@ -56,13 +63,20 @@ export default function Privacy() {
           <li><b>Evren yapay zekâ hizmeti:</b> Taranan sayfaların içeriği kategori belirlemek için gönderilir. Ziyaretçi ve
             öneri verileri gönderilmez.</li>
           <li><b>VirusTotal:</b> Yalnızca şüpheli alan adları sorgulanır.</li>
+          <li><b>Cloudflare R2 (yedek depolama):</b> Veritabanının ve taranan sayfa içeriklerinin gecelik yedeği, sunucuda
+            şifrelendikten sonra bu depolama hizmetine kopyalanır. Sağlayıcı yalnızca şifreli veriyi görür ve içeriğini
+            okuyamaz; şifre anahtarı yalnızca bizdedir. Depolama yeri yurt dışındadır (Avrupa; KVKK m.9).</li>
         </ul>
       </div>
 
       <h2>Saklama Süresi</h2>
       <div className="panel stack">
         <p>Taranan sayfa içerikleri 180 gün saklanır. Öneri kayıtları, verinin geçmişini gösterebilmek için tutulur; talep
-          üzerine silinir veya anonimleştirilir. Yedekler 14 gün sonra silinir.</p>
+          üzerine silinir veya anonimleştirilir.</p>
+        <p><b>Yedekler:</b> Sunucudaki gecelik yedekler 14 gün saklanır. Şifreli, sunucu dışı kopyalardan son 14 günün
+          her biri, son 8 haftanın ve son 12 ayın birer yedeği tutulur; yani bir kayıt silindikten sonra en fazla 12 ay
+          boyunca bu şifreli yedeklerde kalabilir ve süresi dolan yedekle birlikte silinir. Yedekler yalnızca veri kaybında
+          geri yükleme için kullanılır.</p>
       </div>
 
       <h2>Haklarınız</h2>
@@ -78,7 +92,8 @@ export default function Privacy() {
         <p>No account and no third-party analytics; one cookie remembers your language choice and nothing else. Your IP address is not stored in our database: a keyed, irreversible hash limits
           abuse. Looked-up domains and list downloads are counted as daily totals (how many lookups, roughly how many different visitors), never who asked; the totals are deleted after 90 days. Reports keep what you type, so please leave out personal details. Developer keys need no name or e-mail. Page content from scanned sites is private
           and deleted after 180 days. Cloudflare carries the traffic and Evren reads scanned pages; neither receives your
-          reports. For requests about your data, use the address above.</p>
+          reports. Nightly backups are kept on our server for 14 days; encrypted copies (readable only with our key) are
+          stored with Cloudflare R2 in Europe for up to 12 months. For requests about your data, use the address above.</p>
       </div>
     </div>
   );

@@ -43,8 +43,8 @@ download, check and correct its data, and every label says where it came from.
 | 📂 **Open data**<br>Categories you can download and build on, under CC BY 4.0. | 🧑‍⚖️ **Checked by people**<br>The AI reads first; unsure answers, look-alikes and threats go to a person. | 🏷️ **Every label has a source**<br>AI, reviewer, community, rule or a licensed source: always recorded. |
 
 > **Status: alpha.** The public instance runs at [cat-egory.org](https://cat-egory.org) on one machine, with real
-> crawling and real AI classification. On 19 November 2026 it knew about 60,500 domains, 6,000 of them categorised
-> and 1,600 checked by a person. Expect breaking changes.
+> crawling and real AI classification. On 22 November 2026 it knew about 63,000 domains, 8,900 of them categorised
+> and 2,500 checked by a person. Expect breaking changes.
 
 ## Contents
 

@@ -131,13 +131,16 @@ sequenceDiagram
 
 | Calibrated confidence | Action | `classification_status` |
 |---|---|---|
-| ≥ 0.90 and no conflicts | auto-approve candidate | `classified` |
-| 0.70 – 0.89 | extra validation: second model / previous scans / sources | `pending` → `classified` or `needs_review` |
+| ≥ 0.80 (≥ 0.90 in sensitive categories) and no conflicts | auto-approve candidate | `classified` |
+| 0.70 up to that threshold | extra validation: second model / previous scans / sources | `pending` → `classified` or `needs_review` |
 | 0.50 – 0.69 | human review task | `needs_review` |
 | < 0.50 | re-analyse later (different input / model) | `reanalyze` |
 
-In the 0.70–0.89 band a second, different model must agree before anything is applied; without one the
-domain goes to review. Injection signals, risk claims and model-requested review always go to a person, and
+Sensitive categories (`classification/confidence.py` `SENSITIVE`): adult content, gambling and illegal gambling,
+piracy, alcohol, tobacco, weapons, illegal drugs, violence, hate, banking, finance and government. The 0.80 for the
+rest comes from a calibration against people's decisions (2026-11-20, `backend.cli calibration`;
+`CATEGORY_CONFIDENCE_AUTO_APPROVE_ORDINARY`). Between 0.70 and the threshold a second, different model must agree
+before anything is applied; without one the domain goes to review. Injection signals, risk claims and model-requested review always go to a person, and
 AI never overrides a human or community decision (a disagreement opens a review task).
 
 The thresholds live in configuration (`CATEGORY_CONFIDENCE_*`), not in code paths, and the docs
