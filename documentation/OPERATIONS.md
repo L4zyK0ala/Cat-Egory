@@ -238,7 +238,9 @@ category). `--seed` (default 2026) fixes which sites are drawn. In `verified`, t
 model's answer first, which can favour that model; say so when quoting the figures.
 
 The dry run prints how many EVREN calls a real run makes; pairs with a valid answer are skipped on re-runs (so
-an interrupted run resumes). Calls are sequential and count towards `CATEGORY_AI_DAILY_TOKEN_CAP`. Details and
+an interrupted run resumes). A model that hits a rate limit (EVREN allows one or two requests at a time per model,
+and a timed-out request can still hold a slot) sits out the rest of the run while the others go on; the run then
+exits with 2, and running the same command later asks that model again. Calls are sequential and count towards `CATEGORY_AI_DAILY_TOKEN_CAP`. Details and
 the report's contents: [EVREN_INTEGRATION.md](EVREN_INTEGRATION.md#comparing-models-on-the-same-sites).
 
 ### Yaş Mama, the local classifier (shadow mode)

@@ -186,6 +186,24 @@ def test_compare_stops_on_rate_limit_and_resumes(engine, clean):
     assert len(plan_for(engine, COMPARE_SITES, [QWEN]).todo) == 2  # the failed pair is asked again
 
 
+def test_a_busy_model_sits_out_and_the_others_go_on(engine, clean):
+    """EVREN limits concurrent requests per model: one busy model must not stop the others (2026-11-22)."""
+    make_scan(engine, "news.example.com")
+    make_scan(engine, "bank.example.com")
+
+    class Busy(Fake):
+        def _complete(self, system, user, image, data):
+            raise ProviderError("rate", "at most 1 request at a time on this model", 429)
+
+    p = plan_for(engine, COMPARE_SITES, [GLM, QWEN])
+    lines = []
+    with Session(engine) as s:
+        summary = model_compare.run(s, p, lambda m: Busy(m) if m == GLM else Fake(m), pause=0, progress=lines.append)
+    assert (summary.asked, summary.valid, summary.failed) == (3, 2, 1)  # glm once, qwen on both sites
+    assert summary.stopped.startswith(f"{GLM}: rate") and any("sits out" in line for line in lines)
+    assert [m for _, m in plan_for(engine, COMPARE_SITES, [GLM, QWEN]).todo] == [GLM, GLM]  # glm again next run
+
+
 def test_compare_cli_exit_code_when_stopped(engine, clean, monkeypatch, capsys):
     import common.config
     import database.session

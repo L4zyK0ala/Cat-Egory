@@ -137,8 +137,9 @@ or pirated content. The report shows each group's answers, how well each signal 
 probability 0.90 and above), and how many inputs reached 16,384 tokens (cut silently by the gateway). It stores
 nothing. Start with `--sample 3 --yes`, which prints the raw answers, to check how they are shaped.
 
-Advice from the EVREN forum (2026-11-22), to be checked by that sample run: the confidence is the chosen option's
-value in `answers[id]["probabilities"]` (there is no `answer_confidence`); images count 32×32 px per token and are
+The sample run (2026-11-22) showed the answer shape: a `noul` question comes back as one number, the probability
+of yes (`{"type": "noul", "noul": 0.80}`), about 1,600–1,800 input tokens per page with the screenshot, no output
+tokens, and no credits charged during the free period. Advice from the EVREN forum (2026-11-22): images count 32×32 px per token and are
 not shrunk (our 1280×800 screenshots are about 1,000 tokens); past 16,384 input tokens the input is cut without an
 error; `/v1/systemone/batch` returns 400 for `clef`, but one call takes up to 64 questions.
 

@@ -30,10 +30,9 @@ def seed_all(engine):
 
 
 def answer(yes: set[str], p: float = 0.95, tokens: int = 2400):
-    return {"answers": {q: {"answer": "yes" if q in yes else "no",
-                            "probabilities": {"yes": p if q in yes else 1 - p, "no": 1 - p if q in yes else p}}
-                        for q in clef_eval.QUESTIONS},
-            "usage": {"input_tokens": tokens}}
+    """clef's shape (2026-11-22): one number per noul question, the probability of yes."""
+    return {"answers": {q: {"type": "noul", "noul": p if q in yes else 1 - p} for q in clef_eval.QUESTIONS},
+            "usage": {"input_tokens": tokens, "output_tokens": 0}}
 
 
 def test_pages_requests_and_report(engine, clean):
@@ -75,6 +74,9 @@ def test_pages_requests_and_report(engine, clean):
 
 def test_reading_answers_defensively():
     v = clef_eval.verdict
+    assert (v({"type": "noul", "noul": 0.798}).value, round(v({"type": "noul", "noul": 0.798}).confidence, 3)) == ("yes", 0.798)
+    assert (v({"type": "noul", "noul": 0.07}).value, round(v({"type": "noul", "noul": 0.07}).confidence, 2)) == ("no", 0.93)
+    assert v({"type": "noul", "noul": 0.07}).sure and not v({"type": "noul", "noul": 0.6}).sure
     assert (v({"answer": "Evet", "probabilities": {"Evet": 0.93, "Hayır": 0.07}}).value,
             v({"answer": "Evet", "probabilities": {"Evet": 0.93}}).confidence) == ("yes", 0.93)
     assert v({"probabilities": {"no": 0.8, "yes": 0.2}}).value == "no"          # no label: the likeliest option

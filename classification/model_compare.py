@@ -41,6 +41,9 @@ from .evaluation import BANDS, Row, Site, _pct, p95
 
 # Provider error kinds that every following call would hit as well: stop, the next run resumes.
 STOP_KINDS = ("auth", "credit", "permission", "rate", "config")
+# Of those, the ones that may concern one model only ("this model: at most 1 request at a time"): that model sits
+# out the rest of the run and the others go on. An account-wide limit pauses every model in turn, which ends it.
+MODEL_KINDS = ("rate",)
 
 
 def check_models(raw: str) -> list[str]:
@@ -171,7 +174,9 @@ def run(session: Session, p: Plan, provider_for: Callable[[str], AIProvider], *,
         use_screenshot: bool = True, pause: float = 2.0, sleep: Callable[[float], None] = time.sleep,
         progress: Callable[[str], None] | None = None) -> RunSummary:
     """Ask every pair of ``p.todo``, one call at a time. Each answer is committed on its own, so an interrupted run
-    loses at most the call in flight and the next run picks up where this one stopped."""
+    loses at most the call in flight and the next run picks up where this one stopped. A rate limit pauses only the
+    model that hit it (EVREN limits concurrent requests per model, and a timed-out request can still hold a slot);
+    the run then reports it as stopped, so the next run asks that model again."""
     progress = progress or (lambda line: print(line, file=sys.stderr, flush=True))
     providers: dict[str, AIProvider] = {}
     summary = RunSummary()
@@ -180,7 +185,11 @@ def run(session: Session, p: Plan, provider_for: Callable[[str], AIProvider], *,
     for target, model in p.todo:
         by_site.setdefault(target.scan_result_id, []).append(model)
         targets[target.scan_result_id] = target
+    paused: dict[str, str] = {}
     for scan_id, models in by_site.items():
+        models = [m for m in models if m not in paused]
+        if not models:
+            continue
         target = targets[scan_id]
         data = build_input(session, session.get(ScanResult, scan_id), store, use_screenshot=use_screenshot)
         session.commit()  # no transaction stays open while a model thinks
@@ -199,9 +208,15 @@ def run(session: Session, p: Plan, provider_for: Callable[[str], AIProvider], *,
             seconds = f" ({result.latency_ms / 1000:.0f} s)" if result.latency_ms is not None else ""
             progress(f"[{summary.asked}/{len(p.todo)}] {target.site.domain} · {model}: {answer}{seconds}")
             kind = error_kind(result)
+            if kind in MODEL_KINDS:
+                paused[model] = result.errors[0]
+                progress(f"{model} sits out the rest of this run ({kind})")
+                continue
             if kind in STOP_KINDS:
                 summary.stopped = f"{model}: {result.errors[0]}"
                 return summary
+    if paused:
+        summary.stopped = "; ".join(f"{m}: {e}" for m, e in paused.items())
     return summary
 
 

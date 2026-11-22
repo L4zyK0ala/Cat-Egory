@@ -17,8 +17,9 @@ Groups: our confirmed phishing and scams, person-checked banking/finance/governm
 the guard measurement), and published gambling / illegal-gambling / streaming-media / piracy sites. Each call
 carries the domain first in the state, the page title and text, and the stored screenshot (1280x800 viewport,
 about 1,000 image tokens; the gateway counts 32x32 px per token). Advice from the EVREN forum (2026-11-22):
-the answer's confidence is the chosen option's value in ``probabilities``; past 16,384 input tokens the input is
-cut silently, which shows as ``usage.input_tokens == 16384`` (counted as "cut" here); there is no batch endpoint.
+past 16,384 input tokens the input is cut silently, which shows as ``usage.input_tokens == 16384`` (counted as
+"cut" here); there is no batch endpoint. The forum also said the confidence sits in ``probabilities``; for ``noul``
+questions the first run (2026-11-22) showed one number instead, the probability of yes (see ``verdict``).
 
 It stores nothing and changes nothing; the report is printed. Run it in the worker (the key lives there).
 """
@@ -138,10 +139,15 @@ def request(item: Item) -> dict:
 
 
 def verdict(answer: dict) -> Verdict:
-    """Read one answer defensively: the label from ``answer``/``choice``/``value``/``label`` (else the likeliest
-    option), the confidence from ``probabilities`` (else ``confidence``/``score``)."""
+    """Read one answer. A ``noul`` answer is one number, the probability of yes (``{"type": "noul", "noul": 0.80}``,
+    seen 2026-11-22): yes from 0.5, and the confidence is that of the side chosen. Other shapes are read defensively:
+    the label from ``answer``/``choice``/``value``/``label`` (else the likeliest option), the confidence from
+    ``probabilities`` (else ``confidence``/``score``)."""
     if not isinstance(answer, dict):
         return Verdict("other")
+    p_yes = answer.get("noul")
+    if isinstance(p_yes, int | float) and not isinstance(p_yes, bool) and 0 <= p_yes <= 1:
+        return Verdict("yes", float(p_yes)) if p_yes >= 0.5 else Verdict("no", 1 - float(p_yes))
     probs = answer.get("probabilities")
     probs = probs if isinstance(probs, dict) else {}
     label = next((answer[k] for k in ("answer", "choice", "value", "label") if answer.get(k) is not None), None)
