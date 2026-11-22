@@ -128,6 +128,20 @@ sites without adult content among their categories (and without an open review),
 with `--open-reviews`, opens a category review for each (reason `guard_sexual`). A person decides; nothing is
 published by it.
 
+`python -m threats.clef_eval [--sample 3] [--yes]` measures the decision model `clef` where the guard model is
+blind: phishing (our confirmed phishing and scams against person-checked legitimate sites) and licensed against
+unlicensed (gambling / illegal gambling, streaming media / piracy). One call per page carries the domain first in
+the state, the page text and the stored screenshot, with four yes/no (`noul`) questions: does the brand on the
+page match the domain, is it phishing, does it show licence or company details, does it offer unlicensed betting
+or pirated content. The report shows each group's answers, how well each signal separates the two sides (also at
+probability 0.90 and above), and how many inputs reached 16,384 tokens (cut silently by the gateway). It stores
+nothing. Start with `--sample 3 --yes`, which prints the raw answers, to check how they are shaped.
+
+Advice from the EVREN forum (2026-11-22), to be checked by that sample run: the confidence is the chosen option's
+value in `answers[id]["probabilities"]` (there is no `answer_confidence`); images count 32×32 px per token and are
+not shrunk (our 1280×800 screenshots are about 1,000 tokens); past 16,384 input tokens the input is cut without an
+error; `/v1/systemone/batch` returns 400 for `clef`, but one call takes up to 64 questions.
+
 The probe also has `clef` (one sample text to `/v1/systemone` with a yes/no, a choice and a score question; the
 schema publishes only `type` and `instructions`, so a wrong field shows up as a validation error) and `quota`
 (`GET /v1/quota`: daily tokens used and left, credit balance `remaining_cr`, concurrency). The gateway's OpenAPI
