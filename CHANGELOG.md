@@ -22,7 +22,8 @@ release may contain breaking changes.
 - Monthly infographic: monthly and cumulative counts kept apart ("first month" when they coincide), every threat
   type counted, crawler chart axes, an interval for hard cases; titled "Aylık İnternet Raporu".
 - Privacy notice: off-site encrypted backups (Cloudflare R2, up to 12 months). Localised titles for the privacy
-  and suggestion pages; the home page states the current publish thresholds.
+  and suggestion pages; the home page states the current publish thresholds. It also states that, according to
+  EVREN's provider, scanned page content is not used to train models.
 
 ## [0.2.0] – 2026-11-20
 

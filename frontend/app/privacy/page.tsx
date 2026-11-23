@@ -61,7 +61,8 @@ export default function Privacy() {
           <li><b>Cloudflare:</b> Siteye erişimi sağlar; bağlantı sırasında IP adresiniz bu sağlayıcı tarafından işlenir ve
             sunucuları yurt dışında olabilir (KVKK m.9).</li>
           <li><b>Evren yapay zekâ hizmeti:</b> Taranan sayfaların içeriği kategori belirlemek için gönderilir. Ziyaretçi ve
-            öneri verileri gönderilmez.</li>
+            öneri verileri gönderilmez. Sağlayıcı, gönderilen içeriğin model eğitiminde veya veri seti oluşturmada
+            kullanılmadığını bildirmiştir.</li>
           <li><b>VirusTotal:</b> Yalnızca şüpheli alan adları sorgulanır.</li>
           <li><b>Cloudflare R2 (yedek depolama):</b> Veritabanının ve taranan sayfa içeriklerinin gecelik yedeği, sunucuda
             şifrelendikten sonra bu depolama hizmetine kopyalanır. Sağlayıcı yalnızca şifreli veriyi görür ve içeriğini
@@ -91,8 +92,8 @@ export default function Privacy() {
       <div className="panel stack" lang="en">
         <p>No account and no third-party analytics; one cookie remembers your language choice and nothing else. Your IP address is not stored in our database: a keyed, irreversible hash limits
           abuse. Looked-up domains and list downloads are counted as daily totals (how many lookups, roughly how many different visitors), never who asked; the totals are deleted after 90 days. Reports keep what you type, so please leave out personal details. Developer keys need no name or e-mail. Page content from scanned sites is private
-          and deleted after 180 days. Cloudflare carries the traffic and Evren reads scanned pages; neither receives your
-          reports. Nightly backups are kept on our server for 14 days; encrypted copies (readable only with our key) are
+          and deleted after 180 days. Cloudflare carries the traffic and Evren reads scanned pages (its provider states that
+          it does not train models on them); neither receives your reports. Nightly backups are kept on our server for 14 days; encrypted copies (readable only with our key) are
           stored with Cloudflare R2 in Europe for up to 12 months. For requests about your data, use the address above.</p>
       </div>
     </div>

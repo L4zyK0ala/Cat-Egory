@@ -45,27 +45,31 @@ Models EVREN names as current (forum, 2026-11-19; check with the probe below): `
 | Model-listing endpoint (`/v1/models`) | Not used. `health()` reports `unconfigured` / `unverified`; `probe()` makes one tiny real request on demand. |
 | Rate limits, quotas, context window per model | Conservative input caps (12k chars text, 6k chars HTML); retries with back-off on 5xx. |
 | Image size limits | Screenshots will be downscaled (Phase 3/4) before sending. |
-| Pricing after the free period | Unknown. |
+| Pricing after the free period | Unknown; no credit or pricing plan for open-source / public-interest projects yet (provider, 2026-11-23). |
 | Model availability over time | Unknown models are treated as text-only and reported `unverified`. |
 
 ## Terms-of-use questions to resolve before production
 
 These came up when reviewing the EVREN LLM terms (v1) for another project; they apply here too:
 
-1. **Data pool consent** — prompts may be added to a corpus (`llm_corpus_consent`). Cat-egory sends public
-   web content, but screenshots and text can contain personal data. Confirm the setting and opt out if possible.
+1. **Data pool consent** — answered: the provider (Savunma Sanayii Yapay Zeka Platformu) wrote on 2026-11-23 that
+   prompts and files sent to the API are not used for model training, fine-tuning or building data sets. This is
+   their statement, not a term we can enforce; re-check it if the terms of use change.
 2. **Retention** — the terms do not state how long prompts are kept.
 3. **Key sharing** — sharing a key is forbidden. Cat-egory must use its **own** key, never another app's.
 4. **Automated / bulk use** — confirm that high-volume automated classification of third-party websites is
    allowed and what the quota is.
-5. **Free period** — announced to end on **2026-12-01**; pricing after that is unknown.
-6. **Publishing outputs** — confirm that model outputs may be published under CC BY 4.0.
+5. **Free period** — ends on **2026-12-01** (confirmed 2026-11-23). There is no credit or pricing plan for
+   open-source or public-interest projects yet, so the price after that date is unknown. See the daily token cap in
+   `OPERATIONS.md` and Yaş Mama below.
+6. **Publishing outputs** — answered: on 2026-11-23 the provider saw no obstacle "for now" to publishing model outputs
+   as open data. It is a present answer, not a lasting licence: ask again if the terms change.
 7. **Training on outputs** — answered: training Cat-egory's own local classifier (Yaş Mama, below) on EVREN's answers is
    allowed (confirmed by the owner, 2026-11-16). `CATEGORY_LOCAL_TRAIN_ON_AI_LABELS=false` would limit it to
    people's decisions should that change.
 
-Until these are answered, run with `CATEGORY_AI_PROVIDER=mock` or limit EVREN to a small, manually
-reviewed sample.
+Still open: retention (2) and the quota for automated use (4). Until the price after 2026-12-01 is known, keep
+`CATEGORY_AI_DAILY_TOKEN_CAP` low rather than switching EVREN off.
 
 ## Yaş Mama: our own local classifier
 
