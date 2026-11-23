@@ -15,7 +15,8 @@ release may contain breaking changes.
   main category), drawn reproducibly from `--seed`. A model that hits a rate limit sits out the rest of the run
   instead of stopping it.
 - `python -m threats.clef_eval`: EVREN's decision model `clef` on phishing and licensed/unlicensed sites, one call
-  per page with the domain, text and screenshot.
+  per page with the domain, text and screenshot. Each domain sits in one group only, so verified illegal-betting
+  and piracy sites no longer count as legitimate controls.
 
 ### Site
 - Monthly infographic: monthly and cumulative counts kept apart ("first month" when they coincide), every threat

@@ -5,7 +5,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from classification.engine import apply_categories
+from classification.engine import apply_categories, record_threats
 from classification.taxonomy import default_taxonomy
 from crawler.storage import MemoryStore
 from database.models import AssignmentOrigin, ClassificationStatus, Domain
@@ -70,6 +70,38 @@ def test_pages_requests_and_report(engine, clean):
     assert "| brand_match = no | 2/2 (100 %) | 0/3 (0 %) |" in out
     assert "| unlicensed = yes (betting) | 1/1 (100 %) | 0/1 (0 %) |" in out
     assert "| unlicensed = yes, sure (betting) | 0/1 (0 %) | 0/1 (0 %) |" in out  # 0.70 is not sure
+
+
+def test_each_domain_sits_in_one_group(engine, clean):
+    seed_all(engine)
+    for name, primary, status, threat in (
+            ("bahis-onayli.net", "illegal-gambling", ClassificationStatus.VERIFIED, None),  # verified: legit_other too
+            ("sahte-casino.net", "gambling", ClassificationStatus.CLASSIFIED, "phishing"),  # a threat and gambling
+            ("lisansli-tv.com", "streaming-media", ClassificationStatus.VERIFIED, None)):
+        make_scan(engine, name, text=name, title=name)
+        with Session(engine) as s, s.begin():
+            d = s.scalar(select(Domain).where(Domain.normalized_domain == name))
+            apply_categories(s, d, primary=primary, secondary=[], confidence=0.9, origin=AssignmentOrigin.AI,
+                             taxonomy=default_taxonomy(), status=status)
+            if threat:
+                record_threats(s, d, [threat])
+    with Session(engine) as s:
+        items = clef_eval.load_items(s, None, per_group=10, licence_per_group=10)
+    names = [it.page.domain for it in items]
+    groups = {it.page.domain: it.page.group for it in items}
+    assert len(names) == len(set(names))
+    assert groups["bahis-onayli.net"] == "illegal-gambling" and groups["lisansli-tv.com"] == "streaming-media"
+    assert groups["sahte-casino.net"] == "threat" and groups["haber.com.tr"] == "legit_other"
+
+
+def test_exclusive_fills_a_group_from_spare_candidates():
+    P = clef_eval.Page
+    candidates = [P("legit_other", "bet1.com", ""), P("legit_other", "a.org", ""), P("legit_other", "b.org", ""),
+                  P("illegal-gambling", "bet1.com", ""), P("threat", "x.net", ""), P("gambling", "x.net", "")]
+    limits = {g: 2 for g in (*clef_eval.PHISHING_GROUPS, *clef_eval.LICENCE_GROUPS)}
+    kept = clef_eval.exclusive(candidates, {"bet1.com": "illegal-gambling"}, {"x.net"}, limits)
+    assert [(p.group, p.domain) for p in kept] == [("threat", "x.net"), ("legit_other", "a.org"),
+                                                   ("legit_other", "b.org"), ("illegal-gambling", "bet1.com")]
 
 
 def test_reading_answers_defensively():

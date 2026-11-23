@@ -14,8 +14,9 @@ about one "state" in a single pass; this asks four yes/no (``noul``) questions p
 * ``unlicensed``: does it offer unlicensed betting/casino, or films, series, music or software without permission?
 
 Groups: our confirmed phishing and scams, person-checked banking/finance/government and other legitimate sites (as in
-the guard measurement), and published gambling / illegal-gambling / streaming-media / piracy sites. Each call
-carries the domain first in the state, the page title and text, and the stored screenshot (1280x800 viewport,
+the guard measurement), and published gambling / illegal-gambling / streaming-media / piracy sites; each domain
+sits in one group only (see ``exclusive``). Each call carries the domain first in the state, the page title and
+text, and the stored screenshot (1280x800 viewport,
 about 1,000 image tokens; the gateway counts 32x32 px per token). Advice from the EVREN forum (2026-11-22):
 past 16,384 input tokens the input is cut silently, which shows as ``usage.input_tokens == 16384`` (counted as
 "cut" here); there is no batch endpoint. The forum also said the confidence sits in ``probabilities``; for ``noul``
@@ -41,7 +42,7 @@ from sqlalchemy.orm import Session
 from common.config import get_settings
 from database.models import Domain, ScanResult, Screenshot
 
-from .guard_eval import Page, _newest_text_scans, pages, pages_by_category
+from .guard_eval import THREATS, Page, _active_own_threat, _newest_text_scans, pages, pages_by_category
 
 MODEL = "clef"
 STATE_CHARS = 6000          # page text in the state; with the image this stays far below 16,384 tokens
@@ -98,10 +99,40 @@ class Result:
 # ----------------------------------------------------------------------------- pages
 
 
+def exclusive(candidates: list[Page], primary: dict[str, str | None], threats: set[str],
+              limits: dict[str, int]) -> list[Page]:
+    """Each domain in one group, so no page counts on both sides of a comparison (the 2026-11-23 run had verified
+    illegal-betting and piracy sites among the legitimate controls, and confirmed threats among licensed gambling).
+
+    A confirmed threat counts only as a threat; a site whose main category is a licence category is measured only
+    there; the legitimate controls are what is left. Each group keeps its first ``limits[group]`` pages."""
+    taken: set[str] = set()
+    kept: dict[str, list[Page]] = {g: [] for g in limits}
+    for group in ("threat", *LICENCE_GROUPS, "legit_finance_gov", "legit_other"):
+        for page in (p for p in candidates if p.group == group):
+            if len(kept[group]) >= limits[group] or page.domain in taken:
+                continue
+            if group != "threat" and page.domain in threats:
+                continue
+            if group.startswith("legit") and primary.get(page.domain) in LICENCE_GROUPS:
+                continue
+            kept[group].append(page)
+            taken.add(page.domain)
+    return [p for g in (*PHISHING_GROUPS, *LICENCE_GROUPS) for p in kept[g]]
+
+
 def load_items(session: Session, store, *, per_group: int, licence_per_group: int) -> list[Item]:
     """The guard measurement's phishing groups and the licence categories, each with its newest screenshot."""
-    chosen = [p for p in pages(session, per_group) if p.group in PHISHING_GROUPS]
-    chosen += pages_by_category(session, licence_per_group, LICENCE_GROUPS)
+    # twice as many candidates, so a group still fills up after the pages that belong elsewhere are dropped
+    candidates = [p for p in pages(session, per_group * 2) if p.group in PHISHING_GROUPS]
+    candidates += pages_by_category(session, licence_per_group * 2, LICENCE_GROUPS)
+    names = sorted({p.domain for p in candidates})
+    primary = dict(session.execute(select(Domain.normalized_domain, Domain.primary_category_id)
+                                   .where(Domain.normalized_domain.in_(names))).all())
+    threats = set(session.scalars(select(Domain.normalized_domain)
+                                  .where(Domain.normalized_domain.in_(names), _active_own_threat(THREATS))))
+    limits = {g: per_group for g in PHISHING_GROUPS} | {g: licence_per_group for g in LICENCE_GROUPS}
+    chosen = exclusive(candidates, primary, threats, limits)
     newest = _newest_text_scans()
     rows = session.execute(
         select(Domain.normalized_domain, ScanResult.final_url, Screenshot.object_key, Screenshot.mime_type)

@@ -130,7 +130,11 @@ published by it.
 
 `python -m threats.clef_eval [--sample 3] [--yes]` measures the decision model `clef` where the guard model is
 blind: phishing (our confirmed phishing and scams against person-checked legitimate sites) and licensed against
-unlicensed (gambling / illegal gambling, streaming media / piracy). One call per page carries the domain first in
+unlicensed (gambling / illegal gambling, streaming media / piracy). Each domain sits in one group only: a
+confirmed threat counts only as a threat, a site whose main category is one of the licence categories only there,
+and the legitimate controls are what is left (the first full run on 2026-11-23 had verified illegal-betting and
+piracy sites among the legitimate controls, which made phishing false alarms look about four times as common as
+on the legitimate sites alone). One call per page carries the domain first in
 the state, the page text and the stored screenshot, with four yes/no (`noul`) questions: does the brand on the
 page match the domain, is it phishing, does it show licence or company details, does it offer unlicensed betting
 or pirated content. The report shows each group's answers, how well each signal separates the two sides (also at
