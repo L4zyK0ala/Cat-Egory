@@ -28,6 +28,7 @@ data/
 backups/
 evaluation-*.md
 model-comparison-*.md
+clef-*.md
 
 # local exports (datasets prepared for other platforms)
 exports/
