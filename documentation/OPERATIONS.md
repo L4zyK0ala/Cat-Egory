@@ -624,7 +624,12 @@ third-party ones: Postgres, Redis, SeaweedFS, cloudflared, Prometheus, Grafana, 
 08:30 and sends what is **new** to the alert Telegram chat in one message; a day with nothing new sends nothing.
 - **What counts:** every CRITICAL finding, and HIGH ones that already have a fixed version. A finding (CVE,
   package, installed version) is sent once. Accepted ones go into `/etc/cat-egory/cve-ignore.txt`, one CVE ID per
-  line with a `#` comment saying why.
+  line with a `#` comment saying why. Name the images after the ID to accept it only there
+  (`CVE-2026-6653 crawler`, short names as in the message); a bare ID mutes it in every image, so the same CVE in
+  another image would never be reported.
+- **Accepted now:** `CVE-2026-6653 crawler`: Debian 13's libxml2 has no fix. In the crawler only `libllvm19`
+  (Mesa's software renderer, part of Playwright's Chromium dependencies) uses it; Chromium parses pages with its
+  own copy, so crawled content never reaches it. Drop the line once Debian ships a fix.
 - **How:** each image is read once into a package list (CycloneDX, per image ID, in `/var/lib/cat-egory/cve-watch`);
   the daily run compares the lists with Trivy's fresh database, so images are exported again only after they
   change. Trivy runs pinned by digest, without the Docker socket and without capabilities.

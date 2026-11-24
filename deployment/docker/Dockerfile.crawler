@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Crawler worker: Celery + Playwright + Chromium headless shell. Runs on a network with NO internet route;
 # every request leaves through the egress-proxy container. It never receives database credentials.
-FROM python:3.12.16-slim-bookworm AS build
+FROM python:3.12.16-slim-trixie AS build
 ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /src
 COPY pyproject.toml README.md ./
@@ -18,7 +18,7 @@ COPY threats threats
 COPY backend backend
 RUN python -m venv /opt/venv && /opt/venv/bin/pip install -c constraints.txt ".[crawler]"
 
-FROM python:3.12.16-slim-bookworm
+FROM python:3.12.16-slim-trixie
 ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright HOME=/tmp
 COPY --from=build /opt/venv /opt/venv

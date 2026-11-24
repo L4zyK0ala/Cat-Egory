@@ -9,6 +9,16 @@ release may contain breaking changes.
 - Daily CVE watch: Trivy scans every image the stack runs (ours and third-party ones) and sends only new
   CRITICAL findings, and HIGH ones with a fix, to the alert Telegram chat (`make cve-timer`, `make cve-check`).
 - Feed downloads answer `HEAD` (headers only, not counted as a download).
+- The backend and crawler images run on Debian 13 (`python:3.12.16-slim-trixie`); Debian 12 had no fixes left
+  for several zlib, SQLite, GLib and libxml2 findings.
+- Third-party images updated for known vulnerabilities: PostgreSQL 18.7, SeaweedFS 4.55, cloudflared 2026.11.2,
+  node-exporter 1.13.1, Alertmanager 0.35.0 and Grafana 13.2.6.
+- PostgreSQL, certstream-server-go and process-exporter are built here (`deployment/docker/`): Alpine's newest
+  packages and a gosu built with a current Go for PostgreSQL; the other two from source with Go 1.27 and patched
+  modules, on scratch. certstream now reads `deployment/certstream/config.yaml`: the published image read its own
+  default config, so the whitelist and the buffer sizes were never applied.
+- The CVE watch's accept list can name images (`CVE-2026-6653 crawler`), so accepting a finding in one image
+  no longer hides the same CVE everywhere else.
 
 ### Measurement
 - Model comparison on person-checked sites: `--set verified:N` and `--set hard:N` (where a person changed the AI's

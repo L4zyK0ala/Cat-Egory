@@ -56,9 +56,25 @@ def test_message_is_capped_and_says_where_the_rest_is():
 
 def test_ignore_file(tmp_path):
     f = tmp_path / "ignore.txt"
-    assert cve.ignored(f) == set()
+    assert cve.ignored(f) == {}
     f.write_text("# accepted\ncve-2026-1  # no fix, not reachable\n\nCVE-2026-2\n")
-    assert cve.ignored(f) == {"CVE-2026-1", "CVE-2026-2"}
+    assert cve.ignored(f) == {"CVE-2026-1": set(), "CVE-2026-2": set()}
+
+
+def test_ignore_can_be_scoped_to_images(tmp_path):
+    f = tmp_path / "ignore.txt"
+    f.write_text("CVE-2026-6653 crawler  # only LLVM in Mesa uses it\nCVE-2026-7 Crawler backend\n"
+                 "CVE-2026-8 grafana\nCVE-2026-8\n")
+    rules = cve.ignored(f)
+    assert rules == {"CVE-2026-6653": {"crawler"}, "CVE-2026-7": {"crawler", "backend"}, "CVE-2026-8": set()}
+
+    def finding(cve_id, image):
+        return cve.Finding(cve_id, "CRITICAL", "libxml2", "1", "", image)
+
+    assert cve.accepted(finding("cve-2026-6653", "cat-egory/crawler:dev"), rules)
+    assert not cve.accepted(finding("CVE-2026-6653", "cat-egory/postgres:18.7"), rules)
+    assert cve.accepted(finding("CVE-2026-8", "redis:8.6.8-alpine"), rules)      # bare line: every image
+    assert not cve.accepted(finding("CVE-2026-9", "cat-egory/crawler:dev"), rules)
 
 
 def test_env_value_reads_one_line_and_strips_quotes(tmp_path):

@@ -12,7 +12,9 @@ Installed as a daily timer by ``make cve-timer``. How it works:
   until it changes. Trivy runs in its own container, pinned by digest, without the Docker socket and without
   capabilities; it sees an exported image tar (read-only) or a package list, never the running stack.
 * Reported: every CRITICAL finding and every HIGH one that has a fixed version. A finding (CVE, package, installed
-  version) is sent once; ``/etc/cat-egory/cve-ignore.txt`` (one CVE ID per line, ``#`` comments) mutes accepted ones.
+  version) is sent once; ``/etc/cat-egory/cve-ignore.txt`` mutes accepted ones: one CVE ID per line, optionally
+  followed by the short image names it is accepted for (``CVE-2026-6653 crawler``), ``#`` comments. A bare ID mutes
+  it in every image.
 * Nothing new means no message. The Telegram bot and chat are the alert ones (CATEGORY_ALERT_TELEGRAM_TOKEN /
   _CHAT_ID in ``.env``); they are read here and never printed.
 * A successful run records the ``security.cve_scan`` heartbeat: the daily summary shows it and CveScanStale fires
@@ -115,11 +117,27 @@ def scan(image: str) -> list[Finding]:
     return findings(json.loads(raw), image)
 
 
-def ignored(path: Path | None = None) -> set[str]:
+def ignored(path: Path | None = None) -> dict[str, set[str]]:
+    """CVE ID -> the short image names it is accepted for; an empty set means every image."""
     path = path or IGNORE
+    rules: dict[str, set[str]] = {}
     if not path.exists():
-        return set()
-    return {line.split("#", 1)[0].strip().upper() for line in path.read_text().splitlines()} - {""}
+        return rules
+    for raw in path.read_text().splitlines():
+        words = raw.split("#", 1)[0].split()
+        if not words:
+            continue
+        cve, images = words[0].upper(), {w.lower() for w in words[1:]}
+        if cve in rules and (not rules[cve] or not images):
+            rules[cve] = set()   # a bare line anywhere wins: muted everywhere
+        else:
+            rules.setdefault(cve, set()).update(images)
+    return rules
+
+
+def accepted(f: Finding, rules: dict[str, set[str]]) -> bool:
+    images = rules.get(f.cve.upper())
+    return images is not None and (not images or short(f.image).lower() in images)
 
 
 def short(image: str) -> str:
@@ -208,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             detail = exc.stderr.strip().splitlines()[-1:] if isinstance(exc, subprocess.CalledProcessError) else []
             print(f"could not scan {image}: {' '.join(detail) or type(exc).__name__}", file=sys.stderr)
     skip = ignored()
-    found = [f for f in found if f.cve.upper() not in skip]
+    found = [f for f in found if not accepted(f, skip)]
 
     seen_file = STATE / "seen.json"
     first = not seen_file.exists()

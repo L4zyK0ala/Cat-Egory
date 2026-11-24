@@ -82,7 +82,10 @@ x-worker-env: &worker-env
 
 services:
   postgres:
-    image: postgres:18.6-alpine
+    # the official image plus Alpine's package fixes and a gosu built with a current Go (Dockerfile.postgres)
+    build: {context: docker, dockerfile: Dockerfile.postgres}
+    image: cat-egory/postgres:18.7
+    pull_policy: build   # never fetched from a registry under this name
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-category}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
@@ -125,7 +128,7 @@ services:
   # 1 GB volumes, at most 100 (space is not preallocated). With -volume.max=0 SeaweedFS derives the count from
   # free disk / 30 GB, which can be fewer than the 7 volumes it grows for a new bucket -> PutObject InternalError.
   storage:
-    image: chrislusf/seaweedfs:4.52
+    image: chrislusf/seaweedfs:4.55
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -267,7 +270,10 @@ services:
   # It also serves other projects on the same host over `ct-relay` (Octryx: profile `ct-shared`), so the CT logs
   # are downloaded and parsed once; their consumers never share a network with ct-watch.
   certstream:
-    image: 0rickyy0/certstream-server-go:v1.10.1@sha256:8938600fa61acb807c56bce05229216c3101a65e9aa976082996f40c3b56a633
+    # v1.10.1 built from source with current Go modules (Dockerfile.certstream); reads the config mounted below
+    build: {context: docker, dockerfile: Dockerfile.certstream}
+    image: cat-egory/certstream:1.10.1
+    pull_policy: build   # never fetched from a registry under this name
     volumes: ["./certstream/config.yaml:/app/config.yaml:ro"]
     user: "65534:65534"
     read_only: true
@@ -400,7 +406,7 @@ services:
   # Going public (documentation/OPERATIONS.md): dials out to Cloudflare, so no port is opened at home. On the `tunnel`
   # network it can reach the public site and the public API and nothing else: not the admin containers or the database.
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.7
+    image: cloudflare/cloudflared:2026.11.2
     profiles: ["public"]
     command: ["tunnel", "--no-autoupdate", "run"]
     environment:
@@ -460,7 +466,7 @@ services:
   # internal `hostmetrics` network: Prometheus reaches it there, the LAN does not (nothing is published). Read-only
   # view of the host file system, no capabilities. Also reads the textfile directory (docker-cleanup.sh's results).
   node-exporter:
-    image: prom/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+    image: prom/node-exporter:v1.13.1@sha256:7296504d4ada44b7d7ab4431e27e9f9900d8488f8d55842f4b12ae2704e16dfe
     command:
       - --path.rootfs=/host
       - --web.listen-address=10.250.62.1:9101
@@ -482,7 +488,10 @@ services:
   # CPU and memory per program (certstream, ct_hunt, postgres, chromium ...), read from the host's /proc. No
   # Docker socket: it names processes, not containers. Only on the internal hostmetrics network.
   process-exporter:
-    image: ncabatoff/process-exporter:0.8.7@sha256:bc2363ff7e05ada1b2a694f06c43dc824dc26cd6e487b5d36b66b1a40df4e842
+    # 0.8.7 built from source with a current Go (Dockerfile.process-exporter): upstream has no newer release
+    build: {context: docker, dockerfile: Dockerfile.process-exporter}
+    image: cat-egory/process-exporter:0.8.7
+    pull_policy: build   # never fetched from a registry under this name
     command: ["--procfs=/host/proc", "--config.path=/config/process-exporter.yml"]
     volumes:
       - /proc:/host/proc:ro
@@ -499,7 +508,7 @@ services:
   # Sends critical alerts to Telegram (silent until the token and chat id are set). Reaches only Prometheus and the
   # internet: no access to the database, Redis or the application.
   alertmanager:
-    image: prom/alertmanager:v0.34.2
+    image: prom/alertmanager:v0.35.0
     entrypoint: ["/bin/sh", "/etc/alertmanager/start.sh"]
     environment:
       ALERT_TELEGRAM_TOKEN: ${CATEGORY_ALERT_TELEGRAM_TOKEN:-}
@@ -515,7 +524,7 @@ services:
     logging: *logging
 
   grafana:
-    image: grafana/grafana:13.2.5
+    image: grafana/grafana:13.2.6
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}

@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1.7
+# certstream-server-go 1.10.1 (MIT, https://github.com/d-Rickyy-b/certstream-server-go) built from source with a
+# current Go and patched modules: the published image carried Alpine's musl/OpenSSL/zlib and older Go modules.
+# Runs from scratch: one static binary and the CA bundle (it reads CT logs over HTTPS), nothing else.
+# Module versions below are the first fixed ones the CVE watch named; raise them when it asks.
+# x/crypto and x/text match what x/net v0.62.0 requires (go get refuses lower pins).
+FROM golang:1.27.3-alpine3.24 AS build
+RUN apk add --no-cache git ca-certificates
+WORKDIR /src
+RUN git init -q . && git fetch -q --depth 1 https://github.com/d-Rickyy-b/certstream-server-go.git 6ae7d175ed0d4c95e58258fc7c735160dc35e7c2 \
+    && git checkout -q FETCH_HEAD
+RUN go get golang.org/x/net@v0.62.0 golang.org/x/crypto@v0.58.0 golang.org/x/text@v0.43.0 \
+        google.golang.org/grpc@v1.83.2 github.com/klauspost/compress@v1.18.7 \
+    && go mod tidy
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /certstream-server-go ./cmd/certstream-server-go \
+    && /certstream-server-go --version
+
+FROM scratch
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /certstream-server-go /app/certstream-server-go
+WORKDIR /app
+USER 65534:65534
+EXPOSE 8080
+# deployment/certstream/config.yaml is mounted here. The published image read /app/config/config.yaml (its own
+# default config), so our whitelist and buffer sizes were never applied.
+ENTRYPOINT ["/app/certstream-server-go", "--config", "/app/config.yaml"]
