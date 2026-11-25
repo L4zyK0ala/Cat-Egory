@@ -1,0 +1,2 @@
+# Local allow list for the lab image test: never blocked, even when the Cat-egory list names it.
+example.net

@@ -1,0 +1,159 @@
+#!/bin/sh
+# cat-egory-dns-update: fetch a Cat-egory block list for a DNS server, check it, and keep the last good copy.
+#
+#   cat-egory-dns-update --feed profile-security.rpz --out /var/lib/cat-egory-dns/profile-security.rpz \
+#       [--check "named-checkzone -q rpz.cat-egory"] [--reload "rndc reload rpz.cat-egory"] [--init]
+#
+# Options
+#   --feed NAME        feed name with its format: profile-security.rpz, gambling.txt, profile-family.adblock ...
+#   --out FILE         where the DNS server reads the list; FILE.etag, FILE.count and FILE.prev sit next to it
+#   --base URL         API address (default https://api.cat-egory.org)
+#   --check CMD        run "CMD <candidate file>" before installing it; a non-zero exit rejects the list
+#   --reload CMD       run CMD after installing; if it fails, the previous list is put back and CMD runs again
+#   --min-percent N    refuse a list that shrank below N % of the installed one (default 50; --force overrides)
+#   --init             when nothing is installed and the download fails, install an empty list, so the DNS
+#                      server can start (it then blocks nothing until the next successful run)
+#   --force            install even if the list shrank a lot
+#
+# What is checked before a list replaces the installed one: HTTP 200 (304 = unchanged, nothing to do), the
+# body's SHA-256 equals the ETag the API sent (a cut-off or altered download fails), every line has the format's
+# shape, the number of entries equals the "Entries:" header, the list did not shrink suspiciously, and --check.
+# Any failure keeps the installed list and exits 1, so a broken download or an unreachable API never empties
+# your DNS filter. Exit codes: 0 updated or unchanged, 1 failed (installed list kept), 2 usage.
+# Needs: sh, curl, sha256sum (or shasum / openssl), grep, sed. Runs from cron or a systemd timer, e.g. hourly.
+set -u
+
+VERSION=1.0
+BASE=https://api.cat-egory.org
+FEED=""; OUT=""; CHECK=""; RELOAD=""; MIN_PERCENT=50; FORCE=0; INIT=0
+
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' >&2; exit "${1:-2}"; }
+log() { printf '%s cat-egory-dns-update[%s]: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${FEED:-?}" "$*"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --feed) FEED="${2:-}"; shift 2 ;;
+    --out) OUT="${2:-}"; shift 2 ;;
+    --base) BASE="${2:-}"; shift 2 ;;
+    --check) CHECK="${2:-}"; shift 2 ;;
+    --reload) RELOAD="${2:-}"; shift 2 ;;
+    --min-percent) MIN_PERCENT="${2:-}"; shift 2 ;;
+    --init) INIT=1; shift ;;
+    --force) FORCE=1; shift ;;
+    -h|--help) usage 0 ;;
+    *) usage 2 ;;
+  esac
+done
+[ -n "$FEED" ] && [ -n "$OUT" ] || usage 2
+case "$MIN_PERCENT" in ''|*[!0-9]*) usage 2 ;; esac
+FORMAT="${FEED##*.}"
+case "$FORMAT" in rpz|txt|hosts|adblock) ;; *) log "unsupported format '$FORMAT' (rpz, txt, hosts, adblock)"; exit 2 ;; esac
+case "$FEED" in *[!a-z0-9._-]*) log "invalid feed name"; exit 2 ;; esac
+
+DIR="$(dirname "$OUT")"
+mkdir -p "$DIR" || { log "cannot create $DIR"; exit 1; }
+TMP="$(mktemp "$OUT.new.XXXXXX")" || { log "cannot write in $DIR"; exit 1; }
+HDR="$(mktemp "$OUT.hdr.XXXXXX")" || { rm -f "$TMP"; exit 1; }
+cleanup() { rm -f "$TMP" "$HDR"; }
+trap cleanup EXIT INT TERM
+
+# An empty list in the format's own shape (header only); --init installs it when there is nothing yet.
+empty_list() {
+  case "$FORMAT" in
+    rpz) printf '; Cat-egory list not downloaded yet (empty)\n; Entries: 0\n$TTL 300\n$ORIGIN rpz.cat-egory.\n@ SOA localhost. hostmaster.localhost. (1 3600 600 86400 300)\n@ NS localhost.\n' ;;
+    adblock) printf '! Cat-egory list not downloaded yet (empty)\n! Entries: 0\n' ;;
+    *) printf '# Cat-egory list not downloaded yet (empty)\n# Entries: 0\n' ;;
+  esac
+}
+
+fail() {
+  if [ ! -e "$OUT" ] && [ "$INIT" = 1 ]; then
+    empty_list > "$OUT" && chmod 644 "$OUT"
+    log "FAILED: $*; nothing was installed, so an empty list is in place (blocks nothing) until the next run"
+  else
+    log "FAILED: $*; the installed list is kept"
+  fi
+  exit 1
+}
+
+sha256() {
+  if command -v sha256sum > /dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum > /dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+  else openssl dgst -sha256 -r "$1" | cut -d' ' -f1; fi
+}
+
+PREV_ETAG=""
+if [ -s "$OUT" ] && [ -s "$OUT.etag" ]; then PREV_ETAG="$(cat "$OUT.etag")"; fi
+
+set -- -sS --compressed --max-time 120 --connect-timeout 20 --retry 2 --retry-delay 10 --retry-connrefused \
+  -A "cat-egory-updater/$VERSION" -D "$HDR" -o "$TMP" -w '%{http_code}'
+[ -n "$PREV_ETAG" ] && set -- "$@" -H "If-None-Match: \"$PREV_ETAG\""
+CODE="$(curl "$@" "$BASE/api/v1/feeds/$FEED")" || fail "download error (curl exit $?)"
+
+case "$CODE" in
+  304) log "unchanged"; exit 0 ;;
+  200) ;;
+  *) fail "HTTP $CODE" ;;
+esac
+
+header() { grep -i "^$1:" "$HDR" | tail -n 1 | cut -d: -f2- | tr -d ' \r"'; }
+ETAG="$(header etag | sed 's#^W/##')"
+case "$ETAG" in
+  *[!0-9a-f]*|'') fail "no usable ETag in the answer" ;;
+esac
+[ "${#ETAG}" = 64 ] || fail "no usable ETag in the answer"
+[ "$(sha256 "$TMP")" = "$ETAG" ] || fail "checksum mismatch (cut-off or altered download)"
+FEED_VERSION="$(header x-feed-version)"
+
+# Every line must be a comment, blank, a header line of the format, or an entry.
+DOMAIN='[a-z0-9_][a-z0-9_.-]*'
+case "$FORMAT" in
+  rpz) ENTRY="^$DOMAIN CNAME \\.\$"
+       OK_LINE="^(;.*|\\\$TTL [0-9]+|\\\$ORIGIN rpz\\.cat-egory\\.|@ SOA .*|@ NS .*|\\*\\.$DOMAIN CNAME \\.|$DOMAIN CNAME \\.)?\$" ;;
+  txt) ENTRY="^$DOMAIN\$"; OK_LINE="^(#.*|$DOMAIN)?\$" ;;
+  hosts) ENTRY="^0\\.0\\.0\\.0 $DOMAIN\$"; OK_LINE="^(#.*|0\\.0\\.0\\.0 $DOMAIN)?\$" ;;
+  adblock) ENTRY="^\\|\\|$DOMAIN\\^\$"; OK_LINE="^(!.*|\\|\\|$DOMAIN\\^)?\$" ;;
+esac
+BAD="$(grep -cvE "$OK_LINE" "$TMP")"
+[ "$BAD" = 0 ] || fail "$BAD line(s) do not look like a $FORMAT list"
+DECLARED="$(sed -n 's/^[;#!] Entries: \([0-9][0-9]*\)$/\1/p' "$TMP" | head -n 1)"
+[ -n "$DECLARED" ] || fail "no 'Entries:' header"
+COUNT="$(grep -cE "$ENTRY" "$TMP")"
+[ "$COUNT" = "$DECLARED" ] || fail "$COUNT entries, but the header says $DECLARED"
+
+if [ -s "$OUT.count" ] && [ "$FORCE" = 0 ]; then
+  PREV_COUNT="$(cat "$OUT.count")"
+  case "$PREV_COUNT" in
+    ''|*[!0-9]*) ;;
+    *) if [ "$PREV_COUNT" -ge 100 ] && [ $((COUNT * 100)) -lt $((PREV_COUNT * MIN_PERCENT)) ]; then
+         fail "the list shrank from $PREV_COUNT to $COUNT entries (below $MIN_PERCENT %); rerun with --force if that is expected"
+       fi ;;
+  esac
+fi
+
+if [ -n "$CHECK" ]; then
+  CHECK_OUT="$(sh -c "$CHECK \"\$1\"" sh "$TMP" 2>&1)" || fail "check failed (exit $?): $(printf '%s' "$CHECK_OUT" | tail -n 1)"
+fi
+
+chmod 644 "$TMP"
+[ -e "$OUT" ] && cp -p "$OUT" "$OUT.prev"
+mv -f "$TMP" "$OUT" || fail "cannot install the list"
+
+if [ -n "$RELOAD" ]; then
+  RELOAD_OUT="$(sh -c "$RELOAD" 2>&1)"; RELOAD_RC=$?
+  if [ "$RELOAD_RC" != 0 ]; then
+    if [ -e "$OUT.prev" ]; then
+      mv -f "$OUT.prev" "$OUT"
+      sh -c "$RELOAD" > /dev/null 2>&1 || true
+      log "FAILED: reload failed (exit $RELOAD_RC) $(printf '%s' "$RELOAD_OUT" | tail -n 1); the previous list is back"
+    else
+      log "FAILED: reload failed (exit $RELOAD_RC) $(printf '%s' "$RELOAD_OUT" | tail -n 1)"
+    fi
+    exit 1
+  fi
+fi
+
+printf '%s\n' "$ETAG" > "$OUT.etag"
+printf '%s\n' "$COUNT" > "$OUT.count"
+log "updated to ${FEED_VERSION:-?}: $COUNT entries"
+exit 0

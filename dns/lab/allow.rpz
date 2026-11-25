@@ -1,0 +1,8 @@
+; Local allow list: names here are answered normally even when the Cat-egory list blocks them.
+; It is listed before the Cat-egory zone in every server's config; the first zone that matches wins.
+$TTL 300
+$ORIGIN allow.local.
+@ SOA localhost. hostmaster.localhost. (1 3600 600 86400 300)
+@ NS localhost.
+example.net CNAME rpz-passthru.
+*.example.net CNAME rpz-passthru.

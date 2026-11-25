@@ -1,0 +1,16 @@
+# PowerDNS Recursor 5 (YAML settings; 5.4 no longer reads the old key=value file by default) with the Cat-egory
+# list loaded by rpzFile in rpz.lua, after a local allow list.
+incoming:
+  listen:
+    - 0.0.0.0
+  allow_from:
+    - 0.0.0.0/0
+outgoing:
+  source_address:
+    - 0.0.0.0
+recursor:
+  daemon: false
+  socket_dir: /run/pdns-recursor
+  lua_config_file: /etc/pdns/rpz.lua
+dnssec:
+  validation: 'off'   # lab only

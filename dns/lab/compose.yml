@@ -1,0 +1,128 @@
+# DNS lab: BIND 9, Unbound and PowerDNS Recursor with Cat-egory lists kept by cat-egory-dns-update, the site's
+# current Unbound snippet (url:) for comparison, and a stand-in feed API that can fail on demand.
+# Run it with run.sh (sudo ./dns/lab/run.sh); ports are on 127.0.0.1 only.
+name: cat-egory-dnslab
+
+x-dns: &dns
+  build: {context: ., target: bind}
+  volumes:
+    - ../updater/cat-egory-dns-update:/usr/local/bin/cat-egory-dns-update:ro
+    - ./allow.rpz:/etc/cat-egory/allow.rpz:ro
+  depends_on:
+    feeds: {condition: service_healthy}
+  restart: "no"
+
+services:
+  feeds:
+    build: {context: ., target: feeds}
+    image: cat-egory-dnslab/feeds
+    ports: ["127.0.0.1:5380:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 2s
+      retries: 15
+    # fixed address: Unbound resolves the url: host itself (from the root), not through Docker's DNS
+    networks: {default: {ipv4_address: 10.250.63.10}}
+
+  bind:
+    <<: *dns
+    image: cat-egory-dnslab/bind
+    volumes:
+      - ../updater/cat-egory-dns-update:/usr/local/bin/cat-egory-dns-update:ro
+      - ./allow.rpz:/etc/cat-egory/allow.rpz:ro
+      - ./bind/named.conf:/etc/bind/named.conf:ro
+      - bindlists:/var/lib/cat-egory-dns
+    command:
+      - sh
+      - -c
+      - |
+        [ -s /etc/bind/rndc.key ] || rndc-confgen -a -k rndc-key > /dev/null
+        chown root:root /etc/bind/rndc.key && chmod 640 /etc/bind/rndc.key   # named keeps no DAC override
+        cat-egory-dns-update --init --base http://feeds:8000 --feed profile-security.rpz \
+          --out /var/lib/cat-egory-dns/profile-security.rpz --check "named-checkzone -q rpz.cat-egory"
+        exec named -4 -g -c /etc/bind/named.conf
+    ports: ["127.0.0.1:5301:53/udp", "127.0.0.1:5301:53/tcp"]
+
+  unbound:
+    <<: *dns
+    build: {context: ., target: unbound}
+    image: cat-egory-dnslab/unbound
+    volumes:
+      - ../updater/cat-egory-dns-update:/usr/local/bin/cat-egory-dns-update:ro
+      - ./allow.rpz:/etc/cat-egory/allow.rpz:ro
+      - ./unbound/unbound.conf:/etc/unbound/unbound.conf:ro
+      - unboundlists:/var/lib/cat-egory-dns
+    command:
+      - sh
+      - -c
+      - |
+        cat-egory-dns-update --init --base http://feeds:8000 --feed profile-security.rpz \
+          --out /var/lib/cat-egory-dns/profile-security.rpz
+        exec unbound -d -c /etc/unbound/unbound.conf
+    ports: ["127.0.0.1:5302:53/udp", "127.0.0.1:5302:53/tcp"]
+
+  pdns:
+    <<: *dns
+    build: {context: ., target: pdns}
+    image: cat-egory-dnslab/pdns
+    volumes:
+      - ../updater/cat-egory-dns-update:/usr/local/bin/cat-egory-dns-update:ro
+      - ./allow.rpz:/etc/cat-egory/allow.rpz:ro
+      - ./pdns:/etc/pdns:ro
+      - pdnslists:/var/lib/cat-egory-dns
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /run/pdns-recursor
+        cat-egory-dns-update --init --base http://feeds:8000 --feed profile-security.rpz \
+          --out /var/lib/cat-egory-dns/profile-security.rpz
+        exec pdns_recursor --config-dir=/etc/pdns
+    ports: ["127.0.0.1:5303:53/udp", "127.0.0.1:5303:53/tcp"]
+
+  unbound-url:
+    <<: *dns
+    build: {context: ., target: unbound}
+    image: cat-egory-dnslab/unbound
+    volumes:
+      - ./unbound/unbound-url.conf:/etc/unbound/unbound.conf:ro
+    command: ["unbound", "-d", "-c", "/etc/unbound/unbound.conf"]
+    ports: ["127.0.0.1:5304:53/udp", "127.0.0.1:5304:53/tcp"]
+
+  # the site's snippet plus a zonefile: Unbound writes each good download there and reads it at start
+  unbound-url-file:
+    <<: *dns
+    build: {context: ., target: unbound}
+    image: cat-egory-dnslab/unbound
+    volumes:
+      - ./unbound/unbound-url-file.conf:/etc/unbound/unbound.conf:ro
+      - urlfilelists:/var/lib/unbound-rpz
+    command: ["unbound", "-d", "-c", "/etc/unbound/unbound.conf"]
+    ports: ["127.0.0.1:5305:53/udp", "127.0.0.1:5305:53/tcp"]
+
+  # the Cat-egory DNS image (dns/image): Unbound plus the updater in a loop, configured from the environment
+  catdns:
+    build: {context: .., dockerfile: image/Dockerfile}
+    image: cat-egory-dnslab/catdns
+    environment:
+      CATEGORY_API: http://feeds:8000
+      UPDATE_INTERVAL: "3"
+      ALLOW_FROM: 10.250.63.0/24
+    volumes:
+      - ./allow.txt:/etc/cat-egory/allow.txt:ro
+      - catdnslists:/var/lib/cat-egory-dns
+    depends_on:
+      feeds: {condition: service_healthy}
+    restart: "no"
+    ports: ["127.0.0.1:5306:53/udp", "127.0.0.1:5306:53/tcp"]
+
+networks:
+  default:
+    ipam: {config: [{subnet: 10.250.63.0/24}]}
+
+volumes:
+  catdnslists: {}
+  urlfilelists: {}
+  bindlists: {}
+  unboundlists: {}
+  pdnslists: {}

@@ -34,6 +34,18 @@ release may contain breaking changes.
 - Privacy notice: off-site encrypted backups (Cloudflare R2, up to 12 months). Localised titles for the privacy
   and suggestion pages; the home page states the current publish thresholds. It also states that, according to
   EVREN's provider, scanned page content is not used to train models.
+- Router and DNS setup: the Unbound example keeps a `zonefile`, so a restart while the API is unreachable no
+  longer switches the blocking off (found in the new DNS lab, `dns/lab`).
+
+### Company DNS (`dns/`)
+- `cat-egory-dns-update`: a POSIX shell updater for DNS servers. It checks the SHA-256 ETag, every line's shape,
+  the `Entries:` count and a shrink limit before installing, reloads the server, and puts the previous list back
+  when anything fails, so an unreachable or broken feed never empties the filter.
+- `dns/lab`: BIND 9, Unbound and PowerDNS Recursor against a feed that fails on demand, plus the live API
+  (`sudo ./dns/lab/run.sh`).
+- Cat-egory DNS image (`dns/image`): Unbound with DNSSEC validation and the updater in a loop, for networks whose
+  own DNS server cannot load RPZ (Windows Server DNS forwards to it). Non-root; logs no queries unless
+  `LOG_BLOCKED=yes`.
 
 ## [0.2.0] – 2026-11-20
 

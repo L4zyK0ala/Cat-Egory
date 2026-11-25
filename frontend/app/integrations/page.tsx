@@ -25,6 +25,7 @@ export default async function Integrations() {
 rpz:
   name: rpz.cat-egory.
   url: ${feed("profile-security.rpz")}
+  zonefile: /var/lib/unbound/rpz.cat-egory.zone
   rpz-action-override: nxdomain
   rpz-log: yes`;
   return (
@@ -109,6 +110,8 @@ rpz:
         <p>{t("Unbound downloads the zone itself and blocks subdomains too. In unbound.conf:",
               "Unbound bölgeyi kendisi indirir ve alt alan adlarını da engeller. unbound.conf içine:")}</p>
         <pre className="mono">{unbound}</pre>
+        <p className="muted">{t("Keep the zonefile line: Unbound saves every good download there and reads it at start, so a restart while our address is unreachable does not switch the blocking off. The folder must be writable by Unbound.",
+                                "zonefile satırını silmeyin: Unbound her sağlam indirmeyi oraya kaydeder ve açılışta oradan okur; adresimize ulaşılamadığı bir anda yeniden başlasa bile engelleme kapanmaz. Klasöre Unbound'un yazabilmesi gerekir.")}</p>
       </div>
 
       <p className="muted">{t("The security profile is public domain (CC0); the family profile also contains content categories and is CC BY 4.0: credit \"Cat-egory contributors\". Something blocked that should not be? Report it from the domain's page; a person checks every report.",
