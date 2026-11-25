@@ -7,6 +7,9 @@
 #     look-alikes folded (0→o, 1→l, rn→m, vv→w); then split into tokens on "-" "." and digits.
 #   * `tokens` (short, ambiguous) match only a whole token: "ptt-kargo-odeme.com" yes, "optt.com" no.
 #   * `substrings` (long, distinctive) match anywhere: "garantibbvamobil-giris.net".
+#   * `group: true`: the Turkish company of an international group (Vodafone, QNB, DenizBank). The group's
+#     companies abroad carry the same name, so the page-proof detector does not take a non-Turkish page under another
+#     country's domain (vodafone.al, a .cz partner portal) for it.
 #   * names under an `official` domain are ignored; matches are queued for a scan at high priority and always
 #     end in human review (a model's suspicion never becomes a published threat flag).
 version: draft-2026-11-08
@@ -19,8 +22,8 @@ brands:
   - {name: Yapı Kredi, sector: bank, substrings: [yapikredi], tokens: [worldcard], official: [yapikredi.com.tr]}
   - {name: Halkbank, sector: bank, substrings: [halkbank], official: [halkbank.com.tr]}
   - {name: VakıfBank, sector: bank, substrings: [vakifbank], official: [vakifbank.com.tr]}
-  - {name: DenizBank, sector: bank, substrings: [denizbank], official: [denizbank.com]}
-  - {name: QNB, sector: bank, substrings: [finansbank], tokens: [qnb], official: [qnb.com.tr]}
+  - {name: DenizBank, sector: bank, substrings: [denizbank], official: [denizbank.com], group: true}
+  - {name: QNB, sector: bank, substrings: [finansbank], tokens: [qnb], official: [qnb.com.tr], group: true}
   - {name: TEB, sector: bank, tokens: [teb], official: [teb.com.tr]}
   - {name: Enpara, sector: bank, substrings: [enpara], official: [enpara.com]}
   - {name: Kuveyt Türk, sector: bank, substrings: [kuveytturk], official: [kuveytturk.com.tr]}
@@ -42,7 +45,7 @@ brands:
   - {name: Hepsiburada, sector: e-commerce, substrings: [hepsiburada], official: [hepsiburada.com]}
   - {name: Sahibinden, sector: e-commerce, substrings: [sahibinden], official: [sahibinden.com]}
   - {name: Turkcell, sector: telecom, substrings: [turkcell], official: [turkcell.com.tr]}
-  - {name: Vodafone TR, sector: telecom, substrings: [vodafone], official: [vodafone.com.tr, vodafone.com]}
+  - {name: Vodafone TR, sector: telecom, substrings: [vodafone], official: [vodafone.com.tr, vodafone.com], group: true}
   - {name: Türk Telekom, sector: telecom, substrings: [turktelekom], official: [turktelekom.com.tr]}
   # --- travel
   - {name: Türk Hava Yolları, sector: travel, substrings: [turkishairlines], tokens: [thy], official: [turkishairlines.com, thy.com]}

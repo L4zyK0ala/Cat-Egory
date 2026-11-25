@@ -51,7 +51,7 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
    every record is ours (CC BY) and a list's mistake is never republished. Approve each list with
    `--redistribution no` (OPERATIONS.md). The review card shows which lists name the host and the listed link.
 2. **Shadow detector (hybrid).** After every classification — and after every scan of a threat candidate that
-   needs no AI answer (below) — `threats/detector.py` judges the page with deterministic rules, `page_proven_v3`:
+   needs no AI answer (below) — `threats/detector.py` judges the page with deterministic rules, `page_proven_v4`:
    * **phishing:** the page asks for a secret (password, card number / CVV, SMS or one-time code, Turkish ID
      number);
    * **investment scam:** it asks for a phone number and talks investment (at least two of "yatırım", "alım
@@ -66,11 +66,18 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
    restricted host, nor under a registrable domain the Majestic top list or the Chrome UX Report Türkiye ranks
    **and** the host is suspect by itself (its name imitates a brand or a top site, a threat list names it, or its
    certificate is under 30 days old). The page's language is recorded, not required: phishing of a Turkish brand
-   abroad, or of a worldwide brand, is phishing too.
+   abroad, or of a worldwide brand, is phishing too. What does not make a claim (v4): a brand string inside another
+   word of the page ("Paparazzi") or after letters of the page's own name in its address (chickenparadise:
+   "Chicken Paradise"); a social platform named only in the description or text (an integration); the Turkish
+   company of an international group (`group: true`: Vodafone TR, QNB, DenizBank) on a non-Turkish page under
+   another country's domain. A brand only in a subdomain of an unremarkable site (a customer's space at a service)
+   needs a threat list or a new certificate as well.
 
    History: `page_proven_v1` (2026-11-17) measured 40 % precision (Vodafone UK's own sign-in pages, a gambling
    site's list of banks); v2 added popularity, the brand in the address and listed brands (no wrong flag left when
-   replayed on v1's pages); v3 (2026-11-18) added the investment-scam rule and the worldwide brands. A new rule name
+   replayed on v1's pages); v3 (2026-11-18) added the investment-scam rule and the worldwide brands; v4 (2026-11-25)
+   answers v3's nine wrong flags out of 94 decided (replayed on v3's pages: 40 right and 1 wrong, against v3's 46 and
+   9 on the same pages; it misses five Vodafone and subdomain pages people called phishing). A new rule name
    starts its measurement afresh. Before trusting a rule change, `python -m threats.detector replay` (worker,
    read-only) judges the earlier rule's pages again and compares both with the same decisions of people. Verdicts on
    threat candidates and all positive ones go to `detector_verdicts`; `measure` compares each domain's newest verdict

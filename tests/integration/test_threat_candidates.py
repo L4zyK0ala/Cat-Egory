@@ -473,3 +473,41 @@ def test_a_long_link_list_keeps_only_watched_names(engine, clean):
                                                         b"https://akbank-giris.net/y\nhttps://haber.com.tr/z\n"))
     assert {h: (r, b) for h, (r, b, _, _) in entries(engine).items()} == {
         "paypal-login.top": (0, "PayPal"), "akbank-giris.net": (2, "Akbank"), "haber.com.tr": (1, None)}
+
+
+def test_v4_takes_no_brand_a_page_does_not_claim():
+    """The nine pages people found v3 wrong on (2026-11-19..24), each with the part of v4 that spares it."""
+    login = "<form><input name=user><input type=password name=pw></form>"
+    lookalike = {"suspicious_name": "brand_lookalike", "protected": None}
+
+    def claim(**kw):
+        return detector.claimed_brand(page(html=login, **kw))
+
+    # a brand string inside a word the page's own name explains
+    assert claim(host="chickenparadisedc.com", title="Chicken Paradise", text="Order online", cert_days=3) is None
+    assert claim(host="mortgage.primisbank.com", title="Mortgages - Primis Mortgage", text="Apply now") is None
+    assert claim(host="aliciapenabizama.com", title="Main Home - Dr. Alicia Peña Bizama", text="Consulta") is None
+    # ... or a longer word on the page: "Paparazzi" is not Papara (the title still names TikTok)
+    assert "Papara" not in [b.name for b in detector.brands_named("Workforce HQ | TikTok Paparazzi")]
+    # Vodafone's companies abroad are not Vodafone TR
+    assert claim(host="iot-solutions.vodafone.al", title="Vodafone IoT Solutions | Login", text="Hyr") is None
+    assert claim(host="is.vodafonepartner.cz", title="3D Communication, s.r.o. - Přihlášení", text="Přihlášení") is None
+    assert claim(host="live.events-vodafone.cz", title="Vodafone .:. Live portal", text="Přihlášení") is None
+    # a customer's space at a service, by its name alone
+    tenant = page(host="vodafone.pyramid-online.net", title="Pyramid™ Risk Management System", text="Login", html=login)
+    assert detector.claimed_brand(tenant).subdomain
+    assert not detector.judge(tenant, **lookalike)[0]
+    # a social platform named only in the description is an integration
+    zap = detector.Page(host="web.finance.meyje.com.br", title="RuralZap", description="Atendimento pelo WhatsApp",
+                        text="Entrar", html=login, cert_valid_from=None, scanned_at=datetime(2026, 11, 19, tzinfo=UTC))
+    assert detector.claimed_brand(zap) is None
+
+    # and what v4 keeps: phishing that glues words or letters to a brand, abroad and in a subdomain with a list
+    assert claim(host="myenpara-giris.com", title="Giriş", text="").brand == "Enpara"
+    assert claim(host="acikdenizbankasyvvyi.plesk.page", title="Giriş", text="").brand == "DenizBank"
+    assert claim(host="ebank.ziraatbank.com.gr", title="e-Banking", text="Welcome").brand == "Ziraat Bankası"
+    assert claim(host="vodafone-fatura.com.al", title="Vodafone Fatura Ödeme", text="Faturanızı ödeyin").brand \
+        == "Vodafone TR"  # a Turkish page under another country's domain is still a claim
+    partner = page(host="vodafone.partner.simo.co", title="Vodafone Partner Login", text="Welcome", html=login)
+    assert detector.judge(partner, suspicious_name="feed_listed:phishing-database", protected=None)[0]
+    assert [b.name for b in detector.brands_named("Papara ile öde")] == ["Papara"]

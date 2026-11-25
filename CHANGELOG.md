@@ -21,6 +21,10 @@ release may contain breaking changes.
   no longer hides the same CVE everywhere else.
 
 ### Measurement
+- Threat detector `page_proven_v4`: no brand claim from a brand string inside another word, from a social
+  platform a page only mentions, or for Vodafone TR, QNB and DenizBank on a foreign group company's own pages; a
+  brand only in a subdomain needs a threat list or a new certificate too. On v3's pages: 40 right and 1 wrong flag
+  (97.6 %) against 46 and 9 (83.6 %); v3's nine wrong flags were all a brand the page did not claim.
 - Model comparison on person-checked sites: `--set verified:N` and `--set hard:N` (where a person changed the AI's
   main category), drawn reproducibly from `--seed`. A model that hits a rate limit sits out the rest of the run
   instead of stopping it.

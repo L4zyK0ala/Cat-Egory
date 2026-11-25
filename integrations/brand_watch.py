@@ -51,6 +51,9 @@ class Brand:
     substrings: tuple[str, ...] = ()
     tokens: tuple[str, ...] = ()
     official: tuple[str, ...] = ()
+    # The Turkish company of an international group (Vodafone TR): the group's companies in other countries use the
+    # same name, so our page-proof detector does not take their own pages (Czech, under .cz) for this brand.
+    group: bool = False
 
     @property
     def label(self) -> str:
@@ -144,7 +147,8 @@ def load_watchlist(path: Path = WATCHLIST) -> Watchlist:
     with open(path, encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)
     return Watchlist([Brand(name=b["name"], sector=b["sector"], substrings=tuple(b.get("substrings", [])),
-                            tokens=tuple(b.get("tokens", [])), official=tuple(b.get("official", [])))
+                            tokens=tuple(b.get("tokens", [])), official=tuple(b.get("official", [])),
+                            group=bool(b.get("group", False)))
                       for b in raw["brands"]])
 
 

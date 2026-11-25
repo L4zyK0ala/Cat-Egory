@@ -24,6 +24,15 @@ gambling site's list of banks phishing, and missed pages whose brand was only in
 left). ``page_proven_v3`` (2026-11-18) added the investment-scam rule and the worldwide brands (Cat-egory lists
 threats worldwide, not only Turkish ones). A page's language is recorded (``turkish``) but not required: phishing of
 Turkish brands abroad (Ziraat in Greece) is phishing too.
+``page_proven_v4`` (2026-11-25) answers v3's nine wrong flags out of 94 that people decided, all of them a brand the
+page does not claim: a brand string inside another word (chickENPARAdise, primISBANK, peNABIZama, PAPARAzzi) now
+counts in a page's text only alone or with the words phishing glues to it (``_AFFIXES``), and in a host name not
+when the letters before it come from the page's own name (Chicken Paradise, Primis); the Turkish company of an
+international group (``group`` in the watchlist: Vodafone TR, QNB, DenizBank) is not claimed by a non-Turkish page
+under another country's domain (vodafone.al, a .cz partner portal); a brand only in a subdomain of an unremarkable
+site (vodafone.pyramid-online.net, a customer's space at a service) needs a threat list or a new certificate as
+well; and a social platform (WhatsApp, Telegram, ...) that a page names only in its description or text is an
+integration, not a claim.
 
 **Phase 2 (shadow):** every verdict on a threat candidate, and every positive one, is stored in
 ``detector_verdicts`` and later compared with what a person decided (``measure``). Nothing is flagged.
@@ -42,6 +51,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -60,7 +70,7 @@ from database.models import (
 )
 
 log = logging.getLogger("category.threats.detector")
-RULE = "page_proven_v3"
+RULE = "page_proven_v4"
 SOURCE = "cat-egory-detector"  # = classification.engine.DETECTOR_SOURCE
 FRESH_CERT_DAYS = 30
 POPULAR_SOURCES = ("majestic-million-top", "crux-top-tr")  # registrable domains these rank are established sites
@@ -112,6 +122,7 @@ class Claim:
     brand: str
     official: tuple[str, ...]
     via: str  # "page" (title / description / the only brand in the text) or "host" (its address names the brand)
+    subdomain: bool = False  # via the host, and the brand is only in a subdomain, not in the registrable name
 
 
 def secrets(html: str | None) -> list[str]:
@@ -134,9 +145,46 @@ def _words(text: str) -> str:
     return " " + re.sub(r"[^a-z0-9]+", " ", skeleton(text)) + " "
 
 
+# What phishing glues to a brand's name in one word: "myenpara", "ziraatbankgiris", "garantibbvamobil", "edevlet2".
+# Any other letters make it a different word: chickENPARAdise, primISBANK, peNABIZama, PAPARAzzi (page_proven_v4).
+_AFFIX_WORDS = ("www", "m", "e", "my", "the", "secure", "guvenli", "online", "login", "signin", "giris", "mobil",
+                      "mobile", "app", "web", "net", "internet", "sube", "tr", "turkiye", "destek", "support", "help",
+                      "hesap", "account", "musteri", "verify", "dogrula", "dogrulama", "onay", "update", "guncelle",
+                      "bonus", "kampanya", "odeme", "pay", "kart", "card", "kredi", "bireysel", "kurumsal", "info",
+                      "official", "resmi", "service", "servis", "portal")
+
+
+@lru_cache(maxsize=1)
+def _affix_set() -> frozenset[str]:
+    from integrations.brand_watch import skeleton
+
+    return frozenset(skeleton(a) for a in _AFFIX_WORDS)  # compared with skeletons: "mobil" is "mobii" there
+
+
+def _affixes(part: str) -> bool:
+    """Whether ``part`` (a skeleton) is nothing but phishing affixes and digits ("", "my", "secure2", "oniinegiris")."""
+    if not part or part.isdigit():
+        return True
+    return any(part.startswith(a) and _affixes(part[len(a):]) for a in _affix_set()) or \
+        (part[0].isdigit() and _affixes(part.lstrip("0123456789")))
+
+
+def glued(word: str, needle: str, *, any_suffix: bool = False) -> bool:
+    """Whether ``word`` is the brand string ``needle`` alone or with phishing affixes around it. ``any_suffix``: a
+    word that starts with the brand string counts whatever follows (host names: "vodafonepartner", "ziraatbankx")."""
+    i = word.find(needle)
+    while i != -1:
+        rest = word[i + len(needle):]
+        if _affixes(word[:i]) and (_affixes(rest) or (any_suffix and i == 0)):
+            return True
+        i = word.find(needle, i + 1)
+    return False
+
+
 def brands_named(text: str | None) -> list:
     """Watched brands a text names, Turkish first: by the brand's name as a phrase, by a whole token, or by a
-    distinctive substring that starts a word ("garantibbvamobil" yes; "fraisbank" is not İş Bankası)."""
+    distinctive substring alone or with phishing affixes ("garantibbvamobil" yes; "fraisbank" is not İş Bankası,
+    "Paparazzi" is not Papara)."""
     from integrations.brand_watch import skeleton
 
     if not text:
@@ -147,9 +195,13 @@ def brands_named(text: str | None) -> list:
         for brand in watchlist.brands:
             name = re.sub(r"[^a-z0-9]+", " ", skeleton(brand.name)).strip()
             if (name and f" {name} " in words) or any(f" {skeleton(t)} " in words for t in brand.tokens) \
-                    or any(f" {skeleton(s).replace('-', '')}" in words for s in brand.substrings):
+                    or any(_in_words(words, skeleton(s).replace("-", "")) for s in brand.substrings):
                 found.append(brand)
     return found
+
+
+def _in_words(words: str, needle: str) -> bool:
+    return needle in words and any(glued(w, needle) for w in words.split() if needle in w)
 
 
 # Another company's name on a page that is not about it: "Sign in with Google", "Continue with Apple", "Facebook ile
@@ -171,17 +223,65 @@ def _no_social_login(text: str | None) -> str | None:
 def claimed_brand(page: Page) -> Claim | None:
     """The watched brand a page presents itself as, or None (see the module docstring for the order)."""
     title, description = _no_social_login(page.title), _no_social_login(page.description)
-    top = brands_named(" ".join(x for x in (title, description) if x))
+    fits = lambda b: not _group_abroad(page, b)  # noqa: E731 - Vodafone CZ is not Vodafone TR
+    in_title = brands_named(title)
+    # a social platform counts from the title (or the host), not from a description that mentions it ("RuralZap:
+    # chats on WhatsApp"): there it is an integration
+    top = [b for b in brands_named(" ".join(x for x in (title, description) if x))
+           if fits(b) and (b.sector != "social" or b in in_title)]
     if top:
         return _claim(top[0], "page")
     for watchlist in _watchlists():
         hit = watchlist.match(page.host)
-        if hit is not None and hit.matched in hit.brand.substrings and not _own_name(page, hit.matched):
-            return _claim(hit.brand, "host")  # short tokens (ptt, hgs, ups) are too ambiguous in a host name
+        if hit is not None and hit.matched in hit.brand.substrings and fits(hit.brand) \
+                and _glued_in_host(page, hit.matched) and not _own_name(page, hit.matched):
+            # short tokens (ptt, hgs, ups) are too ambiguous in a host name
+            return Claim(hit.brand.name, hit.brand.official, "host", _only_in_subdomain(hit))
     body = brands_named(_no_social_login((page.text or "")[:1500]))
-    if len(body) == 1:
+    if len(body) == 1 and fits(body[0]) and body[0].sector != "social":
         return _claim(body[0], "page")
     return None  # none, or several named only in the text: a list (payment methods, partners), not a claim
+
+
+def _glued_in_host(page: Page, matched: str) -> bool:
+    """Whether the brand string stands in a host word as the brand: at the word's start ("ziraatbankgiris"), after
+    phishing affixes ("myenpara") or after letters of no meaning ("acikdenizbankasyvvyi"), but not after letters the
+    page's own name explains: chickENPARAdise is "Chicken Paradise", primISBANK is "Primis". A string spread over
+    several words ("is-bank") is left to the other checks."""
+    from integrations.brand_watch import skeleton
+
+    needle = skeleton(matched).replace("-", "")
+    words = [w for w in re.split(r"[^a-z0-9]+", skeleton(page.host)) if needle in w]
+    if not words:
+        return True
+    names = _words(" ".join(x for x in (page.title, page.description) if x)).split()
+    runs = ["".join(names[i:]) for i in range(len(names))]  # "Alicia Peña Bizama" explains "aliciapenabizama"
+    for w in words:
+        prefix = w[: w.find(needle)]
+        if _affixes(prefix) or len(prefix) < 2 or not any(r.startswith(prefix) for r in runs):
+            return True
+    return False
+
+
+def _only_in_subdomain(hit) -> bool:
+    from integrations.brand_watch import skeleton
+
+    label = hit.registrable.split(".", 1)[0]
+    return skeleton(hit.matched).replace("-", "") not in skeleton(label).replace("-", "")
+
+
+# Country codes used as generic names (.co, .io, .me ...): a page there says nothing about a country.
+_GENERIC_CC = frozenset({"co", "io", "me", "tv", "cc", "ws", "ai", "ly", "to", "gg", "fm", "am", "la", "sh", "so",
+                         "st", "nu", "vc", "pw", "bz"})
+
+
+def _group_abroad(page: Page, brand) -> bool:
+    """A page of the international group's company in another country: the brand is a group's Turkish company,
+    the page is not Turkish and its host is under another country's domain (vodafone.al, partner.vodafone.cz)."""
+    if not getattr(brand, "group", False) or turkish(page):
+        return False
+    cc = page.host.rsplit(".", 1)[-1]
+    return len(cc) == 2 and cc != "tr" and cc not in _GENERIC_CC
 
 
 def _claim(brand, via: str) -> Claim:
@@ -272,8 +372,10 @@ def judge(page: Page, *, suspicious_name: str | None, protected: str | None,
     claim = claimed_brand(page)
     official = bool(claim) and any(page.host == o or page.host.endswith("." + o) for o in claim.official)
     fresh = fresh_cert(page)
+    listed = bool(suspicious_name and suspicious_name.startswith("feed_listed:"))
     rest = claim is not None and not official and protected is None and popular is None \
-        and (suspicious_name is not None or fresh)
+        and (suspicious_name is not None or fresh) \
+        and not (claim.subdomain and not (listed or fresh))  # a customer's space at a service, by its name alone
     kind = None
     if rest and found:
         kind = PHISHING
