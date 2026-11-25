@@ -25,7 +25,10 @@ function Queue({ api }: { api: string }) {
   useEffect(() => { void load(); }, [load]);
   async function act(id: number, action: string) {
     const r = await postConfirmed(api, `/api/v1/admin/submissions/${id}/moderate`, { action });
-    if (!r.ok) setError(`${r.message} (${r.code})`);
+    if (!r.ok) setError(r.code === "primary_required"
+      ? t("The category reported as wrong is the site's main category: accepting would leave it without one. Reject the report, or set a new main category under Review.",
+          "Yanlış olduğu bildirilen kategori sitenin ana kategorisi; kabul etmek siteyi ana kategorisiz bırakır. Bildirimi reddedin ya da yeni ana kategoriyi İnceleme'den verin.")
+      : `${r.message} (${r.code})`);
     void load();
   }
   return (
@@ -41,8 +44,10 @@ function Queue({ api }: { api: string }) {
                   {s.submitter.trusted ? t("trusted", "güvenilir") : t("account", "hesap")} · {t(`${s.submitter.accepted} accepted, ${s.submitter.rejected} rejected`, `${s.submitter.accepted} kabul, ${s.submitter.rejected} ret`)}
                   {s.submitter.spam > 0 && ` · ${s.submitter.spam} spam`}</span>
               : <span className="badge">{t("anonymous", "anonim")}</span>)}</div>
-          {s.category && <div>{t("Category in question", "Söz konusu kategori")}: <span className="chip">{name(s.category)}</span></div>}
-          {s.proposed_categories.length > 0 && <div>{t("Proposed", "Önerilen")}: {s.proposed_categories.map((c) => <span key={c} className="chip">{name(c)}</span>)}</div>}
+          {s.category && <div>{s.type === "false_positive" ? t("Reported as wrong", "Yanlış olduğu bildirilen") : t("Category in question", "Söz konusu kategori")}:{" "}
+            <span className="chip">{name(s.category)}</span></div>}
+          {s.type !== "false_positive" && s.proposed_categories.length > 0 && (
+            <div>{t("Proposed", "Önerilen")}: {s.proposed_categories.map((c) => <span key={c} className="chip">{name(c)}</span>)}</div>)}
           {s.comment && <div style={{ whiteSpace: "pre-wrap" }}>{s.comment}</div>}
           {s.evidence.length > 0 && <ul>{s.evidence.map((u) => <li key={u} className="mono">{u}</li>)}</ul>}
           <div className="row"><button onClick={() => act(s.id, "accept")}>{t("Accept", "Kabul Et")}</button>

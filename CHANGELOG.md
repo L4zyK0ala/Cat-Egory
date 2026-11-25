@@ -40,6 +40,10 @@ release may contain breaking changes.
   EVREN's provider, scanned page content is not used to train models.
 - Router and DNS setup: the Unbound example keeps a `zonefile`, so a restart while the API is unreachable no
   longer switches the blocking off (found in the new DNS lab, `dns/lab`).
+- Reporting a domain: "The security warning is wrong (the site is safe)" is its own report type, first on a flagged
+  site; it used to hide inside "A category is wrong" behind the content category, so a false-alarm report named
+  the main category instead. The moderation card says which category was reported as wrong and explains, in
+  Turkish too, why such a report cannot be accepted when that is the main category.
 
 ### Company DNS (`dns/`)
 - `cat-egory-dns-update`: a POSIX shell updater for DNS servers. It checks the SHA-256 ETag, every line's shape,

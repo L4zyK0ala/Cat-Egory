@@ -10,8 +10,10 @@ export default function ReportForm({ api, domain, categories, current, risks = [
   risks?: Option[]; currentRisks?: string[];  // security-threat categories, and the flags this domain has now
 }) {
   const t = useT();
-  const [type, setType] = useState("false_positive");
-  const [category, setCategory] = useState(current[0] ?? currentRisks[0] ?? "");
+  // a flagged site's visitors most often report the warning, so that comes first
+  const [type, setType] = useState(currentRisks.length > 0 ? "false_alarm" : current.length > 0 ? "false_positive" : "false_negative");
+  const [category, setCategory] = useState(current[0] ?? "");
+  const [risk, setRisk] = useState(currentRisks[0] ?? "");
   const label = (id: string) => [...categories, ...risks].find((x) => x.id === id)?.name ?? id;
   const [proposed, setProposed] = useState(categories[0]?.id ?? "");
   const [reason, setReason] = useState("");
@@ -24,6 +26,8 @@ export default function ReportForm({ api, domain, categories, current, risks = [
     setBusy(true);
     const body: Record<string, unknown> = { domain, type, reason,
       evidence_urls: evidence.split(/\s+/).filter(Boolean).slice(0, 5) };
+    // a false alarm is a "wrong category" report naming the security warning
+    if (type === "false_alarm") Object.assign(body, { type: "false_positive", category: risk });
     if (type === "false_positive" || type === "false_negative") body.category = type === "false_positive" ? category : proposed;
     if (type === "category_correction") body.proposed_categories = [proposed];
     const r = await call(api, "/api/v1/community/report", { method: "POST", body: JSON.stringify(body), auth: false });
@@ -43,7 +47,8 @@ export default function ReportForm({ api, domain, categories, current, risks = [
             // a threat can only be reported as missing; the main category must be a content category
             if (e.target.value === "category_correction" && risks.some((r) => r.id === proposed)) setProposed(categories[0]?.id ?? "");
           }}>
-            <option value="false_positive">{t("A category is wrong", "Bir kategori yanlış")}</option>
+            {currentRisks.length > 0 && <option value="false_alarm">{t("The security warning is wrong (the site is safe)", "Güvenlik uyarısı yanlış (site güvenli)")}</option>}
+            {current.length > 0 && <option value="false_positive">{t("A category is wrong", "Bir kategori yanlış")}</option>}
             <option value="false_negative">{t("A category is missing", "Bir kategori eksik")}</option>
             <option value="category_correction">{t("The main category should be…", "Ana kategori şu olmalı…")}</option>
             <option value="verification">{t("The classification is correct", "Sınıflandırma doğru")}</option>
@@ -52,11 +57,11 @@ export default function ReportForm({ api, domain, categories, current, risks = [
         {type === "false_positive" && (
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label={t("Wrong category", "Yanlış kategori")}>
             {current.map((c) => <option key={c} value={c}>{label(c)}</option>)}
-            {currentRisks.length > 0 && (
-              <optgroup label={t("Security warnings", "Güvenlik uyarıları")}>
-                {currentRisks.map((c) => <option key={c} value={c}>{label(c)}</option>)}
-              </optgroup>
-            )}
+          </select>
+        )}
+        {type === "false_alarm" && (
+          <select value={risk} onChange={(e) => setRisk(e.target.value)} aria-label={t("Wrong warning", "Yanlış uyarı")}>
+            {currentRisks.map((c) => <option key={c} value={c}>{label(c)}</option>)}
           </select>
         )}
         {(type === "false_negative" || type === "category_correction") && (
