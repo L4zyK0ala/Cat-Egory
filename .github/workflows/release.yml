@@ -1,0 +1,35 @@
+name: Release
+
+# A pushed version tag (v0.3.0) becomes a GitHub release whose text is that version's CHANGELOG.md section
+# (deployment/scripts/release.py cuts the release; CONTRIBUTING.md has the numbering rule).
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag matches the version in the files
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          grep -qx "version = \"${TAG#v}\"" pyproject.toml || { echo "pyproject.toml is not at ${TAG#v}"; exit 1; }
+          python3 -c 'import json,sys; sys.exit(json.load(open("frontend/package.json"))["version"] != sys.argv[1])' "${TAG#v}" \
+            || { echo "frontend/package.json is not at ${TAG#v}"; exit 1; }
+      - name: GitHub release from the changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 deployment/scripts/release.py --notes "${TAG#v}" > notes.md
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md --verify-tag
+          fi

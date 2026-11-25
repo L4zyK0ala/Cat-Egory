@@ -53,6 +53,11 @@ release may contain breaking changes.
   Recursor 5 and Windows Server DNS (forwarding to the Cat-egory DNS image); linked from the footer, the router
   setup page and the sitemap. The feeds page lists the new profile.
 
+### Project
+- Releases: `deployment/scripts/release.py X.Y.Z` raises the version in every file and closes this section; a
+  pushed `vX.Y.Z` tag publishes the GitHub release from it (`.github/workflows/release.yml`). CONTRIBUTING.md says
+  which number goes up for which change.
+
 ## [0.2.0] – 2026-11-20
 
 ### Classification
