@@ -64,7 +64,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                      "Kod Apache-2.0 · Sınıflandırma verisi CC BY 4.0 (Cat-Egory katkıcıları)")}</span>
             <span>{t("AI classifications are machine estimates; verified entries were confirmed by a person.",
                      "Yapay zekâ sınıflandırmaları makine tahminidir; doğrulanmış kayıtları bir kişi onaylamıştır.")}</span>
-            {!adminUi && <span><Link href="/developers">API</Link> · <Link href="/changes">{t("Changes", "Değişiklikler")}</Link> · <Link href="/privacy">{t("Privacy", "Gizlilik")}</Link> · <Link href="/contact">{t("Contact", "İletişim")}</Link></span>}
+            {!adminUi && <span><Link href="/developers">API</Link> · <Link href="/business">{t("For Companies", "Kurumsal")}</Link> · <Link href="/changes">{t("Changes", "Değişiklikler")}</Link> · <Link href="/privacy">{t("Privacy", "Gizlilik")}</Link> · <Link href="/contact">{t("Contact", "İletişim")}</Link></span>}
           </div>
         </footer>
         </LocaleProvider>

@@ -53,7 +53,12 @@ MEDIA_TYPES = {"txt": "text/plain; charset=utf-8", "hosts": "text/plain; charset
 # Ready-made lists for routers and DNS filters (the /integrations page). Every profile also blocks all threats.
 FAMILY_CATEGORIES = ("adult-content", "gambling", "illegal-gambling", "illegal-drugs", "violence", "weapons",
                      "hate-and-discrimination", "proxy-services", "piracy")
-PROFILES = {"profile-security": ("security threats", ()), "profile-family": ("family filter", FAMILY_CATEGORIES)}
+# Workplace networks: the same categories as the family filter today, kept as its own list so a company's needs can
+# part from a family's later without changing what either profile's subscribers get.
+BUSINESS_CATEGORIES = ("adult-content", "gambling", "illegal-gambling", "illegal-drugs", "violence", "weapons",
+                       "hate-and-discrimination", "proxy-services", "piracy")
+PROFILES = {"profile-security": ("security threats", ()), "profile-family": ("family filter", FAMILY_CATEGORIES),
+            "profile-business": ("business filter", BUSINESS_CATEGORIES)}
 RPZ_ORIGIN = "rpz.cat-egory."
 THREAT_SOURCES = OWN_THREAT_SOURCES  # threat records we may redistribute under our own licence
 

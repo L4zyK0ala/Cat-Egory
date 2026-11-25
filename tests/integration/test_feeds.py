@@ -169,12 +169,20 @@ def test_a_flagged_domain_leaves_the_content_lists(engine, client, admin, store)
 
 def test_router_profiles_and_the_adblock_format(engine, client, admin, store):
     setup_data(engine, client, admin)
+    client.post("/api/v1/admin/domains", headers=admin, json={"domains": ["arms.example.com"], "scan": "none"})
+    with Session(engine) as s, s.begin():
+        arms = s.scalar(select(Domain).where(Domain.normalized_domain == "arms.example.com"))
+        apply_categories(s, arms, primary="weapons", secondary=[], confidence=0.93,
+                         origin=AssignmentOrigin.AI, taxonomy=TAX, status=ClassificationStatus.CLASSIFIED)
     run_build(engine, store)
     lines = lambda name, mark: [ln for ln in body(store, engine, name).splitlines() if not ln.startswith(mark)]  # noqa: E731
     assert lines("profile-security.txt", "#") == ["bad.example.com"]
-    assert lines("profile-family.txt", "#") == ["bad.example.com", "casino.example.com"]  # threats + gambling
+    assert lines("profile-family.txt", "#") == ["arms.example.com", "bad.example.com", "casino.example.com"]
     assert "news.example.com" not in body(store, engine, "profile-family.txt")
-    assert lines("profile-family.adblock", "!") == ["||bad.example.com^", "||casino.example.com^"]
+    # the business profile blocks the family categories too (weapons, gambling) as a list of its own
+    assert lines("profile-business.txt", "#") == ["arms.example.com", "bad.example.com", "casino.example.com"]
+    assert "# Title: Cat-egory - business filter" in body(store, engine, "profile-business.txt")
+    assert lines("profile-family.adblock", "!") == ["||arms.example.com^", "||bad.example.com^", "||casino.example.com^"]
     assert lines("gambling.adblock", "!") == ["||casino.example.com^"]
     zone = dns.zone.from_text(body(store, engine, "profile-family.rpz"), origin="rpz.cat-egory.")
     assert {str(n) for n in zone.nodes} >= {"casino.example.com", "*.casino.example.com", "bad.example.com"}
@@ -202,6 +210,7 @@ def test_threat_data_is_public_domain(engine, client, admin, store):
     assert releases["phishing.txt"].license == "CC0-1.0" and releases["security.rpz"].license == "CC0-1.0"
     assert releases["profile-security.adblock"].license == "CC0-1.0"
     assert releases["profile-family.txt"].license == "CC-BY-4.0" and releases["gambling.txt"].license == "CC-BY-4.0"
+    assert releases["profile-business.rpz"].license == "CC-BY-4.0"
     phishing = body(store, engine, "phishing.txt")
     assert "# License: CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)" in phishing
     assert "Attribution: not required" in phishing

@@ -46,6 +46,12 @@ release may contain breaking changes.
 - Cat-egory DNS image (`dns/image`): Unbound with DNSSEC validation and the updater in a loop, for networks whose
   own DNS server cannot load RPZ (Windows Server DNS forwards to it). Non-root; logs no queries unless
   `LOG_BLOCKED=yes`.
+- `profile-business`: all threats plus adult content, gambling (licensed and illegal), drugs, violence, weapons,
+  hate, piracy and proxies, for company networks. The same categories as the family profile today, as its own
+  list so the two can part later. CC BY 4.0 like the family profile.
+- "For Companies" page (`/business`): the updater, a local allow list, and setup for BIND 9, Unbound, PowerDNS
+  Recursor 5 and Windows Server DNS (forwarding to the Cat-egory DNS image); linked from the footer, the router
+  setup page and the sitemap. The feeds page lists the new profile.
 
 ## [0.2.0] – 2026-11-20
 

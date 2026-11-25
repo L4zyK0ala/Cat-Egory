@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 type Dump = { domains: { domain: string; status: string; last_updated: string | null }[] };
 
-const PAGES = ["", "/categories", "/feeds", "/integrations", "/accuracy", "/developers", "/lookup", "/changes",
+const PAGES = ["", "/categories", "/feeds", "/integrations", "/business", "/accuracy", "/developers", "/lookup", "/changes",
                "/submit", "/about", "/privacy", "/contact"];
 
 /** The public pages, every category and every published domain (classified or verified): the same list as the

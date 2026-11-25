@@ -42,6 +42,8 @@ rpz:
             <td className="mono">profile-security</td></tr>
           <tr><th>{t("Family", "Aile")}</th><td>{t("Security, plus: ", "Güvenlik, artı: ")}{FAMILY.map((c) => categoryName(locale, c, c)).join(", ")}.</td>
             <td className="mono">profile-family</td></tr>
+          <tr><th>{t("Business", "İş yeri")}</th><td>{t("The family categories, as a list of its own for company networks. Company DNS servers: see ", "Aile profilindeki kategoriler, şirket ağları için ayrı bir liste olarak. Şirket DNS sunucuları için ")}
+            <Link href="/business">{t("For Companies", "Kurumsal")}</Link>{t(".", " sayfasına bakın.")}</td><td className="mono">profile-business</td></tr>
           <tr><th>{t("One category", "Tek kategori")}</th><td>{t("Any category on its own, e.g. gambling. See ", "Herhangi bir kategori tek başına, ör. kumar. Hepsi ")}
             <Link href="/feeds">{t("all lists", "tüm listeler")}</Link>{t(".", " sayfasında.")}</td><td className="mono">gambling</td></tr>
         </tbody></table>

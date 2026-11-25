@@ -46,6 +46,9 @@ export default async function Feeds() {
     list("profile-family", t("Family", "Aile"),
          t("All threats plus adult content, gambling, drugs, violence, weapons, hate and proxies.",
            "Bütün tehditler artı yetişkin içerik, kumar, uyuşturucu, şiddet, silah, nefret ve proxy siteleri.")),
+    list("profile-business", t("Business", "İş yeri"),
+         t("All threats plus adult content, gambling, drugs, violence, weapons, hate, piracy and proxies: for company networks.",
+           "Bütün tehditler artı yetişkin içerik, kumar, uyuşturucu, şiddet, silah, nefret, korsan içerik ve proxy siteleri: şirket ağları için.")),
   ].filter((x): x is FeedList => !!x);
 
   const name = (c: Category) => categoryName(locale, c.id, c.name);
