@@ -4,7 +4,8 @@ import SearchBox from "@/components/SearchBox";
 import Mascot from "@/components/Mascot";
 import Link from "next/link";
 import Hint from "@/components/Hint";
-import { categoryName, intl, type Locale } from "@/lib/i18n";
+import ScanChart, { lastDays } from "@/components/ScanChart";
+import { categoryName, formatDay, formatWhen, intl, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
@@ -30,8 +31,12 @@ export default async function Dashboard() {
     stats = null;
   }
   const rate = stats?.ai_valid_answer_rate_30d;
+  const n = (v: number) => v.toLocaleString(intl(locale));
   const maxDist = Math.max(1, ...(stats?.category_distribution ?? []).map((d) => d.domains));
-  const days = Object.entries(stats?.daily_scans ?? {}).sort(([a], [b]) => (a < b ? 1 : -1));
+  const days = stats ? lastDays(stats.daily_scans, stats.generated_at) : [];
+  const scanned = days.some((d) => d.succeeded + d.blocked + d.failed > 0);
+  // single-page flags are rare: the column shows only when there is one
+  const pages = Object.values(stats?.threat_urls ?? {}).some((v) => v > 0);
   return (
     <>
       <section className="hero">
@@ -123,33 +128,42 @@ export default async function Dashboard() {
                   <table>
                     <thead><tr><th>{t("Threat", "Tehdit")}</th>
                       <th className="num">{t("Domains", "Alan adı")} <Hint end text={t("Whole domains flagged: every page on them, e.g. a look-alike of a bank.", "Tamamı işaretlenen alan adları: tüm sayfaları, örneğin bir bankanın taklidi.")} /></th>
-                      <th className="num">{t("Single pages", "Tek sayfa")} <Hint end text={t("One page flagged on an otherwise legitimate site, usually a hacked one. The site itself is not flagged.", "Genel olarak meşru bir sitede işaretlenen tek bir sayfa, genelde hacklenmiş bir site. Sitenin kendisi işaretlenmez.")} /></th></tr></thead>
+                      {pages && <th className="num">{t("Single pages", "Tek sayfa")} <Hint end text={t("One page flagged on an otherwise legitimate site, usually a hacked one. The site itself is not flagged.", "Genel olarak meşru bir sitede işaretlenen tek bir sayfa, genelde hacklenmiş bir site. Sitenin kendisi işaretlenmez.")} /></th>}</tr></thead>
                     <tbody>
                       {[...new Set([...Object.keys(stats.threats), ...Object.keys(stats.threat_urls ?? {})])].map((k) => (
                         <tr key={k}><td><Link href={`/categories/${k}`}>{names[k] ?? k}</Link></td>
-                          <td className="num">{stats.threats[k] ?? 0}</td><td className="num">{stats.threat_urls?.[k] ?? 0}</td></tr>
+                          <td className="num">{stats.threats[k] ?? 0}</td>{pages && <td className="num">{stats.threat_urls?.[k] ?? 0}</td>}</tr>
                       ))}
                     </tbody>
                   </table>
                 )}
+                {!pages && Object.keys(stats.threats).length > 0 && (
+                  <p className="muted panel-foot">{t("No single pages flagged; when there are, they get their own column here.",
+                                                     "Tek sayfa işareti yok; olduğunda burada ayrı bir sütun görünür.")}</p>)}
               </div>
             </section>
           </div>
           <h2>{t("Daily Scanning (Last 14 Days)", "Günlük Tarama (Son 14 Gün)")} <Hint text={t("Finished scans per day, Türkiye time. Succeeded: the page was read. Blocked: robots.txt or our safety rules refused it. Failed: the site did not answer, or our scanner had a problem (retried within hours).", "Türkiye saatine göre günlük biten taramalar. Başarılı: sayfa okundu. Engellendi: robots.txt ya da güvenlik kurallarımız izin vermedi. Başarısız: site yanıt vermedi veya tarayıcımızda bir sorun oldu (birkaç saat içinde yeniden denenir).")} /></h2>
-          <div className="panel">
-            {days.length === 0 ? <p className="muted">{t("No finished scans yet.", "Henüz biten tarama yok.")}</p> : (
-              <table>
-                <thead><tr><th>{t("Day", "Gün")}</th><th className="num">{t("Succeeded", "Başarılı")}</th><th className="num">{t("Blocked", "Engellendi")}</th><th className="num">{t("Failed", "Başarısız")}</th></tr></thead>
-                <tbody>
-                  {days.map(([day, counts]) => (
-                    <tr key={day}><td>{day}</td><td className="num">{counts.succeeded ?? 0}</td>
-                      <td className="num">{counts.blocked ?? 0}</td><td className="num">{counts.failed ?? 0}</td></tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="panel scan-panel">
+            {!scanned ? <p className="muted">{t("No finished scans yet.", "Henüz biten tarama yok.")}</p> : (
+              <>
+                <ScanChart days={days} locale={locale} t={t} />
+                <details>
+                  <summary>{t("Show the table", "Tabloyu göster")}</summary>
+                  <table>
+                    <thead><tr><th>{t("Day", "Gün")}</th><th className="num">{t("Succeeded", "Başarılı")}</th><th className="num">{t("Blocked", "Engellendi")}</th><th className="num">{t("Failed", "Başarısız")}</th></tr></thead>
+                    <tbody>
+                      {[...days].reverse().map((d) => (
+                        <tr key={d.day}><td>{formatDay(locale, d.day)}</td><td className="num">{n(d.succeeded)}</td>
+                          <td className="num">{n(d.blocked)}</td><td className="num">{n(d.failed)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              </>
             )}
           </div>
-          <p className="muted" style={{ fontSize: 13 }}>{t("Updated", "Güncelleme:")} {new Date(stats.generated_at).toLocaleString(intl(locale), { timeZone: "Europe/Istanbul" })} (GMT+3)</p>
+          <p className="muted" style={{ fontSize: 13 }}>{t("Updated", "Güncelleme:")} {formatWhen(locale, stats.generated_at)} (GMT+3)</p>
         </>
       )}
     </>

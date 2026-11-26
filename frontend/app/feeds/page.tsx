@@ -4,7 +4,7 @@ import { api, publicApiUrl } from "@/lib/api";
 import type { Category, Feed } from "@/lib/types";
 import { CatChase } from "@/components/CatScene";
 import FeedBrowser, { type FeedList } from "@/components/FeedBrowser";
-import { categoryDescription, categoryName, intl } from "@/lib/i18n";
+import { categoryDescription, categoryName, formatWhen, intl } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
@@ -99,7 +99,7 @@ export default async function Feeds() {
           </div>
 
           <p className="muted feeds-foot">
-            {newest && <>{t("Version", "Sürüm")} <span className="mono">{newest.version}</span> · {t("built", "oluşturma")} {new Date(newest.generated_at).toLocaleString(intl(locale), { dateStyle: "medium", timeStyle: "short" })}. </>}
+            {newest && <>{t("Version", "Sürüm")} <span className="mono">{newest.version}</span> · {t("built", "oluşturma")} {formatWhen(locale, newest.generated_at)}. </>}
             {t("Content lists are CC BY 4.0 (credit \"Cat-egory contributors\"); threat lists and the threat dataset are public domain (CC0). Lists use each site's main category. Follow changes on ",
                "İçerik listeleri CC BY 4.0'dır (\"Cat-egory contributors\" diye kaynak gösterin); tehdit listeleri ve tehdit veri seti kamu malıdır (CC0). Listeler her sitenin ana kategorisini kullanır. Değişiklikleri ")}
             <Link href="/changes">{t("the changes page", "Değişiklikler sayfasından")}</Link>{t(", set up a router on ", " izleyin, router kurulumu için ")}

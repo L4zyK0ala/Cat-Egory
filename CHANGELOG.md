@@ -52,6 +52,14 @@ release may contain breaking changes.
   site; it used to hide inside "A category is wrong" behind the content category, so a false-alarm report named
   the main category instead. The moderation card says which category was reported as wrong and explains, in
   Turkish too, why such a report cannot be accepted when that is the main category.
+- Look kept, details cleaned up: labels and table headings in sentence case instead of spaced capitals; one date
+  format everywhere on the public site ("24 Kas 2026, 10:15", Türkiye time); on phones the menu and the language
+  switch sit behind one menu button.
+- Home page: daily scans as a red line chart (today's unfinished day dashed, with a hollow dot), the numbers in a
+  "Show the table" section below it; the threats table shows its "Single pages" column only when one is flagged.
+- Domain page: the source of the main category in words ("Confirmed by a reviewer · 15 Kas 2026") instead of a
+  data-source slug; a confirmed threat warning has a full red frame, an icon and "Dangerous: <type>", and says who
+  confirmed it and since when.
 
 ### Company DNS (`dns/`)
 - `cat-egory-dns-update`: a POSIX shell updater for DNS servers. It checks the SHA-256 ETag, every line's shape,

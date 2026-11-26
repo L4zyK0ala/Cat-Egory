@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CatCheck } from "@/components/CatScene";
 import { api } from "@/lib/api";
-import { categoryName, intl, type Locale } from "@/lib/i18n";
+import { categoryName, formatWhen, intl, type Locale } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 import type { Category } from "@/lib/types";
 
@@ -126,7 +126,7 @@ export default async function AccuracyPage() {
         <p className="muted" style={{ fontSize: 13 }}>{t("Published domains by who set their main category.", "Yayımlanan alan adları, ana kategorisini kimin belirlediğine göre.")}</p>
       </div>
 
-      <p className="muted" style={{ fontSize: 13 }}>{t("Updated", "Güncelleme:")} {new Date(data.generated_at).toLocaleString(intl(locale), { timeZone: "Europe/Istanbul" })} (GMT+3)</p>
+      <p className="muted" style={{ fontSize: 13 }}>{t("Updated", "Güncelleme:")} {formatWhen(locale, data.generated_at)} (GMT+3)</p>
     </div>
   );
 }

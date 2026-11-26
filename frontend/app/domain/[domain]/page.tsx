@@ -6,7 +6,7 @@ import { api, ApiError, UNCACHED, publicApiUrl } from "@/lib/api";
 import type { Category, DomainInfo, HistoryItem, Risk, UrlLookup } from "@/lib/types";
 import SearchBox from "@/components/SearchBox";
 import ReportForm from "@/components/ReportForm";
-import { categoryName, intl, type Locale, type T } from "@/lib/i18n";
+import { categoryName, formatWhen, type Locale, type T } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,33 @@ const RISK_EN: Record<string, string> = {
 };
 
 function when(locale: Locale, value: string | null) {
-  return value ? new Date(value).toLocaleString(intl(locale), { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Istanbul" }) : "–";
+  return formatWhen(locale, value);
+}
+
+/** Who stands behind a label, in words: the slug of a data source, or an origin when the source is unknown. */
+function sourceLabel(t: T, source: string | null, origin?: string): string {
+  const labels: Record<string, string> = {
+    "cat-egory-review": t("Confirmed by a reviewer", "İnceleyici onayladı"),
+    "cat-egory-ai": t("AI estimate", "Yapay zekâ tahmini"),
+    "cat-egory-registry-rules": t("Registry rule", "Tahsis kuralı"),
+    octryx: t("Proven on the page (Octryx)", "Sayfada kanıtlandı (Octryx)"),
+    "cat-egory-detector": t("Proven on the page", "Sayfada kanıtlandı"),
+  };
+  if (source && labels[source]) return labels[source];
+  if (origin === "community") return t("Community report", "Topluluk bildirimi");
+  if (origin === "human") return labels["cat-egory-review"];
+  return source ? t(`Threat feed: ${source}`, `Tehdit kaynağı: ${source}`) : "–";
+}
+
+/** "İnceleyici onayladı · 15 Kas 2026": where a label came from and since when. A person's decision wears a tick. */
+function Stamp({ t, locale, label, since, person }: { t: T; locale: Locale; label: string; since: string | null; person: boolean }) {
+  return (
+    <span className={`stamp ${person ? "person" : ""}`}>
+      {person && <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m5 12 5 5 9-10" /></svg>}
+      {label}{since && <span className="since">{formatWhen(locale, since, false)}</span>}
+    </span>
+  );
 }
 
 function flagged(locale: Locale, risk: Risk) {
@@ -34,13 +60,22 @@ const DOWNLOADS = new Set(["malware", "malicious_downloads", "command_and_contro
 /** First thing on the page when the site or the searched link is a confirmed threat: most visitors arrive with a
  *  link from an SMS or a mail and ask "is this safe?". What not to do, what to do if it already happened, where to
  *  report it. The listed name is never a link out (see tests/unit/test_frontend_links.py). */
-function ThreatWarning({ t, risks, link }: { t: T; risks: readonly (readonly [string, string])[]; link: boolean }) {
+function ThreatWarning({ t, locale, risks, link, sources }: {
+  t: T; locale: Locale; risks: readonly (readonly [string, string])[]; link: boolean; sources: Risk["sources"];
+}) {
   const labels = risks.map(([, label]) => label).join(", ");
   const files = risks.some(([k]) => DOWNLOADS.has(k));
+  const kinds = new Set(risks.map(([k]) => k));
+  const backing = sources.filter((s) => kinds.has(s.type)).sort((a, b) => a.first_seen.localeCompare(b.first_seen));
+  const who = [...new Set(backing.map((s) => sourceLabel(t, s.source)))].join(" · ");
   return (
-    <div className="notice error threat-warning" role="alert">
-      <strong>{link ? t("Do not open this link", "Bu bağlantıyı açmayın") : t("Do not visit this site", "Bu siteye girmeyin")}</strong>
-      <p>{link ? t(`This link is confirmed as: ${labels}.`, `Bu bağlantı şu olarak onaylandı: ${labels}.`)
+    <div className="threat-warning" role="alert">
+      <svg className="icon" aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4 2.5 20h19L12 4Z" /><path d="M12 10v4M12 17h.01" /></svg>
+      <div>
+      <strong>{t("Dangerous", "Tehlikeli")}: {labels.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-GB")}</strong>
+      <p><b>{link ? t("Do not open this link.", "Bu bağlantıyı açmayın.") : t("Do not visit this site.", "Bu siteye girmeyin.")}</b>{" "}
+        {link ? t(`This link is confirmed as: ${labels}.`, `Bu bağlantı şu olarak onaylandı: ${labels}.`)
                : t(`This site is confirmed as: ${labels}.`, `Bu site şu olarak onaylandı: ${labels}.`)}{" "}
         {t("Do not enter a password, card number, ID number or verification code there, and do not download anything from it.",
            "Orada şifre, kart numarası, kimlik numarası ya da doğrulama kodu girmeyin; oradan bir şey indirmeyin.")}</p>
@@ -52,6 +87,8 @@ function ThreatWarning({ t, risks, link }: { t: T; risks: readonly (readonly [st
                               "Ulusal siber güvenlik merkezine (USOM) bildirmek için ")}
         <a href="https://siberguvenlik.gov.tr" target="_blank" rel="noopener noreferrer">siberguvenlik.gov.tr</a>
         {t(".", " üzerindeki İhbar Formu'nu kullanabilirsiniz.")}</p>
+      {backing.length > 0 && <p className="stamp-line">{who} · {formatWhen(locale, backing[0].first_seen, false)}</p>}
+      </div>
     </div>
   );
 }
@@ -175,6 +212,8 @@ export default async function DomainPage({ params, searchParams }: {
   const pick = (kind: Category["kind"]) => taxonomy.items
     .filter((c) => c.kind === kind && !c.is_group && !c.deprecated_in).map((c) => ({ id: c.id, name: categoryName(locale, c.id, c.name) }));
   const linkRisks = lookup ? flagged(locale, lookup.url_risk) : [];
+  const main = info.categories.find((c) => c.primary);
+  const mainSince = history.history.find((h) => h.primary && !h.valid_to && h.category === main?.id)?.valid_from ?? info.last_updated;
   return (
     <>
       <SearchBox initial={info.display_domain} />
@@ -182,7 +221,8 @@ export default async function DomainPage({ params, searchParams }: {
         <span className={`badge ${info.classification_status}`}>{statusLabel(t, info.classification_status)}</span></div>
       {info.display_domain !== info.domain && <div className="mono muted">{info.domain}</div>}
       {(risks.length > 0 || linkRisks.length > 0) &&
-        <ThreatWarning t={t} risks={linkRisks.length ? linkRisks : risks} link={linkRisks.length > 0} />}
+        <ThreatWarning t={t} locale={locale} risks={linkRisks.length ? linkRisks : risks} link={linkRisks.length > 0}
+                       sources={linkRisks.length && lookup ? lookup.url_risk.sources : info.risk.sources} />}
       {viaParent && <div className="notice">{t(`${name} is not listed itself; showing its registrable domain ${info.domain}.`,
                                              `${name} kendisi listede yok; kayıtlı üst alan adı ${info.domain} gösteriliyor.`)}</div>}
       {lookup && (
@@ -202,10 +242,12 @@ export default async function DomainPage({ params, searchParams }: {
               <Link href={`/categories/${c.id}`}>{categoryName(locale, c.id, c.name)}</Link>{c.confidence != null && ` · ${locale === "tr" ? "%" : ""}${(c.confidence * 100).toFixed(0)}${locale === "tr" ? "" : "%"}`}
             </span>
           ))}
-          <p className="muted" style={{ fontSize: 13 }}>
-            {t("Source", "Kaynak")}: {info.data_source ?? "–"}. {t("Percentages are model confidence, not measured accuracy.",
-                                                                       "Yüzdeler model güvenidir, ölçülmüş doğruluk değildir.")}
-          </p>
+          {main && <Stamp t={t} locale={locale} since={mainSince}
+                          label={sourceLabel(t, info.data_source, main.origin)}
+                          person={info.data_source === "cat-egory-review" || main.origin === "human"} />}
+          {info.categories.some((c) => c.confidence != null) &&
+            <p className="muted" style={{ fontSize: 13 }}>{t("Percentages are model confidence, not measured accuracy.",
+                                                              "Yüzdeler model güvenidir, ölçülmüş doğruluk değildir.")}</p>}
           <h2>{t("Security", "Güvenlik")}</h2>
           {risks.length === 0 ? <p className="muted">{t("No confirmed threats for this domain (from reviewers or licensed threat feeds; AI claims are not shown as threats).",
                                                         "Bu alan adı için onaylanmış tehdit yok (inceleyicilerden veya lisanslı tehdit kaynaklarından; yapay zekâ iddiaları tehdit olarak gösterilmez).")}</p> :

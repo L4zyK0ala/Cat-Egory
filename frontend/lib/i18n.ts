@@ -8,6 +8,24 @@ export const makeT = (locale: Locale): T => (en, tr) => (locale === "tr" ? tr : 
 /** For dates and numbers. */
 export const intl = (locale: Locale) => (locale === "tr" ? "tr-TR" : "en-GB");
 
+/** The one date format of the site, Türkiye time: "24 Kas 2026, 10:15" / "24 Nov 2026, 10:15"; without the time,
+ *  "24 Kas 2026". Built from parts, because the two locales punctuate it differently. */
+export function formatWhen(locale: Locale, value: string | Date | null | undefined, time = true): string {
+  if (!value) return "–";
+  const parts = Object.fromEntries(new Intl.DateTimeFormat(intl(locale), {
+    day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    timeZone: "Europe/Istanbul",
+  }).formatToParts(new Date(value)).map((p) => [p.type, p.value]));
+  const day = `${parts.day} ${parts.month.replace(/\.$/, "")} ${parts.year}`;
+  return time ? `${day}, ${parts.hour}:${parts.minute}` : day;
+}
+
+/** A calendar day from the API ("2026-11-24"), short: "24 Kas" / "24 Nov". */
+export function formatDay(locale: Locale, iso: string): string {
+  return new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString(intl(locale), { day: "numeric", month: "short", timeZone: "UTC" })
+    .replace(/\.$/, "");
+}
+
 /** Turkish names and descriptions of the taxonomy; English comes from the API (classification/taxonomy.yaml). */
 export const CATEGORY_TR: Record<string, [string, string]> = {
   "group-business-technology": ["İş ve Teknoloji", "Ticaret, finans ve teknoloji."],

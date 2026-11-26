@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import CopyText from "@/components/CopyText";
 import { api, publicApiUrl, UNCACHED } from "@/lib/api";
-import { categoryName, intl } from "@/lib/i18n";
+import { categoryName, formatWhen } from "@/lib/i18n";
 import { getT } from "@/lib/locale";
 import type { Category } from "@/lib/types";
 
@@ -36,7 +36,6 @@ export default async function ChangesPage() {
   }
   const base = publicApiUrl();
   const name = (id: string | null) => (id == null ? "" : names[id] ?? categoryName(locale, id, id));
-  const when = new Intl.DateTimeFormat(intl(locale), { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Istanbul" });
   // The latest changes, newest first. (Reversing the oldest-first feed showed only the oldest 1,000 of a busy week.)
   const items = data?.items ?? [];
 
@@ -63,7 +62,7 @@ export default async function ChangesPage() {
               <thead><tr><th>{t("When", "Zaman")}</th><th>{t("Site", "Site")}</th><th>{t("Change", "Değişiklik")}</th></tr></thead>
               <tbody>{items.slice(0, SHOWN).map((c) => (
                 <tr key={`${c.at}-${c.domain}-${c.kind}`}>
-                  <td className="muted">{when.format(new Date(c.at))}</td>
+                  <td className="muted">{formatWhen(locale, c.at)}</td>
                   <td className="mono"><Link href={`/domain/${c.domain}`}>{c.domain}</Link></td>
                   <td>{event(c)}</td>
                 </tr>))}

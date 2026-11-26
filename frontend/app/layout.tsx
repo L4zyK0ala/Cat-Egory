@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import LanguageSwitch from "@/components/LanguageSwitch";
+import MobileMenu from "@/components/MobileMenu";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { getT } from "@/lib/locale";
 import { siteUrl } from "@/lib/site";
@@ -36,6 +37,16 @@ function Brand({ size = 30 }: { size?: number }) {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const adminUi = process.env.UI_ADMIN === "true";
   const { locale, t } = await getT();
+  const links = [
+    { href: "/", label: t("Home", "Ana Sayfa") }, { href: "/categories", label: t("Categories", "Kategoriler") },
+    { href: "/accuracy", label: t("Accuracy", "Doğruluk") }, { href: "/feeds", label: t("Feeds", "Listeler") },
+    { href: "/submit", label: t("Suggest a Site", "Site Öner") }, { href: "/about", label: t("About", "Hakkında") },
+  ];
+  const footer = [
+    { href: "/developers", label: "API" }, { href: "/business", label: t("For Companies", "Kurumsal") },
+    { href: "/changes", label: t("Changes", "Değişiklikler") }, { href: "/privacy", label: t("Privacy", "Gizlilik") },
+    { href: "/contact", label: t("Contact", "İletişim") },
+  ];
   return (
     <html lang={locale}>
       <body>
@@ -44,16 +55,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="inner">
             <Link href={adminUi ? "/admin" : "/"} className="brand" aria-label={t("Cat-Egory home", "Cat-Egory ana sayfa")}><Brand />{adminUi && <span className="badge pending">admin</span>}</Link>
             {!adminUi && (
-              <nav aria-label={t("Main", "Ana menü")}>
-                <Link href="/">{t("Home", "Ana Sayfa")}</Link>
-                <Link href="/categories">{t("Categories", "Kategoriler")}</Link>
-                <Link href="/accuracy">{t("Accuracy", "Doğruluk")}</Link>
-                <Link href="/feeds">{t("Feeds", "Listeler")}</Link>
-                <Link href="/submit">{t("Suggest a Site", "Site Öner")}</Link>
-                <Link href="/about">{t("About", "Hakkında")}</Link>
+              <nav className="main-nav" aria-label={t("Main", "Ana menü")}>
+                {links.map((l) => <Link key={l.href} href={l.href}>{l.label}</Link>)}
               </nav>
             )}
-            <LanguageSwitch />
+            <span className="desktop-lang"><LanguageSwitch /></span>
+            {!adminUi && <MobileMenu links={links} footer={footer} />}
           </div>
         </header>
         <main>{children}</main>
@@ -64,7 +71,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                      "Kod Apache-2.0 · Sınıflandırma verisi CC BY 4.0 (Cat-Egory katkıcıları)")}</span>
             <span>{t("AI classifications are machine estimates; verified entries were confirmed by a person.",
                      "Yapay zekâ sınıflandırmaları makine tahminidir; doğrulanmış kayıtları bir kişi onaylamıştır.")}</span>
-            {!adminUi && <span><Link href="/developers">API</Link> · <Link href="/business">{t("For Companies", "Kurumsal")}</Link> · <Link href="/changes">{t("Changes", "Değişiklikler")}</Link> · <Link href="/privacy">{t("Privacy", "Gizlilik")}</Link> · <Link href="/contact">{t("Contact", "İletişim")}</Link></span>}
+            {!adminUi && <span>{footer.map((l, i) => <span key={l.href}>{i > 0 && " · "}<Link href={l.href}>{l.label}</Link></span>)}</span>}
           </div>
         </footer>
         </LocaleProvider>
