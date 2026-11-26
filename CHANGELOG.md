@@ -5,6 +5,8 @@ release may contain breaking changes.
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-11-26
+
 ### Security and operations
 - Daily CVE watch: Trivy scans every image the stack runs (ours and third-party ones) and sends only new
   CRITICAL findings, and HIGH ones with a fix, to the alert Telegram chat (`make cve-timer`, `make cve-check`).
@@ -123,6 +125,7 @@ confidence policy, second opinion and human review, REST API, web UI and block l
 DNS RPZ), community reports and moderation, Docker Compose deployment with Prometheus, Grafana and backups, and
 the shadow-mode local classifier Yaş Mama.
 
-[Unreleased]: https://github.com/L4zyK0ala/Cat-Egory/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/L4zyK0ala/Cat-Egory/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/L4zyK0ala/Cat-Egory/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/L4zyK0ala/Cat-Egory/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/L4zyK0ala/Cat-Egory/releases/tag/v0.1.0
