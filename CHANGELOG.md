@@ -19,6 +19,12 @@ release may contain breaking changes.
   default config, so the whitelist and the buffer sizes were never applied.
 - The CVE watch's accept list can name images (`CVE-2026-6653 crawler`), so accepting a finding in one image
   no longer hides the same CVE everywhere else.
+- `make up` takes the public site and API off the `edge` network whenever the tunnel is on
+  (`docker-compose.public.yml` was never applied by it): no route from them to the home network or the internet;
+  `:3010` and `:8110` no longer answer on the LAN. `restore.sh` restarts the same containers instead of recreating
+  them.
+- Container guard (`make container-guard`): iptables rules that keep containers away from the host's own ports,
+  the home network and other projects' published ports (DNS and node-exporter stay open); audit mode first.
 
 ### Measurement
 - Threat detector `page_proven_v4`: no brand claim from a brand string inside another word, from a social

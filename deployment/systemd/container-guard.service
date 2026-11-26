@@ -1,0 +1,15 @@
+[Unit]
+Description=Container guard: what Docker containers may open on this host and the home network
+Documentation=file:///usr/local/sbin/container-guard.sh
+# Docker creates DOCKER-USER; PartOf re-applies the rules whenever Docker restarts
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/container-guard.sh
+ExecStop=/usr/local/sbin/container-guard.sh remove
+
+[Install]
+WantedBy=docker.service

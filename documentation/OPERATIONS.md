@@ -642,6 +642,24 @@ third-party ones: Postgres, Redis, SeaweedFS, cloudflared, Prometheus, Grafana, 
 - **Fixing:** for our images, rebuild after the base image or `requirements/constraints.txt` moves (`make up`); for
   third-party images, raise the tag in `deployment/docker-compose.yml`. Dependabot proposes both.
 
+**Container guard.** Every Docker network, internal ones included, has an address on the host (its gateway). A
+container that is taken over can open any port the host listens on for all addresses (nginx and the projects behind
+it, dev servers, SSH, the DNS admin page), and one on an ordinary bridge also reaches the home network, the VPN peers
+and other projects' published ports. `deployment/scripts/container-guard.sh` (iptables, IPv4) leaves containers DNS
+to the host and the router, node-exporter from the `hostmetrics` network, the internet, other containers and the
+published ports listed in `ALLOW_PUBLISHED`; everything else towards the host, private ranges and published ports is
+logged and, in enforce mode, refused. SSH, WireGuard, LAN clients and replies are untouched (they never arrive from a
+Docker interface).
+- **Install:** `make container-guard`: the script goes to `/usr/local/sbin`, a unit runs it after Docker and again
+  whenever Docker restarts, settings in `/etc/cat-egory/container-guard.env` (`GUARD_MODE`, `ALLOW_PUBLISHED`,
+  `LAN_DNS`). It starts in `audit`: blocks nothing and logs what it would block.
+- **Audit, then enforce:** read `sudo journalctl -k -g container-guard --since today` after a day; every line is a
+  connection a container made towards the host or the home network. Expected ones go into `ALLOW_PUBLISHED` (a
+  published port) or are a reason to change the service; then `GUARD_MODE=enforce` and
+  `sudo systemctl restart container-guard`.
+- **Undo:** `sudo systemctl stop container-guard` (or `sudo container-guard.sh remove`); `container-guard.sh print`
+  shows the rules without applying them.
+
 **Threat fast lane.** Scan jobs at priority 0–2 (`CATEGORY_FAST_LANE_MAX_PRIORITY`): CT look-alikes, Octryx
 findings, and scans a person queues at that priority. They may use one crawl slot above
 `CATEGORY_MAX_IN_FLIGHT_SCANS` (`CATEGORY_FAST_LANE_EXTRA_SLOTS`). Their scan and classification steps run on
@@ -669,8 +687,9 @@ Roll back a migration with `$DC run --rm migrate alembic downgrade -1` (take a b
 - [x] **Chromium sandbox**: crawler AppArmor profile installed in `/etc/apparmor.d`, `crawler.selftest` reports OK.
 - [x] Request bodies are capped (1 MB on the public API), wrong API keys are throttled, the site's fetch cache
       cannot grow with visitor input (pre-launch review 2026-11-15, `tests/integration/test_hardening.py`).
-- [ ] Public containers off the `edge` network (`docker-compose.public.yml`, step 5 below).
-- [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth).
+- [x] Public containers off the `edge` network (`docker-compose.public.yml`, added by `make up`; step 5 below).
+- [ ] Host firewall: drop egress to private ranges from the Docker bridge networks (defence in depth): the container
+      guard (`make container-guard`, section 5), in audit mode until its log is quiet, then enforce.
 - [ ] Off-host backups (`offsite-backup.sh`, set up per section 4); restore drill once.
 - [ ] Daily CVE watch installed (`make cve-timer`, section 5).
 - [x] Alertmanager wired to Telegram (`CATEGORY_ALERT_TELEGRAM_CHAT_ID`; test message received 2026-11-09).
@@ -704,10 +723,13 @@ either network.
    `CATEGORY_ADMIN_CORS_ORIGINS=["http://<VPN address>:3012"]`.
 4. `$DC --profile public up -d --build`, then `$DC restart prometheus` (new scrape jobs and alerts). `make up` adds
    `--profile public` by itself once `.env` has a tunnel token (`make up PUBLIC=` leaves it out).
-5. Once the public address works, take the public containers off the `edge` network:
-   `$DC -f deployment/docker-compose.public.yml --profile public up -d`. From then on `:3010` and `:8110` no longer
-   answer on the server's own address (use the public one), and a compromised public container has no route to the
-   home network or the internet. Keep the extra `-f` in every later `up`; without it the ports come back.
+5. The public containers leave the `edge` network (`docker-compose.public.yml`). `make up` adds that file together
+   with `--profile public`, so it holds whenever `.env` has a tunnel token. From then on `:3010` and `:8110` no
+   longer answer on the server's own address (use the public one), and a compromised public container has no route
+   to the home network or the internet. It can still open the host's own ports at its networks' gateway addresses;
+   the container guard below closes that. By hand:
+   `$DC -f deployment/docker-compose.public.yml --profile public up -d`; a later `$DC up` without the extra `-f`
+   puts them back on `edge`, so prefer `make up` (or `$DC restart <service>`, which keeps the networks).
 
 Check from outside: `/admin` on the site is a 404; `/metrics` and `/api/v1/admin/me` on the API are 404; `:3012`,
 `:8111`, `:3011` and `:9091` do not answer from the internet; `https://<api>/readyz` says `ok`. In Prometheus
