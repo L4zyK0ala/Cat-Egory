@@ -7,7 +7,7 @@ const LINKS = [
   ["/admin", "Overview", "Genel Bakış"], ["/admin/reviews", "Review", "İnceleme"], ["/admin/moderation", "Moderation", "Moderasyon"],
   ["/admin/threats", "Confirmed Threats", "Onaylanmış Tehditler"],
   ["/admin/trends", "Trends", "Yönelim"], ["/admin/infographic", "Infographic", "İnfografik"], ["/admin/yasmama", "Yaş Mama", "Yaş Mama"],
-  ["/admin/detector", "Detector", "Dedektör"],
+  ["/admin/detector", "Laser Pointer", "Lazer Pointer"],
 ] as const;
 
 /** One navigation bar for every admin page (admin UI only). */

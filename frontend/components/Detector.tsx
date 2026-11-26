@@ -90,8 +90,8 @@ function View({ api }: { api: string }) {
       <table className="small">
         <thead><tr><th></th><th className="num">{t("Person: threat", "İnsan: tehdit")}</th><th className="num">{t("Person: not a threat", "İnsan: tehdit değil")}</th></tr></thead>
         <tbody>
-          <tr><td>{t("Detector: positive", "Dedektör: pozitif")}</td><td className="num">{f.num(m.tp)}</td><td className="num">{f.num(m.fp)}</td></tr>
-          <tr><td>{t("Detector: negative", "Dedektör: negatif")}</td><td className="num">{f.num(m.fn)}</td><td className="num">{f.num(m.tn)}</td></tr>
+          <tr><td>{t("Laser Pointer: positive", "Lazer Pointer: pozitif")}</td><td className="num">{f.num(m.tp)}</td><td className="num">{f.num(m.fp)}</td></tr>
+          <tr><td>{t("Laser Pointer: negative", "Lazer Pointer: negatif")}</td><td className="num">{f.num(m.fn)}</td><td className="num">{f.num(m.tn)}</td></tr>
         </tbody>
       </table>
       <p className="muted small">{t(

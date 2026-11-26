@@ -82,7 +82,7 @@ without consent; see `integrations/sources.yaml`). What we observe and confirm o
    read-only) judges the earlier rule's pages again and compares both with the same decisions of people. Verdicts on
    threat candidates and all positive ones go to `detector_verdicts`; `measure` compares each domain's newest verdict
    with people: a reviewer flag = right, a closed threat review without one = wrong, a detector flag a person
-   withdrew = wrong. The admin tab **Dedektör** shows precision, recall, the confusion table and the lists.
+   withdrew = wrong. The admin tab **Lazer Pointer** (the detector's name in the console) shows precision, recall, the confusion table and the lists.
 3. **On its own (independent).** With `CATEGORY_THREAT_DETECTOR_AUTO=true`, a positive verdict flags the domain
    (phishing, or scam for an investment scam; plus look-alike when the name imitates a brand) from the source
    `cat-egory-detector` — only the page's URL when the scan was of one listed page — but only while
