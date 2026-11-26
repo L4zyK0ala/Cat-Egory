@@ -409,9 +409,12 @@ Entries with `discover: true` in `integrations/sources.yaml` only bring domains 
 work): by the source's `discover_priority` first (1 `crux-top-tr`: what people in Türkiye open; 2 `majestic-million-tr`;
 3 `majestic-million-top`: the world's popular sites), then most popular first within it. A domain in several lists
 takes its best place. Popularity is the row in the source file, so both Majestic cuts agree, or the source's own rank
-(CrUX gives buckets: 1000, 5000, 10000, 50000; random order inside a bucket). One in four of
-each batch goes to names that hint at restricted content (casino, bahis, porn, vape ...; `RESTRICTED_HINT` in
-`backend/app/discovery.py`), so the lists people block most fill up early. Limits:
+(CrUX gives buckets: 1000, 5000, 10000, 50000; random order inside a bucket). Half of
+each batch (`CATEGORY_DISCOVERY_THIN_SHARE`, 0.5; 0 turns it off) goes to names that hint at a thin category, one
+with fewer than `CATEGORY_DISCOVERY_THIN_TARGET` (150) domains: vpn, proxy, anydesk, muzayede, radyo, emlak, vape ...
+(`THIN_HINTS` in `backend/app/discovery.py`). The thinnest category goes first and each category takes one name in
+turn, so the block lists and Yaş Mama get examples of rare categories without waiting for the whole popularity
+order. A category drops out once it has enough domains. Limits:
 - at most `CATEGORY_DISCOVERY_BATCH_SIZE` (15) per run;
 - at most `CATEGORY_DISCOVERY_DAILY_BUDGET` (1,000) per day, Türkiye time;
 - nothing while `CATEGORY_DISCOVERY_MAX_QUEUED` (30) scans are waiting;

@@ -16,9 +16,12 @@ under a daily budget so that crawling and the AI provider's quota grow slowly an
 * each domain once: by the source's ``discover_priority`` in sources.yaml (CrUX Türkiye, then .tr, then the world),
   then most popular first (``domain_source_records.source_rank``: the row in the source file or its own rank); later
   scans are scheduled by ``category.scan.schedule`` like any other domain,
-* a quarter of each batch goes to names that hint at restricted content (``RESTRICTED_HINT``: casino, bahis, porn,
-  vape, ...), most popular first, so the lists people block with most (adult, gambling, alcohol, tobacco, drugs,
-  weapons) fill up without waiting for the whole popularity order. A wrong hint costs nothing: the scan decides.
+* part of each batch (``discovery_thin_share``) goes to thin categories: names that hint at a category with fewer
+  than ``discovery_thin_target`` domains (``THIN_HINTS``: vpn, proxy, anydesk, muzayede, radyo, emlak, ...), the
+  thinnest category first and one name each in turn, most popular first. The lists people block with and Yaş Mama
+  (``classification/yasmama.py``), which cannot learn a category from a handful of pages, get examples without
+  waiting for the whole popularity order. A category drops out once it has enough domains; a wrong hint costs one
+  scan, because the scan decides.
 
 A source takes part when its catalogue entry says ``discover: true`` and a maintainer approved its licence.
 """
@@ -27,7 +30,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import BigInteger, case, cast, exists, func, literal, select, true
+from sqlalchemy import BigInteger, Select, case, cast, exists, func, literal, select, true
 from sqlalchemy.orm import Session
 
 from common.config import Settings, get_settings
@@ -50,16 +53,37 @@ from .worker import celery_app
 
 DEMAND_SOURCE = "demand"  # backend/app/demand.py (kept apart: that module is imported by the API)
 PRIORITY = 8  # after manual (5), evaluation (4) and scheduled re-scans (7)
-# Names that hint at restricted content (PostgreSQL regex, case-insensitive, on the ASCII name). Kept narrow: "gun"
-# would catch every "gunes" (güneş), "sex" every "essex".
-RESTRICTED_HINT = (
-    r"casino|bahis|betting|sportsbook|poker|roulette|rulet|jackpot|iddaa|kumar|slots?[.-]|(^|[.-])bet|bet([0-9]|[.-])"
-    r"|porn|xxx|xvideo|xnxx|xhamster|hentai|escort|onlyfans|nsfw"
-    r"|vape|vaping|tobacco|sigara|cigar|nargile|hookah|shisha|cbd|cannabis|marijuana|kratom"
-    r"|wine|sarap|beer|bira|vodka|whisk|liquor|brewery"
-    r"|silah|firearm|ammo|airsoft|tabanca|tufek"
-)
-RESTRICTED_SHARE = 4  # one in four of each batch
+# Thin categories and a name hint for each (PostgreSQL regex, case-insensitive, on the ASCII name). Kept narrow:
+# "gun" would catch every "gunes" (güneş), "estate" every "state", "bira" every "birazoku", "ammo" "backgammon".
+# Hate and violence are left out on purpose: discovery does not go looking for them.
+THIN_HINTS: dict[str, str] = {
+    "alcohol": r"wine|sarap|winery|(^|[.-])beer|(^|[.-])bira[.-]|biracilik|vodka|whisk|liquor|brewery|distill|raki[.-]",
+    "illegal-drugs": r"(^|[.-])weed|kratom|cannabis|marijuana|psychedelic|shroom|(^|[.-])cbd",
+    "tobacco": r"vape|vaping|tobacco|sigara|cigar|nargile|hookah|shisha|snus|tutun",
+    "weapons": r"silah|firearm|(^|[.-])ammo|ammunition|airsoft|tabanca|tufek|gunshop|(^|[.-])guns?[.-]",
+    # licensed anywhere (illegal-gambling has plenty); the scan tells them apart. Not "bet" alone: alphabet, better
+    "gambling": r"casino|poker|roulette|sportsbook|jackpot|bet[0-9]|(^|[.-])bet(way|fair|ting|[.-])",
+    "vpn-services": r"vpn",
+    "proxy-services": r"proxy|unblock|hidemy|anonymouse",
+    "remote-access": r"anydesk|teamviewer|splashtop|rustdesk|parsec|remotedesktop|(^|[.-])rdp|vnc",
+    "content-delivery-networks": r"(^|[.-])cdn|akamai|edgekey|cloudfront|fastly|jsdelivr",
+    "email": r"(^|[.-])mail|webmail|posta[.-]",
+    "auctions": r"auction|muzayede|mezat|acikartirma",
+    "online-radio": r"radyo|radio|(^|[.-])fm[.-]",
+    "libraries": r"kutuphane|librar|kitaplik",
+    "cryptocurrency": r"crypto|kripto|(^|[.-])coin|bitcoin|blockchain|(^|[.-])btc",
+    "real-estate": r"realestate|real-estate|emlak|realty|konut|gayrimenkul",
+    "science": r"science|bilim|physics|chemistry|biology",
+    "video": r"video|vimeo",
+    "streaming-media": r"stream|(^|[.-])tv[.-]",
+    "legal": r"hukuk|avukat|(^|[.-])law[.-]|lawyer|attorney|legal",
+    "forums": r"forum|sozluk",
+    "blogs": r"blog",
+    "cybersecurity": r"cyber|siber|antivirus|malware|security|guvenlik",
+    "artificial-intelligence": r"\.ai$|(^|[.-])ai[.-]|gpt|llm|openai|neural",
+    "web-hosting": r"hosting|webhost|sunucu|(^|[.-])vps",
+    "information-technology": r"bilisim|teknoloji",
+}
 DEFAULT_PRIORITY = 100  # a discovery source without discover_priority in sources.yaml
 RANK_SPAN = 10_000_000  # larger than any rank (lists are cut at 3M rows)
 NOT_SPENT = (JobStatus.FAILED, JobStatus.BLOCKED, JobStatus.CANCELLED)  # never reached the AI
@@ -96,6 +120,32 @@ def discovery_sources(session: Session, entries: dict[str, dict[str, Any]] | Non
     return {sid: slugs[slug] for sid, slug in session.execute(
         select(DataSource.id, DataSource.slug).where(DataSource.slug.in_(slugs), DataSource.enabled,
                                                      DataSource.license_id.is_not(None)))}
+
+
+def thin_categories(session: Session, settings: Settings) -> list[str]:
+    """``THIN_HINTS``' categories with fewer than ``discovery_thin_target`` domains, the thinnest first."""
+    counts = dict(session.execute(
+        select(Domain.primary_category_id, func.count()).where(Domain.primary_category_id.in_(list(THIN_HINTS)),
+                                                               Domain.is_active)
+        .group_by(Domain.primary_category_id)).all())
+    return sorted((c for c in THIN_HINTS if counts.get(c, 0) < settings.discovery_thin_target),
+                  key=lambda c: (counts.get(c, 0), c))
+
+
+def thin_picks(session: Session, settings: Settings, listed: Select, room: int) -> list[int]:
+    """Up to ``discovery_thin_share`` of ``room`` candidates from ``listed`` that hint at a thin category: one per
+    category in turn, the thinnest category first and its most popular name first."""
+    share = max(1, round(room * settings.discovery_thin_share))
+    per_category = [list(session.scalars(listed.where(Domain.normalized_domain.op("~*")(THIN_HINTS[c])).limit(share)))
+                    for c in thin_categories(session, settings)]
+    picks: list[int] = []
+    for turn in range(share):
+        for names in per_category:
+            if turn < len(names) and names[turn] not in picks:
+                picks.append(names[turn])
+                if len(picks) == share:
+                    return picks
+    return picks
 
 
 def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, dict[str, Any]] | None = None,
@@ -143,8 +193,7 @@ def queue_discovery(session: Session, settings: Settings, *, entries: dict[str, 
     if source_ids and len(ids) < n:
         listed = candidates(source_ids).where(Domain.id.not_in(ids) if ids else true())
         room = n - len(ids)
-        hinted = list(session.scalars(listed.where(Domain.normalized_domain.op("~*")(RESTRICTED_HINT))
-                                      .limit(max(1, room // RESTRICTED_SHARE))))
+        hinted = thin_picks(session, settings, listed, room) if settings.discovery_thin_share > 0 else []
         ids += hinted + list(session.scalars(listed.where(Domain.id.not_in(hinted) if hinted else true())
                                              .limit(room - len(hinted))))
     return queue_scans(session, ids, reason=ScanReason.DISCOVERY, priority=PRIORITY, requested_by_id=None) if ids else 0

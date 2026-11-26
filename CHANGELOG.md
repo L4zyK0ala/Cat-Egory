@@ -5,6 +5,12 @@ release may contain breaking changes.
 
 ## [Unreleased]
 
+### Classification
+- Discovery reaches thin categories first: half of each batch goes to names that hint at a category with fewer than
+  150 domains (VPN, proxy, remote access, auctions, online radio, real estate, alcohol, tobacco, weapons ...), the
+  thinnest first, one name each in turn (`CATEGORY_DISCOVERY_THIN_SHARE`, `CATEGORY_DISCOVERY_THIN_TARGET`). It
+  replaces the quarter for restricted-content names, whose adult and illegal-gambling lists have filled up.
+
 ## [0.3.0] – 2026-11-26
 
 ### Security and operations

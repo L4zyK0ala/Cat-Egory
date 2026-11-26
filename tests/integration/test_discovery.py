@@ -230,22 +230,46 @@ def test_infra_failures_are_counted_for_the_alert(engine, clean):
         assert infra_failures_last_hour(s, now) == 1
 
 
-def test_a_share_of_each_batch_goes_to_restricted_hints(engine, clean):
+def test_half_of_each_batch_goes_to_thin_categories_in_turn(engine, clean):
     rows = ["GlobalRank,TldRank,Domain,TLD,RefSubNets"] + [f"{i},{i},site{i}.example.com,com,1" for i in range(1, 9)]
-    rows += ["9,9,mega-casino.example.com,com,1", "10,10,bet365.example.com,com,1", "11,11,gunes-haber.example.com,com,1",
-             "12,12,essex-news.example.com,com,1", "13,13,vapeshop.example.com,com,1"]
+    rows += ["9,9,fastvpn.example.com,com,1", "10,10,othervpn.example.com,com,1", "11,11,bursamezat.example.com,com,1",
+             "12,12,radyo-ankara.example.com,com,1", "13,13,birazoku.example.com,com,1",
+             "14,14,activestate.example.com,com,1", "15,15,backgammon.example.com,com,1"]
     entry = TOP | {"max_entries": None}
     with Session(engine) as s, s.begin():
         approved(s, "test-top", entry)
         sync(s, "test-top", data="\n".join(rows).encode(), entry=entry)
-    batch = Settings(_env_file=None, discovery_daily_budget=100, discovery_batch_size=8, discovery_max_queued=100)
+        # auctions and online radio already have domains; VPN has none, so it is the thinnest and goes first
+        s.execute(update(Domain).where(Domain.normalized_domain.in_(["site7.example.com", "site8.example.com"]))
+                  .values(primary_category_id="auctions"))
+        s.execute(update(Domain).where(Domain.normalized_domain == "site6.example.com")
+                  .values(primary_category_id="online-radio"))
+    batch = Settings(_env_file=None, discovery_daily_budget=100, discovery_batch_size=6, discovery_max_queued=100,
+                     discovery_thin_target=2)
     with Session(engine) as s, s.begin():
-        assert queue_discovery(s, batch, entries={"test-top": entry}) == 8
+        assert queue_discovery(s, batch, entries={"test-top": entry}) == 6
     names = {q[0] for q in queued(engine)}
-    assert {"mega-casino.example.com", "bet365.example.com"} <= names  # 8 // 4 = 2 hinted, most popular first
-    assert "vapeshop.example.com" not in names  # the third hint waits for the next batch
-    assert "gunes-haber.example.com" not in names and "essex-news.example.com" not in names  # not hints
-    assert {f"site{i}.example.com" for i in range(1, 7)} <= names  # the rest by popularity
+    # 6 * 0.5 = 3 hinted: one VPN name, then radio (1 domain, under the target of 2); auctions (2) is not thin.
+    # Each thin category takes one name in turn before any takes a second, so the third is the other VPN name.
+    assert {"fastvpn.example.com", "radyo-ankara.example.com", "othervpn.example.com"} <= names
+    assert "bursamezat.example.com" not in names
+    assert {f"site{i}.example.com" for i in range(1, 4)} <= names  # the other half by popularity
+    for not_a_hint in ("birazoku.example.com", "activestate.example.com", "backgammon.example.com"):
+        assert not_a_hint not in names
+
+
+def test_thin_categories_can_be_switched_off(engine, clean):
+    rows = ["GlobalRank,TldRank,Domain,TLD,RefSubNets", "1,1,site1.example.com,com,1", "2,2,site2.example.com,com,1",
+            "3,3,fastvpn.example.com,com,1"]
+    entry = TOP | {"max_entries": None}
+    with Session(engine) as s, s.begin():
+        approved(s, "test-top", entry)
+        sync(s, "test-top", data="\n".join(rows).encode(), entry=entry)
+    off = Settings(_env_file=None, discovery_daily_budget=100, discovery_batch_size=2, discovery_max_queued=100,
+                   discovery_thin_share=0)
+    with Session(engine) as s, s.begin():
+        assert queue_discovery(s, off, entries={"test-top": entry}) == 2
+    assert {q[0] for q in queued(engine)} == {"site1.example.com", "site2.example.com"}
 
 
 def test_discovery_stops_at_the_daily_token_cap(engine, clean):

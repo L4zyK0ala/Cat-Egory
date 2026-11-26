@@ -225,6 +225,10 @@ class Settings(BaseSettings):
                                                                         "AI (failed scans do not count); 0 = off")
     discovery_batch_size: int = Field(default=15, ge=1, description="new domains queued per 15-minute run")
     discovery_max_queued: int = Field(default=30, ge=1, description="pause while this many scans are waiting")
+    discovery_thin_share: float = Field(default=0.5, ge=0, le=1, description="part of each batch for names that hint "
+                                        "at a thin category (backend/app/discovery.py THIN_HINTS); 0 = off")
+    discovery_thin_target: int = Field(default=150, ge=0, description="a category is thin while it has fewer domains "
+                                       "than this")
     ai_daily_token_cap: int = Field(default=0, ge=0, description="EVREN tokens (in + out) per day, Türkiye time, after "
                                                                  "which discovery pauses; other work goes on. "
                                                                  "0 = no cap. Set it to the share of the account's "
