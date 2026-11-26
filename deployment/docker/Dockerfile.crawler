@@ -23,7 +23,9 @@ ENV PATH=/opt/venv/bin:$PATH PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright HOME=/tmp
 COPY --from=build /opt/venv /opt/venv
 # Playwright's bundled Node (1.65+) needs libatomic1 just to start, before --with-deps can install anything.
-RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 \
+# Debian security fixes land before the next python image rebuild; take them at build time.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends libatomic1 \
     && playwright install --with-deps --only-shell chromium \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app && useradd --system --uid 10001 --gid app --home /tmp --shell /usr/sbin/nologin app

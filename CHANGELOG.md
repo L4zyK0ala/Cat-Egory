@@ -17,6 +17,8 @@ release may contain breaking changes.
   packages and a gosu built with a current Go for PostgreSQL; the other two from source with Go 1.27 and patched
   modules, on scratch. certstream now reads `deployment/certstream/config.yaml`: the published image read its own
   default config, so the whitelist and the buffer sizes were never applied.
+- The backend and crawler images install Debian's security updates at build time instead of waiting for the next
+  python image rebuild (libzstd1 CVE-2026-124851).
 - The CVE watch's accept list can name images (`CVE-2026-6653 crawler`), so accepting a finding in one image
   no longer hides the same CVE everywhere else.
 - `make up` takes the public site and API off the `edge` network whenever the tunnel is on
