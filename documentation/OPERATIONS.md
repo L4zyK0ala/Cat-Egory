@@ -630,6 +630,9 @@ third-party ones: Postgres, Redis, SeaweedFS, cloudflared, Prometheus, Grafana, 
 - **Accepted now:** `CVE-2026-6653 crawler`: Debian 13's libxml2 has no fix. In the crawler only `libllvm19`
   (Mesa's software renderer, part of Playwright's Chromium dependencies) uses it; Chromium parses pages with its
   own copy, so crawled content never reaches it. Drop the line once Debian ships a fix.
+- **Accepted now:** `CVE-2026-124851 cloudflared`: libzstd1 in Cloudflare's own image (2026.11.2, the newest on
+  26.11.2026); our backend and crawler images already take Debian's fix at build time. Drop the line and update the
+  image once Cloudflare ships one with `1.5.7+dfsg-1+deb13u1`.
 - **How:** each image is read once into a package list (CycloneDX, per image ID, in `/var/lib/cat-egory/cve-watch`);
   the daily run compares the lists with Trivy's fresh database, so images are exported again only after they
   change. Trivy runs pinned by digest, without the Docker socket and without capabilities.

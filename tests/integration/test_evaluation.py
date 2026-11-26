@@ -1,5 +1,6 @@
 import gzip
 import json
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -356,5 +357,6 @@ def test_db_sets_take_a_persons_decision(engine, clean, monkeypatch, capsys):
     monkeypatch.setattr(database.session, "session_factory", lambda: sessionmaker(bind=engine))
     assert evaluation.main(["compare-report", "--models", QWEN, "--set", "hard:5"]) == 0
     out = capsys.readouterr().out
-    assert "hard:5, seed 2026, 1 sites, answer: a person's decision" in out and "changed.example.com" in out
+    assert "hard:5, seed 2026, 1 sites, answer: a person's decision" in out
+    assert re.search(r"\bchanged\.example\.com\b", out)  # the report names the site (a word, not a URL check)
     assert evaluation.main(["report", "--set", "verified:5"]) == 1  # file sets only
