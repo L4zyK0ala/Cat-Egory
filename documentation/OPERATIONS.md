@@ -646,7 +646,9 @@ third-party ones: Postgres, Redis, SeaweedFS, cloudflared, Prometheus, Grafana, 
   when the watch last completed, and **CveScanStale** fires after 3 days without a complete run
   (`journalctl -u cat-egory-cve-watch`).
 - **Fixing:** for our images, rebuild after the base image or `requirements/constraints.txt` moves (`make up`); for
-  third-party images, raise the tag in `deployment/docker-compose.yml`. Dependabot proposes both.
+  third-party images, raise the tag in `deployment/docker-compose.yml`. Dependabot proposes both. When the fix is
+  only a newer OS package (the tag did not move), `make up` reuses the cached upgrade layer and changes nothing:
+  run `make rebuild SERVICES=postgres` (or the image the message names; no `SERVICES` rebuilds all of ours).
 
 **Container guard.** Every Docker network, internal ones included, has an address on the host (its gateway). A
 container that is taken over can open any port the host listens on for all addresses (nginx and the projects behind

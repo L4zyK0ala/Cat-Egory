@@ -7,13 +7,19 @@ COMPOSE = docker compose -f deployment/docker-compose.yml $(if $(NOSANDBOX),-f d
 	$(if $(PUBLIC),-f deployment/docker-compose.public.yml) --env-file .env $(if $(PUBLIC),--profile public)
 PY ?= .venv/bin/python
 
-.PHONY: env up down logs ps test test-unit lint migrate seed sandbox-profile selftest backup backup-timer restore-test docker-after-vpn offsite-init offsite-check cve-timer cve-check container-guard
+.PHONY: env up rebuild down logs ps test test-unit lint migrate seed sandbox-profile selftest backup backup-timer restore-test docker-after-vpn offsite-init offsite-check cve-timer cve-check container-guard
 
 env:            ## create .env with random secrets
 	./deployment/scripts/generate-env.sh
 
 up:             ## build and start the stack
 	$(COMPOSE) up -d --build
+
+# `make up` keeps cached layers, so `apk upgrade` / `apt-get upgrade` steps do not run again and package fixes from
+# the CVE watch never arrive. This pulls the base images and builds without the cache. SERVICES=postgres limits it.
+rebuild:        ## pull base images, build without the cache, restart (SERVICES=... for some)
+	$(COMPOSE) build --no-cache --pull $(SERVICES)
+	$(COMPOSE) up -d
 
 down:
 	$(COMPOSE) down

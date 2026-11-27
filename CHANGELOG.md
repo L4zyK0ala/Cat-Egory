@@ -11,6 +11,10 @@ release may contain breaking changes.
   thinnest first, one name each in turn (`CATEGORY_DISCOVERY_THIN_SHARE`, `CATEGORY_DISCOVERY_THIN_TARGET`). It
   replaces the quarter for restricted-content names, whose adult and illegal-gambling lists have filled up.
 
+### Operations
+- `make rebuild` pulls the base images and builds ours without the cache, so OS package fixes the CVE watch reports
+  arrive even when the image tag has not moved (`SERVICES=postgres` for one).
+
 ### Admin console
 - The threat detector's tab and page are called **Lazer Pointer** (Laser Pointer in English). Only the name changed:
   rule ids, settings and the public site's wording stay as they were.
